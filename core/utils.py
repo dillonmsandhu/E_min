@@ -16,9 +16,9 @@ def merge_hparams(config, hparams):
     for k, v in hparams.items():
         merged[k] = v
         # Standard fallbacks for learning rate schedules (do not overwrite if already defined in config)
-        if k == 'LR' and 'LR_END' not in hparams and 'LR_END' not in config:
+        if k == 'LR' and 'LR_END' not in hparams and config.get('LR_END') is None:
             merged['LR_END'] = v
-        if k == 'ACTOR_LR' and 'ACTOR_LR_END' not in hparams and 'ACTOR_LR_END' not in config:
+        if k == 'ACTOR_LR' and 'ACTOR_LR_END' not in hparams and config.get('ACTOR_LR_END') is None:
             merged['ACTOR_LR_END'] = v
     return merged
 

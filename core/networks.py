@@ -261,8 +261,12 @@ def initialize_flax_train_state(config, network, params):
         # Separate learning rates for actor and critic
         actor_lr = config.get("ACTOR_LR", config["LR"])
         critic_lr = config["LR"] # Let LR dictate the value net LR
-        actor_lr_end = config.get("ACTOR_LR_END", actor_lr)
-        critic_lr_end = config.get("LR_END", critic_lr)
+        actor_lr_end = config.get("ACTOR_LR_END")
+        if actor_lr_end is None:
+            actor_lr_end = actor_lr
+        critic_lr_end = config.get("LR_END")
+        if critic_lr_end is None:
+            critic_lr_end = critic_lr
 
         actor_lr_scheduler = optax.linear_schedule(
             init_value=actor_lr, end_value=actor_lr_end, transition_steps=total_grad_steps
@@ -309,8 +313,12 @@ def initialize_flax_train_state_no_w(config, network, params):
 
     actor_lr = config.get("ACTOR_LR", config["LR"])
     critic_lr = config["LR"]
-    actor_lr_end = config.get("ACTOR_LR_END", actor_lr)
-    critic_lr_end = config.get("LR_END", critic_lr)
+    actor_lr_end = config.get("ACTOR_LR_END")
+    if actor_lr_end is None:
+        actor_lr_end = actor_lr
+    critic_lr_end = config.get("LR_END")
+    if critic_lr_end is None:
+        critic_lr_end = critic_lr
 
     actor_lr_scheduler = optax.linear_schedule(
         init_value=actor_lr,
