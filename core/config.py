@@ -22,7 +22,7 @@ config = {
     # "MINIBATCH_SIZE": 1,
     "VALUE_LAMBDA": 1.0,
     "GAE_LAMBDA": 0.5,
-    "CLIP_EPS": 0.05,
+    "CLIP_EPS": 0.1,
     "VF_CLIP": 0.5,
     "ENT_COEF": 0.01,
     "VF_COEF": 0.5,
