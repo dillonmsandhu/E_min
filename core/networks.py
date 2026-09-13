@@ -253,6 +253,22 @@ class MLP_Critic(nn.Module):
         """Returns V(s)"""
         return self.value_from_features(self.value_features(x))
 
+def make_warmup_linear_schedule(init_lr, end_lr, total_steps, warmup_ratio=0.1):
+    """Linear warmup from 0.0 to init_lr over warmup_steps, followed by linear decay to end_lr."""
+    if warmup_ratio is None or warmup_ratio <= 0.0 or total_steps <= 1:
+        return optax.linear_schedule(
+            init_value=init_lr, end_value=end_lr, transition_steps=total_steps
+        )
+    warmup_steps = int(total_steps * warmup_ratio)
+    decay_steps = max(total_steps - warmup_steps, 1)
+    warmup_fn = optax.linear_schedule(
+        init_value=0.0, end_value=init_lr, transition_steps=warmup_steps
+    )
+    decay_fn = optax.linear_schedule(
+        init_value=init_lr, end_value=end_lr, transition_steps=decay_steps
+    )
+    return optax.join_schedules([warmup_fn, decay_fn], [warmup_steps])
+
 def initialize_flax_train_state(config, network, params):
     # --- PPO Agent Scheduler & Optimizer ---
     total_grad_steps = config["NUM_UPDATES"] * config.get("NUM_MINIBATCHES", 1) * config["NUM_EPOCHS"]
@@ -268,11 +284,19 @@ def initialize_flax_train_state(config, network, params):
         if critic_lr_end is None:
             critic_lr_end = critic_lr
 
-        actor_lr_scheduler = optax.linear_schedule(
-            init_value=actor_lr, end_value=actor_lr_end, transition_steps=total_grad_steps
+        warmup_ratio = config.get("WARMUP_RATIO", 0.1)
+
+        actor_lr_scheduler = make_warmup_linear_schedule(
+            init_lr=actor_lr,
+            end_lr=actor_lr_end,
+            total_steps=total_grad_steps,
+            warmup_ratio=warmup_ratio,
         )
-        critic_lr_scheduler = optax.linear_schedule(
-            init_value=critic_lr, end_value=critic_lr_end, transition_steps=total_grad_steps
+        critic_lr_scheduler = make_warmup_linear_schedule(
+            init_lr=critic_lr,
+            end_lr=critic_lr_end,
+            total_steps=total_grad_steps,
+            warmup_ratio=warmup_ratio,
         )
 
         actor_tx = optax.chain(
@@ -309,7 +333,7 @@ def initialize_flax_train_state(config, network, params):
 def initialize_flax_train_state_no_w(config, network, params):
     "Final critic weights are excluded from the optimizer."
     # --- PPO Agent Scheduler & Optimizer ---
-    total_grad_steps = config["NUM_UPDATES"] * config["NUM_MINIBATCHES"] * config["NUM_EPOCHS"]
+    total_grad_steps = config["NUM_UPDATES"] * config.get("NUM_MINIBATCHES", 1) * config["NUM_EPOCHS"]
 
     actor_lr = config.get("ACTOR_LR", config["LR"])
     critic_lr = config["LR"]
@@ -320,15 +344,19 @@ def initialize_flax_train_state_no_w(config, network, params):
     if critic_lr_end is None:
         critic_lr_end = critic_lr
 
-    actor_lr_scheduler = optax.linear_schedule(
-        init_value=actor_lr,
-        end_value=actor_lr_end,
-        transition_steps=total_grad_steps
+    warmup_ratio = config.get("WARMUP_RATIO", 0.1)
+
+    actor_lr_scheduler = make_warmup_linear_schedule(
+        init_lr=actor_lr,
+        end_lr=actor_lr_end,
+        total_steps=total_grad_steps,
+        warmup_ratio=warmup_ratio,
     )
-    critic_lr_scheduler = optax.linear_schedule(
-        init_value=critic_lr,
-        end_value=critic_lr_end,
-        transition_steps=total_grad_steps
+    critic_lr_scheduler = make_warmup_linear_schedule(
+        init_lr=critic_lr,
+        end_lr=critic_lr_end,
+        total_steps=total_grad_steps,
+        warmup_ratio=warmup_ratio,
     )
 
     actor_tx = optax.chain(

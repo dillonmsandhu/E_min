@@ -19,6 +19,7 @@ def network_inference(params, network, S, n_actions):
     return pi, v
 
 def make_train(base_config):
+    base_config = base_config.copy()
     base_config["NUM_UPDATES"] = base_config["TOTAL_TIMESTEPS"]
     base_config["NUM_ENVS"] = 1
     base_config["NUM_STEPS"] = 1
@@ -69,17 +70,14 @@ def make_train(base_config):
             V = evaluator.compute_true_values_raw(old_pi_full)
 
             # 2. Compute Advantages
-            R_sa = jnp.einsum("sam,sam->sa", P[:-1], evaluator.R[:-1])
-            Q_sa = R_sa + γ * jnp.einsum("sam,m->sa", P[:-1], V)
-
-            # 4. Compute the Advantage
-            A = Q_sa - V[:-1, None]
-            # Normalize over on-policy state-action visitation distribution (mu * old_pi)
+            P_pi = jnp.einsum("sa,sam->sm", old_pi_full, P)
+            R_pi = jnp.einsum("sa,sam,sam->s", old_pi_full, P, evaluator.R)
+            A = helpers.compute_exact_advantage(
+                P, evaluator.R, P_pi, R_pi, V, γ, 1.0
+            )
             w = mu[:-1, None] * old_pi
-            w = w / jnp.sum(w)
-            mean_A = jnp.sum(w * A)
-            A = A - mean_A
-            A = jax.lax.stop_gradient(A)
+            A = helpers.post_process_advantage(A, config, weights=w)
+
 
             def loss_fn(params, network):
                 # A shape is (num_states, num_actions)
@@ -92,8 +90,6 @@ def make_train(base_config):
 
                 # PPO clip loss
                 ratio = jnp.exp(log_pi - old_log_pi)
-                surr1 = ratio * A[:, None]
-
                 pi_old = jnp.exp(old_log_pi)
 
                 surr1 = ratio * A

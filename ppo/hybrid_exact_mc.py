@@ -28,6 +28,7 @@ def network_inference(params, network, S, n_actions):
     return pi, v
 
 def make_train(base_config):
+    base_config = base_config.copy()
     batch_size = base_config["NUM_STEPS"] * base_config["NUM_ENVS"]
     base_config["NUM_MINIBATCHES"] = batch_size // base_config["MINIBATCH_SIZE"]
     base_config["NUM_UPDATES"] = base_config["TOTAL_TIMESTEPS"] // batch_size
@@ -90,6 +91,8 @@ def make_train(base_config):
 
             # --- ADVANTAGE CALCULATION (SAMPLED) ---
             advantages, _ = helpers.calculate_gae(traj_batch, config["GAMMA"], config["GAE_LAMBDA"])
+            advantages = helpers.post_process_advantage(advantages, config)
+
 
             # ==========================================
             # 2. EXACT DYNAMICS TARGETS (MC)

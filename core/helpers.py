@@ -241,14 +241,70 @@ def _loss_fn_no_w(params, network, traj_batch, gae, targets, config):
     )
     return total_loss, (value_loss, loss_actor, entropy)    
 
+def post_process_advantage(advantages, config, weights=None):
+    """
+    Standardizes and clips advantages for PPO policy optimization.
+    
+    If weights are provided (e.g. w = mu[:-1, None] * old_pi for exact methods),
+    computes the weighted mean and weighted standard deviation over state-action visitation.
+    Otherwise (e.g. sampled rollouts in standard PPO and hybrid scripts),
+    computes the unweighted sample mean and standard deviation.
+    
+    Supports soft floor (ADV_STD_FLOOR) to prevent noise explosion near initialization,
+    and outlier clipping (ADV_CLIP).
+    """
+    std_floor = config.get("ADV_STD_FLOOR", 0.1)
+    adv_clip = config.get("ADV_CLIP", 3.0)
+
+    if weights is not None:
+        if weights.ndim == 1 and advantages.ndim == 2:
+            weights = weights[:, None]
+        w = weights / jnp.sum(weights)
+        mean_adv = jnp.sum(w * advantages)
+        var_adv = jnp.sum(w * (advantages - mean_adv) ** 2)
+        std_adv = jnp.sqrt(var_adv + 1e-8)
+    else:
+        mean_adv = jnp.mean(advantages)
+        var_adv = jnp.var(advantages)
+        std_adv = jnp.sqrt(var_adv + 1e-8)
+
+    if std_floor is not None and std_floor > 0.0:
+        denom = jnp.maximum(std_adv, std_floor)
+    else:
+        denom = std_adv + 1e-8
+
+    adv_norm = (advantages - mean_adv) / denom
+
+    if adv_clip is not None and adv_clip > 0.0:
+        adv_norm = jnp.clip(adv_norm, -adv_clip, adv_clip)
+
+    return jax.lax.stop_gradient(adv_norm)
+
+
+def compute_exact_advantage(P, R, P_pi, R_pi, v, γ, λ):
+    """Computes exact GAE advantages across all non-terminal states and actions."""
+    # δ_gae = (I - γ * λ * P_pi)^(-1) δ is the discounted sum of TD errors from step 1 onward.
+    # At step 0, action a has immediate TD error δ(s, a) = R(s, a) + γ * v(s') - v(s).
+    # Future TD errors from step 1 onward are discounted by γ * λ:
+    # A^GAE(s, a) = δ + γ * λ * E_{s'}[δ_gae(s')]
+    #             = R(s, a) + γ * E_{s'}[v(s') + λ * δ_gae(s')] - v(s)
+
+    I = jnp.eye(P_pi.shape[0])
+    L_pi = jnp.linalg.inv(I - γ * λ * P_pi)
+    δ = R_pi + γ * (P_pi @ v) - v
+    δ_gae = L_pi @ δ
+
+    R_sa = jnp.einsum("sam,sam->sa", P[:-1], R[:-1])
+    Q_sa = R_sa + γ * jnp.einsum("sam,m->sa", P[:-1], v + λ * δ_gae)
+    return Q_sa - v[:-1, None]
+
+
 def pi_loss_fn(params, network, traj_batch, gae, config):
     pi = network.apply(params, traj_batch.obs, method=network.policy)
     log_prob = pi.log_prob(traj_batch.action)
 
     ratio = jnp.exp(log_prob - traj_batch.log_prob)
-    gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-    A_CLIP = config.get('ADV_CLIP', 3.0)
-    gae = jnp.clip(gae, -A_CLIP, A_CLIP) # outlier clipping for the policy. 95% unclipped with 2.
+    gae = post_process_advantage(gae, config)
     loss_actor1 = ratio * gae
     loss_actor2 = (
         jnp.clip(
@@ -262,6 +318,7 @@ def pi_loss_fn(params, network, traj_batch, gae, config):
     loss_actor = loss_actor.mean()
     entropy = pi.entropy().mean()
     return loss_actor, entropy
+
 
 def ppo_clipped_v_loss(traj_batch, value_pred, targets, config):
     e = config["VF_CLIP"]
