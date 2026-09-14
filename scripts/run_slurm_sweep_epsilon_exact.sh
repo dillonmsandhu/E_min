@@ -36,10 +36,30 @@ for env in "${ENVS[@]}"; do
     echo "======================================================================"
 
     for epsilon in "${EPSILON_VALUES[@]}"; do
-        CMD="$PYTHON scripts/sweep_pipeline.py \
+        EPS_DIR="$MASTER_DIR/eps_$epsilon"
+        mkdir -p "$EPS_DIR"
+
+        # 1. exact_E_gd (LR only)
+        CMD_E="$PYTHON scripts/sweep_pipeline.py \
             --policy fixed \
             --env-name $env \
-            --algos ${EXACT_ALGOS[*]} \
+            --algos exact_E_gd \
+            --lr-grid $LR_GRID \
+            --n-seeds $N_SEEDS \
+            --config '$CONFIG' \
+            --rank-by 'auc' \
+            --higher-is-better \
+            --metric nn_advantage_cossim_uniform \
+            --use-greedy-policy \
+            --sweep-root-dir $EPS_DIR \
+            --policy-epsilon $epsilon"
+        eval "$CMD_E"
+
+        # 2. exact_td_lambda (LR + lambda)
+        CMD_TD="$PYTHON scripts/sweep_pipeline.py \
+            --policy fixed \
+            --env-name $env \
+            --algos exact_td_lambda \
             --lr-grid $LR_GRID \
             --lambda-grid $LAMBDA_GRID \
             --n-seeds $N_SEEDS \
@@ -48,10 +68,9 @@ for env in "${ENVS[@]}"; do
             --higher-is-better \
             --metric nn_advantage_cossim_uniform \
             --use-greedy-policy \
-            --sweep-root-dir $MASTER_DIR/eps_$epsilon \
+            --sweep-root-dir $EPS_DIR \
             --policy-epsilon $epsilon"
-        
-        eval "$CMD"
+        eval "$CMD_TD"
     done
     
     echo "Generating plot for $env..."
