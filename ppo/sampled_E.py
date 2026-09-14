@@ -102,9 +102,8 @@ def make_train(base_config):
                         entropy = pi.entropy().mean()
                         ratio = jnp.exp(log_prob - log_prob_mb)
 
-                        adv_norm = (advantages_mb - advantages_mb.mean()) / (advantages_mb.std() + 1e-8)
-                        a_clip = config.get("ADV_CLIP", 3.0)
-                        adv_norm = jnp.clip(adv_norm, -a_clip, a_clip)
+                        adv_norm = helpers.post_process_advantage(advantages_mb, config)
+
 
                         surr1 = ratio * adv_norm
                         surr2 = jnp.clip(ratio, 1.0 - config["CLIP_EPS"], 1.0 + config["CLIP_EPS"]) * adv_norm

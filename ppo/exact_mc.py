@@ -20,6 +20,7 @@ def network_inference(params, network, S, n_actions):
 
 
 def make_train(base_config):
+    base_config = base_config.copy()
     base_config["NUM_UPDATES"] = base_config["TOTAL_TIMESTEPS"]
     base_config["NUM_ENVS"] = 1
     base_config["NUM_STEPS"] = 1
@@ -66,32 +67,14 @@ def make_train(base_config):
             P_pi = jnp.einsum("sa,sam->sm", old_pi_full, P)
             R_pi = jnp.einsum("sa,sam,sam->s", old_pi_full, P, evaluator.R)
             I = jnp.eye(len(S) + 1)
-            λ_pi = config.get("GAE_LAMBDA", 0.6)
-
-            def T(v):
-                return R_pi + γ * P_pi @ v
             # 2. Compute GAE Advantages
-            # GAE(gamma, lambda_pi) formulation:
-            # delta_gae = (I - gamma * lambda_pi * P_pi)^(-1) (T(v) - v) represents the on-policy
-            # discounted sum of TD errors from step 1 onward.
-            # At step 0, action a has immediate TD error delta_0(s, a) = R(s, a) + gamma * v(s') - v(s).
-            # Future TD errors from step 1 onward are discounted by gamma * lambda_pi:
-            # A^GAE(s, a) = delta_0 + gamma * lambda_pi * E_{s'}[delta_gae(s')]
-            #             = R(s, a) + gamma * E_{s'}[v(s') + lambda_pi * delta_gae(s')] - v(s)
-            L_pi = jnp.linalg.inv(I - γ * λ_pi * P_pi)
-            delta_gae = L_pi @ (T(old_v_full) - old_v_full)
-            v_target = old_v_full + λ_pi * delta_gae
-
-            R_sa = jnp.einsum("sam,sam->sa", P[:-1], evaluator.R[:-1])
-            Q_sa = R_sa + γ * jnp.einsum("sam,m->sa", P[:-1], v_target)
-
-            A = Q_sa - old_v[:, None]
-            # Normalize over on-policy state-action visitation distribution (mu * old_pi)
+            λ_pi = config.get("GAE_LAMBDA", 0.6)
+            A = helpers.compute_exact_advantage(
+                P, evaluator.R, P_pi, R_pi, old_v_full, γ, λ_pi
+            )
             w = mu[:-1, None] * old_pi
-            w = w / jnp.sum(w)
-            mean_A = jnp.sum(w * A)
-            A = A - mean_A
-            A = jax.lax.stop_gradient(A)
+            A = helpers.post_process_advantage(A, config, weights=w)
+
 
             def loss_fn(params, network):
                 # A shape is (num_states, num_actions)
