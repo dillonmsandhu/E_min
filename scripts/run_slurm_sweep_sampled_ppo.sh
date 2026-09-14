@@ -30,6 +30,10 @@ fi
 
 # Configuration
 N_SEEDS=8
+
+$RANK_BY="final_window"
+$WINDOW_SIZE=500
+
 TOTAL_TIMESTEPS=2048000
 ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
 SAMPLED_ALGOS=("sampled_E" "sampled_td_lambda")
@@ -86,7 +90,8 @@ for env in "${ENVS[@]}"; do
         --n-seeds $N_SEEDS \
         --total-timesteps $TOTAL_TIMESTEPS \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --sweep-root-dir $SWEEP_ROOT_DIR \
         --no-log-scale"
@@ -107,7 +112,8 @@ for env in "${ENVS[@]}"; do
         --n-seeds $N_SEEDS \
         --total-timesteps $TOTAL_TIMESTEPS \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --sweep-root-dir $SWEEP_ROOT_DIR \
         --no-log-scale"
@@ -120,7 +126,8 @@ for env in "${ENVS[@]}"; do
     $PYTHON notebooks/analyze_sweeps.py \
         --sweep-dir "$SWEEP_ROOT_DIR" \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --final-window $WINDOW_SIZE \
         --higher-is-better \
         --linear-scale
 done

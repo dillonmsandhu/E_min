@@ -27,8 +27,8 @@ else
 fi
 
 # Configuration
-N_SEEDS=12
-TOTAL_TIMESTEPS=2000
+N_SEEDS=16
+TOTAL_TIMESTEPS=3000
 ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
 EXACT_ALGOS=("exact_E" "exact_td_lambda")
 
@@ -38,6 +38,8 @@ FIXED_GAE_LAMBDA=0.1
 LR_GRID="0.01 0.005 0.001 0.0003"
 ACTOR_LR_GRID="0.001 0.0003 0.0001"
 VALUE_LAMBDA_GRID="0.9 0.99 1.0"
+RANK_BY="final_window"
+WINDOW_SIZE=500
 
 mkdir -p slurm
 
@@ -76,7 +78,8 @@ for env in "${ENVS[@]}"; do
         --n-seeds $N_SEEDS \
         --total-timesteps $TOTAL_TIMESTEPS \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --sweep-root-dir $SWEEP_ROOT_DIR \
         --no-log-scale"
@@ -97,7 +100,8 @@ for env in "${ENVS[@]}"; do
         --n-seeds $N_SEEDS \
         --total-timesteps $TOTAL_TIMESTEPS \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --sweep-root-dir $SWEEP_ROOT_DIR \
         --no-log-scale"
@@ -110,7 +114,8 @@ for env in "${ENVS[@]}"; do
     $PYTHON notebooks/analyze_sweeps.py \
         --sweep-dir "$SWEEP_ROOT_DIR" \
         --metric V_start \
-        --rank-by auc \
+        --rank-by $RANK_BY \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --linear-scale
 done
