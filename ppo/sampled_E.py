@@ -20,6 +20,7 @@ class Transition(NamedTuple):
     info: jnp.ndarray
 
 def make_train(base_config):
+    base_config = base_config.copy()
     batch_size = base_config["NUM_STEPS"] * base_config["NUM_ENVS"]
     base_config["NUM_MINIBATCHES"] = batch_size // base_config["MINIBATCH_SIZE"]
     base_config["NUM_UPDATES"] = base_config["TOTAL_TIMESTEPS"] // batch_size

@@ -288,7 +288,6 @@ def compute_exact_advantage(P, R, P_pi, R_pi, v, γ, λ):
     # Future TD errors from step 1 onward are discounted by γ * λ:
     # A^GAE(s, a) = δ + γ * λ * E_{s'}[δ_gae(s')]
     #             = R(s, a) + γ * E_{s'}[v(s') + λ * δ_gae(s')] - v(s)
-
     I = jnp.eye(P_pi.shape[0])
     L_pi = jnp.linalg.inv(I - γ * λ * P_pi)
     δ = R_pi + γ * (P_pi @ v) - v
