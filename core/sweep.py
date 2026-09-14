@@ -1,4 +1,5 @@
 import os
+import time
 import json
 import itertools
 import datetime
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from core.utils import save_results, merge_hparams
+
 
 
 def plot_sweep_curves(
@@ -241,32 +243,48 @@ def tune(
     rng = jax.random.PRNGKey(base_config.get("SEED", rng_seed))
     rngs = jax.random.split(rng, n_seeds)
 
-    # Create a PyTree of hyperparameters to vmap over
-    hparams_tree = {
-        k: jnp.array([combo[i] for combo in combinations])
-        for i, k in enumerate(keys)
-    }
-
     train_fn = make_train(base_config)
     
-    # Inner vmap over seeds (axis 0 of rngs, None for hparams)
-    # Outer vmap over configurations (None for rngs, axis 0 of hparams PyTree)
-    parallel_train = jax.jit(
-        jax.vmap(
-            jax.vmap(train_fn, in_axes=(0, None)),
-            in_axes=(None, 0)
-        )
-    )
+    # vmap over seeds (axis 0 of rngs, None for hparams)
+    vmapped_train = jax.jit(jax.vmap(train_fn, in_axes=(0, None)))
 
     print(f"\n{'='*60}")
-    print(f"RUNNING PARALLEL SWEEP: {len(combinations)} configs x {n_seeds} seeds = {len(combinations)*n_seeds} runs")
+    print(f"RUNNING SWEEP: {len(combinations)} configs x {n_seeds} seeds = {len(combinations)*n_seeds} runs")
     print(f"Environment: {env_name} | Primary Metric: {metric_key}")
     print(f"Hyperparameters: {keys}")
     print(f"Ranking By: {rank_by} ({'lower' if rank_order in ['lower', 'min', 'asc', 'ascending'] else 'higher'} is better)")
     print(f"{'='*60}\n")
     
-    out = parallel_train(rngs, hparams_tree)
-    metrics = out["metrics"]
+    metrics_list = []
+    runner_state_list = []
+    for c_idx, combo in enumerate(combinations):
+        current_hparams = {}
+        for i, k in enumerate(keys):
+            val = combo[i]
+            if isinstance(val, (float, np.floating)):
+                current_hparams[k] = jnp.array(val, dtype=jnp.float32)
+            else:
+                current_hparams[k] = jnp.array(val)
+
+        param_desc = ", ".join([f"{k}={combo[i]}" for i, k in enumerate(keys)])
+        print(f"[{c_idx+1}/{len(combinations)}] Evaluating: {param_desc} ...", end="", flush=True)
+        t0 = time.time()
+        out_c = vmapped_train(rngs, current_hparams)
+        # Block until metric array is ready to accurately measure timing and ensure progress reporting
+        if metric_key in out_c["metrics"]:
+            _ = out_c["metrics"][metric_key].block_until_ready()
+        elapsed = time.time() - t0
+        print(f" done ({elapsed:.1f}s)", flush=True)
+        metrics_list.append(out_c["metrics"])
+        if save_checkpoint and "runner_state" in out_c:
+            runner_state_list.append(out_c["runner_state"])
+
+    # Stack metrics across configs so shape is (n_combos, n_seeds, time_steps)
+    metrics = jax.tree.map(lambda *arrs: jnp.stack(arrs, axis=0), *metrics_list)
+    out = {"metrics": metrics}
+    if save_checkpoint and runner_state_list:
+        out["runner_state"] = jax.tree.map(lambda *arrs: jnp.stack(arrs, axis=0), *runner_state_list)
+
 
     if metric_key not in metrics:
         raise KeyError(f"Metric '{metric_key}' not found. Available keys: {list(metrics.keys())}")
