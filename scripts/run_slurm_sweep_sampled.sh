@@ -30,7 +30,9 @@ fi
 N_SEEDS=5
 ENVS=("FourRooms-misc" "MountainCar-v0")
 POLICIES=("random" "fixed")
-SAMPLED_ALGOS=("td" "td0" "sampled_E" "monte_carlo" "unbiased_sampled_E")
+
+SAMPLED_NON_LAMBDA_ALGOS=("td0" "sampled_E" "monte_carlo" "unbiased_sampled_E")
+SAMPLED_LAMBDA_ALGOS=("td")
 
 # Base config overrides for sampled algorithms (NUM_ENVS, NUM_STEPS, TOTAL_TIMESTEPS, MINIBATCH_SIZE, etc.)
 CONFIG='{"NUM_ENVS": 64, "NUM_STEPS": 256, "TOTAL_TIMESTEPS": 1000000, "MINIBATCH_SIZE": 1024, "NUM_EPOCHS": 1}'
@@ -56,30 +58,56 @@ echo "STARTING SLURM SAMPLED ALGORITHMS SWEEP (TD, TD(0), Sampled E, Monte Carlo
 echo "Start Time: $START_TIME"
 echo "Environments: ${ENVS[*]}"
 echo "Policies: ${POLICIES[*]}"
-echo "Algorithms: ${SAMPLED_ALGOS[*]}"
+echo "Non-Lambda Algorithms: ${SAMPLED_NON_LAMBDA_ALGOS[*]}"
+echo "Lambda Algorithms: ${SAMPLED_LAMBDA_ALGOS[*]}"
 echo "LR Grid: $LR_GRID"
 echo "Lambda Grid: $LAMBDA_GRID"
 echo "Config Overrides: $CONFIG"
-echo "Working Directory: $REPO_ROOT"
 echo "======================================================================"
 
 for env in "${ENVS[@]}"; do
-    # Get model directory for this specific environment
     MODEL_DIR="${FIXED_MODEL_DIRS[$env]}"
 
     for policy in "${POLICIES[@]}"; do
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+        SWEEP_ROOT_DIR="results/${policy}/sweeps/${policy}_${env}_${TIMESTAMP}_sampled"
+        mkdir -p "$SWEEP_ROOT_DIR"
+
         echo ""
         echo "======================================================================"
         echo "Running Sampled Sweep: Policy=$policy | Environment=$env"
+        echo "Sweep Root Directory: $SWEEP_ROOT_DIR"
         if [ "$policy" = "fixed" ]; then
             echo "Evaluation Policy Model Dir: $MODEL_DIR"
         fi
         echo "======================================================================"
 
-        CMD="$PYTHON scripts/sweep_pipeline.py \
+        # 1. Non-lambda sampled algorithms (sweep LR only)
+        echo ""
+        echo "--> [1/2] Sweeping non-lambda sampled algorithms (${SAMPLED_NON_LAMBDA_ALGOS[*]})..."
+        CMD_NON_LAMBDA="$PYTHON scripts/sweep_pipeline.py \
             --policy $policy \
             --env-name $env \
-            --algos ${SAMPLED_ALGOS[*]} \
+            --algos ${SAMPLED_NON_LAMBDA_ALGOS[*]} \
+            --lr-grid $LR_GRID \
+            --n-seeds $N_SEEDS \
+            --model-dir '$MODEL_DIR' \
+            --config '$CONFIG' \
+            --rank-by 'auc' \
+            --higher-is-better \
+            --metric nn_greedy_performance \
+            --use-geom-mean \
+            --sweep-root-dir $SWEEP_ROOT_DIR"
+        echo "Command: $CMD_NON_LAMBDA"
+        eval "$CMD_NON_LAMBDA"
+
+        # 2. Lambda sampled algorithm: td (sweeps LR x GAE_LAMBDA)
+        echo ""
+        echo "--> [2/2] Sweeping lambda sampled algorithms (${SAMPLED_LAMBDA_ALGOS[*]})..."
+        CMD_LAMBDA="$PYTHON scripts/sweep_pipeline.py \
+            --policy $policy \
+            --env-name $env \
+            --algos ${SAMPLED_LAMBDA_ALGOS[*]} \
             --lr-grid $LR_GRID \
             --lambda-grid $LAMBDA_GRID \
             --n-seeds $N_SEEDS \
@@ -88,10 +116,20 @@ for env in "${ENVS[@]}"; do
             --rank-by 'auc' \
             --higher-is-better \
             --metric nn_greedy_performance \
-            --use-geom-mean"
-            
-        echo "Command: $CMD"
-        eval "$CMD"
+            --use-geom-mean \
+            --sweep-root-dir $SWEEP_ROOT_DIR"
+        echo "Command: $CMD_LAMBDA"
+        eval "$CMD_LAMBDA"
+
+        # 3. Final Cross-Algorithm Comparison
+        echo ""
+        echo "--> Generating Final Cross-Algorithm Comparison Plot & Summary..."
+        $PYTHON notebooks/analyze_sweeps.py \
+            --sweep-dir "$SWEEP_ROOT_DIR" \
+            --metric nn_greedy_performance \
+            --rank-by auc \
+            --higher-is-better \
+            --linear-scale
     done
 done
 

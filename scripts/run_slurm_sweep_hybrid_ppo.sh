@@ -54,28 +54,66 @@ echo "Optimization Metric: V_start (AUC, higher is better)"
 echo "======================================================================"
 
 for env in "${ENVS[@]}"; do
+    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    SWEEP_ROOT_DIR="results/hybrid/sweeps/hybrid_${env}_${TIMESTAMP}_hybrid"
+    mkdir -p "$SWEEP_ROOT_DIR"
+
     echo ""
     echo "======================================================================"
     echo "Running Hybrid PPO Control Sweep: Environment=$env"
+    echo "Sweep Root Directory: $SWEEP_ROOT_DIR"
     echo "======================================================================"
     
-    CMD="$PYTHON scripts/sweep_pipeline.py \
+    # 1. Hybrid Exact E minimization (sweeps LR x ACTOR_LR)
+    echo ""
+    echo "--> [1/2] Sweeping hybrid_exact_E (LR: $LR_GRID | ACTOR_LR: $ACTOR_LR_GRID)..."
+    CMD_E="$PYTHON scripts/sweep_pipeline.py \
         --policy ppo \
         --env-name $env \
-        --algos ${HYBRID_ALGOS[*]} \
+        --algos hybrid_exact_E \
         --lr-grid $LR_GRID \
         --actor-lr-grid $ACTOR_LR_GRID \
-        --lambda-grid $VALUE_LAMBDA_GRID \
         --config '$CONFIG' \
         --n-seeds $N_SEEDS \
         --total-timesteps $TOTAL_TIMESTEPS \
         --metric V_start \
         --rank-by auc \
         --higher-is-better \
-        --sweep-suffix hybrid \
+        --sweep-root-dir $SWEEP_ROOT_DIR \
         --no-log-scale"
-    echo "Command: $CMD"
-    eval "$CMD"
+    echo "Command: $CMD_E"
+    eval "$CMD_E"
+
+    # 2. Hybrid Exact TD(lambda) (sweeps LR x ACTOR_LR x VALUE_LAMBDA)
+    echo ""
+    echo "--> [2/2] Sweeping hybrid_exact_td_lambda (LR: $LR_GRID | ACTOR_LR: $ACTOR_LR_GRID | VALUE_LAMBDA: $VALUE_LAMBDA_GRID)..."
+    CMD_TD="$PYTHON scripts/sweep_pipeline.py \
+        --policy ppo \
+        --env-name $env \
+        --algos hybrid_exact_td_lambda \
+        --lr-grid $LR_GRID \
+        --actor-lr-grid $ACTOR_LR_GRID \
+        --value-lambda-grid $VALUE_LAMBDA_GRID \
+        --config '$CONFIG' \
+        --n-seeds $N_SEEDS \
+        --total-timesteps $TOTAL_TIMESTEPS \
+        --metric V_start \
+        --rank-by auc \
+        --higher-is-better \
+        --sweep-root-dir $SWEEP_ROOT_DIR \
+        --no-log-scale"
+    echo "Command: $CMD_TD"
+    eval "$CMD_TD"
+
+    # 3. Final Cross-Algorithm Comparison
+    echo ""
+    echo "--> Generating Final Cross-Algorithm Comparison Plot & Summary..."
+    $PYTHON notebooks/analyze_sweeps.py \
+        --sweep-dir "$SWEEP_ROOT_DIR" \
+        --metric V_start \
+        --rank-by auc \
+        --higher-is-better \
+        --linear-scale
 done
 
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")

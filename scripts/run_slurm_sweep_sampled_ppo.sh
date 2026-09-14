@@ -7,12 +7,12 @@
 
 # ==============================================================================
 # Hyperparameter Sweep over Sampled PPO Control Algorithms
-# Compares: Sampled E Minimization vs TD(lambda) vs Monte Carlo
+# Compares: Sampled E Minimization vs TD(lambda)
 # Sweeping over Value lambda: [0.9, 0.99, 1.0] for E min and TD(lambda)
 # Note: VALUE_LAMBDA and GAE_LAMBDA are strictly separated across all runs.
 #
 # Environments: EightRooms, FourRooms-misc, Whirlpool, MountainCar-v0
-# Optimization Metric: AUC of mean reward (higher is better)
+# Optimization Metric: V_start (AUC, higher is better)
 #
 # Usage:
 #   sbatch scripts/run_slurm_sweep_sampled_ppo.sh
@@ -49,7 +49,7 @@ mkdir -p slurm
 
 echo "======================================================================"
 echo "STARTING SLURM SAMPLED PPO CONTROL SWEEP"
-echo "Comparing: Sampled E Minimization vs TD(lambda) vs Monte Carlo"
+echo "Comparing: Sampled E Minimization vs TD(lambda)"
 echo "Start Time: $START_TIME"
 echo "Environments: ${ENVS[*]}"
 echo "Algorithms: ${SAMPLED_ALGOS[*]}"
@@ -62,15 +62,23 @@ echo "Optimization Metric: V_start (AUC, higher is better)"
 echo "======================================================================"
 
 for env in "${ENVS[@]}"; do
+    TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${env}_${TIMESTAMP}_sampled"
+    mkdir -p "$SWEEP_ROOT_DIR"
+
     echo ""
     echo "======================================================================"
     echo "Running Sampled PPO Control Sweep: Environment=$env"
+    echo "Sweep Root Directory: $SWEEP_ROOT_DIR"
     echo "======================================================================"
     
-    CMD="$PYTHON scripts/sweep_pipeline.py \
+    # 1. Sampled E minimization (sweeps LR x ACTOR_LR x VALUE_LAMBDA)
+    echo ""
+    echo "--> [1/2] Sweeping sampled_E (LR: $LR_GRID | ACTOR_LR: $ACTOR_LR_GRID | VALUE_LAMBDA: $VALUE_LAMBDA_GRID)..."
+    CMD_E="$PYTHON scripts/sweep_pipeline.py \
         --policy ppo \
         --env-name $env \
-        --algos ${SAMPLED_ALGOS[*]} \
+        --algos sampled_E \
         --lr-grid $LR_GRID \
         --actor-lr-grid $ACTOR_LR_GRID \
         --value-lambda-grid $VALUE_LAMBDA_GRID \
@@ -80,10 +88,41 @@ for env in "${ENVS[@]}"; do
         --metric V_start \
         --rank-by auc \
         --higher-is-better \
-        --sweep-suffix sampled \
-        --no-log-scale"  
-    echo "Command: $CMD"
-    eval "$CMD"
+        --sweep-root-dir $SWEEP_ROOT_DIR \
+        --no-log-scale"
+    echo "Command: $CMD_E"
+    eval "$CMD_E"
+
+    # 2. Sampled TD(lambda) (sweeps LR x ACTOR_LR x VALUE_LAMBDA)
+    echo ""
+    echo "--> [2/2] Sweeping sampled_td_lambda (LR: $LR_GRID | ACTOR_LR: $ACTOR_LR_GRID | VALUE_LAMBDA: $VALUE_LAMBDA_GRID)..."
+    CMD_TD="$PYTHON scripts/sweep_pipeline.py \
+        --policy ppo \
+        --env-name $env \
+        --algos sampled_td_lambda \
+        --lr-grid $LR_GRID \
+        --actor-lr-grid $ACTOR_LR_GRID \
+        --value-lambda-grid $VALUE_LAMBDA_GRID \
+        --config '$CONFIG' \
+        --n-seeds $N_SEEDS \
+        --total-timesteps $TOTAL_TIMESTEPS \
+        --metric V_start \
+        --rank-by auc \
+        --higher-is-better \
+        --sweep-root-dir $SWEEP_ROOT_DIR \
+        --no-log-scale"
+    echo "Command: $CMD_TD"
+    eval "$CMD_TD"
+
+    # 3. Final Cross-Algorithm Comparison
+    echo ""
+    echo "--> Generating Final Cross-Algorithm Comparison Plot & Summary..."
+    $PYTHON notebooks/analyze_sweeps.py \
+        --sweep-dir "$SWEEP_ROOT_DIR" \
+        --metric V_start \
+        --rank-by auc \
+        --higher-is-better \
+        --linear-scale
 done
 
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")

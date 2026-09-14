@@ -377,6 +377,23 @@ def run_sweep_pipeline(
     comparison_dir = os.path.join(sweep_root_dir, "comparison")
     os.makedirs(comparison_dir, exist_ok=True)
 
+    # Discover any other algorithm runs that were previously completed in sweep_root_dir
+    from notebooks.analyze_sweeps import load_sweep_data, find_latest_run_dir
+    for item in sorted(os.listdir(sweep_root_dir)):
+        if item in completed_runs_for_comparison or item.startswith(".") or item == "comparison":
+            continue
+        item_path = os.path.join(sweep_root_dir, item)
+        if not os.path.isdir(item_path):
+            continue
+        tuning_dir = os.path.join(item_path, "tuning")
+        search_dir = tuning_dir if os.path.exists(tuning_dir) else item_path
+        ts, env_sub, run_path = find_latest_run_dir(search_dir)
+        if run_path:
+            try:
+                completed_runs_for_comparison[item] = load_sweep_data(run_path)
+            except Exception as load_err:
+                print(f"Note: Could not auto-load existing run for {item}: {load_err}")
+
     summary_df = summarize_algorithm_comparison(
         completed_runs_for_comparison,
         metric_key=metric_key,
