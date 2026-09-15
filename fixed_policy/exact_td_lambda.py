@@ -78,8 +78,8 @@ def make_train(base_config):
             # 1.  Apply expected update NUM_EPOCHS times
             train_state, loss = jax.lax.scan(td_step, train_state, None, config["NUM_EPOCHS"])
             # 2. Get value metrics and logging
-            metric = bellman_error.value_metrics_light(
-                evaluator, network, train_state.params, random_policy=False, target_policy_fn=policy_fn
+            metric = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=False, target_policy_fn=policy_fn, light=config.get("LIGHT_METRICS", True)
             )
             if config.get("LOG_FEATURE_METRICS", False):
                 from core.feature_metrics import feature_metrics

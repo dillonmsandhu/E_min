@@ -117,7 +117,9 @@ def make_train(config):
             }
             # Shared Metrics
             metric.update({k: v.mean() for k, v in losses.items()})
-            value_metrics = bellman_error.value_metrics(evaluator, network, train_state.params, random_policy=True)
+            value_metrics = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=True, light=config.get("LIGHT_METRICS", True)
+            )
             metric.update(value_metrics)
 
             runner_state = (train_state, env_state, last_obs, rng, idx + 1)

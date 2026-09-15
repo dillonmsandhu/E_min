@@ -29,11 +29,24 @@ def parse_config_override(config_str):
     
     try:
         # Parse as JSON
-        return json.loads(config_str)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing config override: {e}")
-        print("Config override should be valid JSON, e.g.: '{\"LR\": 0.001, \"LAMBDA\": 0.0}'")
-        exit(1)
+        cfg = json.loads(config_str)
+    except json.JSONDecodeError:
+        try:
+            import ast
+            cfg = ast.literal_eval(config_str)
+        except Exception as e:
+            print(f"Error parsing config override: {e}")
+            print("Config override should be valid JSON or Python dict, e.g.: '{\"LR\": 0.001, \"LAMBDA\": 0.0}'")
+            exit(1)
+
+    if isinstance(cfg, dict):
+        for k, v in cfg.items():
+            if isinstance(v, str):
+                if v.lower() == "false":
+                    cfg[k] = False
+                elif v.lower() == "true":
+                    cfg[k] = True
+    return cfg
 
 def save_config(config, env_dir):
     config_path = os.path.join(env_dir, f"config.json")

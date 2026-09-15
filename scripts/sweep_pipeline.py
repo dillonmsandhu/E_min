@@ -42,6 +42,7 @@ ALGO_REGISTRY = {
         "exact_mc": "fixed_policy.exact_mc",
         "exact_E_gd": "fixed_policy.exact_E_gd",
         "exact_E": "fixed_policy.exact_E_gd",
+        "exact_E_lambda": "fixed_policy.exact_E_lambda",
         "exact_E_td": "fixed_policy.exact_E_td",
         "exact_Etd": "fixed_policy.exact_E_td",
         "exact_td_lambda": "fixed_policy.exact_td_lambda",
@@ -58,6 +59,8 @@ ALGO_REGISTRY = {
         "exact_mc": "random_policy.exact_mc",
         "exact_E_gd": "random_policy.exact_E_gd",
         "exact_E": "random_policy.exact_E_gd",
+        "exact_E_lambda": "random_policy.exact_E_lambda",
+        "exact_td_lambda": "random_policy.exact_td_lambda",
         "exact_E_td": "random_policy.exact_E_td",
         "exact_Etd": "random_policy.exact_E_td",
         "exact_E_sampling_form": "random_policy.exact_E_sampling_form",
@@ -95,6 +98,7 @@ ALGO_REGISTRY = {
         "mc": "ppo.sampled_mc",
         "monte_carlo": "ppo.sampled_mc",
         "sampled_mc": "ppo.sampled_mc",
+        "exact_E_lambda": "ppo.exact_E_lambda",
     },
     "hybrid": {
         "hybrid_exact_E": "ppo.hybrid_exact_E",
@@ -228,6 +232,7 @@ def run_sweep_pipeline(
     sweep_root_dir_arg=None,
     lr_end=None,
     actor_lr_end=None,
+    light_metrics=None,
 ):
     """
     Runs a parallel hyperparameter sweep for multiple algorithms on a fixed task,
@@ -268,6 +273,8 @@ def run_sweep_pipeline(
     base_config["N_SEEDS"] = n_seeds
     base_config["MODEL_LOAD_DIR"] = model_load_dir
 
+    if light_metrics is not None:
+        base_config["LIGHT_METRICS"] = light_metrics
     if total_timesteps is not None:
         base_config["TOTAL_TIMESTEPS"] = total_timesteps
     if num_envs is not None:
@@ -484,6 +491,10 @@ def parse_args():
                         help="JSON string or path to JSON file with additional config overrides")
     parser.add_argument("--use-geom-mean", action="store_true",
                         help="Use geometric mean for error bands in comparison plot")
+    parser.add_argument("--light-metrics", dest="light_metrics", action="store_true", default=None,
+                        help="Only log lightweight scalar value metrics (skip grids and heavy matrices)")
+    parser.add_argument("--no-light-metrics", dest="light_metrics", action="store_false",
+                        help="Log full value metrics including spatial grids and heavy matrices")
     parser.add_argument("--log-scale", dest="log_scale", action="store_true", default=None,
                         help="Force log scale on y-axis for curve plots")
     parser.add_argument("--no-log-scale", dest="log_scale", action="store_false",
@@ -548,6 +559,7 @@ def main():
         actor_lr_grid=args.actor_lr_grid,
         lr_end=args.lr_end,
         actor_lr_end=args.actor_lr_end,
+        light_metrics=args.light_metrics,
         lambda_grid=args.lambda_grid,
         gae_lambda_grid=args.gae_lambda_grid,
         value_lambda_grid=args.value_lambda_grid,

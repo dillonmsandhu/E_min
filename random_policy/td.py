@@ -120,7 +120,9 @@ def make_train(base_config):
                     "mean_rew": traj_batch.reward.mean(),
                 }
             )
-            value_metrics = bellman_error.value_metrics(evaluator, network, train_state.params, random_policy=True)
+            value_metrics = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=True, light=config.get("LIGHT_METRICS", True)
+            )
             metric.update(value_metrics)
             if config["LOG_FEATURE_METRICS"]:
                 metric.update(feature_metrics(

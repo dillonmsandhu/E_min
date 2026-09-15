@@ -119,12 +119,27 @@ def evaluate(run_config, make_train, run_dir, args, rng):
         print("failed to save gradient_covariance_matrix", e)
 
     try:
-        save_heatmap(env_dir, run_config["ENV_NAME"], metrics["V_grid"][0, -1], "V_grid")
+        grid_data = metrics.get("V_grid", metrics.get("value_grid"))
+        if grid_data is not None:
+            save_heatmap(env_dir, run_config["ENV_NAME"], grid_data[0, -1], "V_grid")
     except Exception as e:
         print("failed to save value grid", e)
 
     try:
-        save_heatmap(env_dir, run_config["ENV_NAME"], metrics["state_dist_grid"][0, -1], "state_dist_grid")
+        if "nn_grid" in metrics:
+            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["nn_grid"][0, -1], "nn_grid")
+    except Exception as e:
+        print("failed to save nn grid", e)
+
+    try:
+        if "state_dist_grid" in metrics:
+            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["state_dist_grid"][0, -1], "state_dist_grid")
+    except Exception as e:
+        pass
+
+    try:
+        if "min_eigenvector_grid" in metrics:
+            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["min_eigenvector_grid"][0, -1], "min_eigenvector_grid")
     except Exception as e:
         pass
 

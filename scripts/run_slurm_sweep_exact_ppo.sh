@@ -26,16 +26,29 @@ else
     PYTHON="python"
 fi
 
+# Ensure working directory is repository root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 # Configuration
 N_SEEDS=5
 TOTAL_TIMESTEPS=3000
-# ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
-ENVS=("MountainCar-v0")
-EXACT_ALGOS=("exact_E" "exact_td_lambda" "exact_mc")
 
+# Environment selection: accept from argument $1, SLURM_ARRAY_TASK_ID, or default list
+ALL_ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
+if [ -n "$1" ]; then
+    ENVS=("$1")
+elif [ -n "$SLURM_ARRAY_TASK_ID" ]; then
+    ENVS=("${ALL_ENVS[$SLURM_ARRAY_TASK_ID]}")
+else
+    ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
+fi
+
+EXACT_ALGOS=("exact_E" "exact_td_lambda")
 
 FIXED_GAE_LAMBDA=0.1
-# Grids (2 critic LRs, 2 actor LRs, fixed lambda=0.9 -> 4 configs per seed)
+# Grids (3 critic LRs, 3 actor LRs, fixed lambda=0.9)
 LR_GRID="0.005 0.001 0.0003"
 ACTOR_LR_GRID="0.001 0.0003 0.0001"
 VALUE_LAMBDA_GRID="0.9"
@@ -52,12 +65,12 @@ echo "Environments: ${ENVS[*]}"
 echo "Algorithms: ${EXACT_ALGOS[*]}"
 echo "Seeds: $N_SEEDS | Timesteps: $TOTAL_TIMESTEPS"
 echo "Critic LR Grid: $LR_GRID | Actor LR Grid: $ACTOR_LR_GRID | Lambda: $VALUE_LAMBDA_GRID"
-echo "Optimization Metric: V_start (AUC, higher is better)"
+echo "Optimization Metric: V_start ($RANK_BY, higher is better)"
 echo "======================================================================"
 
 for env in "${ENVS[@]}"; do
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${env}_${TIMESTAMP}_exact_mountain_car"
+    SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${env}_${TIMESTAMP}_exact"
     mkdir -p "$SWEEP_ROOT_DIR"
 
     echo ""

@@ -92,7 +92,7 @@ def make_train(base_config):
             train_state, loss = jax.lax.scan(td_step, train_state, None, config["NUM_EPOCHS"])
             # 2. Get value metrics and logging
             metric = bellman_error.value_metrics(
-                evaluator, network, train_state.params, random_policy=True, 
+                evaluator, network, train_state.params, random_policy=True, light=config.get("LIGHT_METRICS", True)
             )
             if config["LOG_FEATURE_METRICS"]:
                 metric.update(feature_metrics(

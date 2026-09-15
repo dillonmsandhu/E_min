@@ -124,7 +124,7 @@ def make_train(config):
             
             # --- 3. METRICS & LOGGING ---
             metric = bellman_error.value_metrics(
-                evaluator, network, train_state.params, random_policy=True, 
+                evaluator, network, train_state.params, random_policy=True, light=config.get("LIGHT_METRICS", True)
             )
             metric.update({"total_loss": losses.mean(), "value_loss": losses.mean()})
             if config["LOG_FEATURE_METRICS"]:

@@ -173,7 +173,11 @@ def compute_advantage_metrics(P, R_env, γ, v_true, v_pred, mu, pi):
     
     return A_mse, cos_sim, A_mse_uniform, cos_sim_uniform
 
-def value_metrics(evaluator, network, params, random_policy=False, target_policy_fn = None, light=False):
+def value_metrics(evaluator, network, params, random_policy=False, target_policy_fn = None, light=True):
+    if isinstance(light, str):
+        light = light.strip().lower() in ("true", "1", "yes")
+    else:
+        light = bool(light)
     m = evaluator.num_actions
     def get_policy_matrix():
         if target_policy_fn is not None:
@@ -260,8 +264,10 @@ def value_metrics(evaluator, network, params, random_policy=False, target_policy
     # Extract extra heavy computations and spatial grid allocations if light=False
     if not light:
         stat_dist = evaluator.get_value_grid(mu)
+        v_grid = evaluator.get_value_grid(V_pi)
         metrics.update({
-            "value_grid": evaluator.get_value_grid(V_pi),
+            "value_grid": v_grid,
+            "V_grid": v_grid,
             "state_dist_grid": stat_dist,
             "stat_dist": stat_dist,
             "V_nn": V_nn,
@@ -347,7 +353,7 @@ def value_metrics(evaluator, network, params, random_policy=False, target_policy
             metrics[f"{prefix}_weights"] = w
 
         if not light and prefix in ["LSTD", "VR", "BR", "nn"]:
-            evaluator.get_value_grid(V)
+            metrics[f"{prefix}_grid"] = evaluator.get_value_grid(V)
 
         errs = get_error_vectors(V_pi, V, weight_mat, R_π, P_π, γ, Φ)
 

@@ -23,8 +23,8 @@ config = {
     # "TOTAL_TIMESTEPS": 1000,
     # "NUM_EPOCHS": 1,
     # "MINIBATCH_SIZE": 1,
-    "VALUE_LAMBDA": 1.0,
-    "GAE_LAMBDA": 0.5,
+    "VALUE_LAMBDA": 0.9,
+    "GAE_LAMBDA": 0.15,
     "CLIP_EPS": 0.1,
     "VF_CLIP": 0.5,
     "DIRICHLET_COEF_START": 1.0,
@@ -43,4 +43,5 @@ config = {
     # 'MODEL_LOAD_DIR': "cont",
     "MODEL_LOAD_DIR": "short_run",
     "LOG_FEATURE_METRICS": False,
+    "LIGHT_METRICS": True,
 }

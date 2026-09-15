@@ -26,7 +26,7 @@ FILES=(
 BATCH_SIZES=(1 2 4 8 16 32 64 128)
 
 # Base configuration template
-BASE_CONFIG='{"TOTAL_TIMESTEPS": 1000, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 4, "MINIBATCH_SIZE": 1, "ENV_NAME": "FourRooms-misc", "MODEL_LOAD_DIR": "250_steps_layer_norm", "FAIL_PROB": 0.15}'
+BASE_CONFIG='{"TOTAL_TIMESTEPS": 1000, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 4, "MINIBATCH_SIZE": 1, "ENV_NAME": "FourRooms-misc", "MODEL_LOAD_DIR": "250_steps_layer_norm", "FAIL_PROB": 0.15, "LIGHT_METRICS": true}'
 
 # Nested loop: iterate over each file, then each batch size
 for file in "${FILES[@]}"; do
