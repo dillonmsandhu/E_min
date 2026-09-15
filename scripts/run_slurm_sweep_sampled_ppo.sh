@@ -31,12 +31,12 @@ fi
 # Configuration
 N_SEEDS=8
 
-$RANK_BY="final_window"
-$WINDOW_SIZE=500
+RANK_BY="final_window"
+WINDOW_SIZE=500
 
 TOTAL_TIMESTEPS=2048000
 ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
-SAMPLED_ALGOS=("sampled_E" "sampled_td_lambda")
+SAMPLED_ALGOS=("sampled_E" "sampled_td_lambda" "sampled_mc")
 
 # Fixed GAE lambda for policy advantage estimation (held separate from value lambda)
 FIXED_GAE_LAMBDA=0.9 # higher GAE lambda to help the policy get somehwere... 
@@ -62,12 +62,12 @@ echo "Critic LR Grid: $LR_GRID | Actor LR Grid: $ACTOR_LR_GRID"
 echo "Value Lambda Grid: $VALUE_LAMBDA_GRID"
 echo "Fixed GAE Lambda: $FIXED_GAE_LAMBDA"
 echo "Base Config: $CONFIG"
-echo "Optimization Metric: V_start (AUC, higher is better)"
+echo "Optimization Metric: V_start ($RANK_BY, higher is better)"
 echo "======================================================================"
 
 for env in "${ENVS[@]}"; do
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-    SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${env}_${TIMESTAMP}_sampled"
+    SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${env}_${TIMESTAMP}_sampled_with_mc"
     mkdir -p "$SWEEP_ROOT_DIR"
 
     echo ""
@@ -127,7 +127,7 @@ for env in "${ENVS[@]}"; do
         --sweep-dir "$SWEEP_ROOT_DIR" \
         --metric V_start \
         --rank-by $RANK_BY \
-        --final-window $WINDOW_SIZE \
+        --window-size $WINDOW_SIZE \
         --higher-is-better \
         --linear-scale
 done
