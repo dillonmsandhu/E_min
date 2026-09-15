@@ -168,8 +168,8 @@ def make_train(base_config):
             
             # Metrics
             value_loss, magnitude_loss, dirichlet_loss, actor_loss, entropy, clip_frac = epoch_metrics
-            metric = bellman_error.value_metrics_light(
-                evaluator, network, train_state.params, random_policy=False
+            metric = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=False, light=config.get("LIGHT_METRICS", True)
             )
             if config.get("LOG_FEATURE_METRICS", False):
                 from core.feature_metrics import feature_metrics

@@ -1,3 +1,4 @@
+# see TD(λ) analogue of Tang and Munos's E
 from core.imports import *
 import core.helpers as helpers
 import core.networks as networks
@@ -6,10 +7,9 @@ from flax.training.train_state import TrainState
 import core.bellman_error as bellman_error
 from core.policy_metrics import compute_policy_metrics
 
-SAVE_DIR = "ppo/exact_td_lambda"
+SAVE_DIR = "ppo/exact_E_lambda"
 
 def network_inference(params, network, S, n_actions):
-    "Maps from network to policy and value vectors in R^S"
     pi_dist, v = network.apply(params, S)
     pi = pi_dist.probs
     terminal_policy = jnp.ones([1, n_actions], dtype=pi.dtype) / n_actions
@@ -28,13 +28,13 @@ def make_train(base_config):
     obs_shape = env.observation_space(env_params).shape
     n_actions = env.action_space(env_params).n
     
-    S = evaluator.obs_stack
+    S_states = evaluator.obs_stack
     P = evaluator.P 
+    I = jnp.eye(evaluator.num_total_states)
 
     def train(rng, hparams=None):
         config = utils.merge_hparams(base_config, hparams) # Used for tuning: overwrite any config with the same key in hparams
         γ = config['GAMMA']
-        λ = config['VALUE_LAMBDA']
         k = config.get('k', 32)
 
         # Initialize Network
@@ -48,7 +48,7 @@ def make_train(base_config):
             train_state, idx = runner_state
 
             # 1. Compute Exact Dynamics
-            old_pi_dist, old_v = network.apply(train_state.params, S)
+            old_pi_dist, old_v = network.apply(train_state.params, S_states)
             old_pi = old_pi_dist.probs
             terminal_policy = jnp.ones([1, n_actions], dtype=old_pi.dtype) / n_actions
             old_pi_full = jnp.vstack([old_pi, terminal_policy])
@@ -56,21 +56,23 @@ def make_train(base_config):
             
             old_v_full = jnp.append(old_v, 0.0)
 
-            P_pi = jnp.einsum("sa,sam->sm", old_pi_full, P)
-            R_pi = jnp.einsum("sa,sam,sam->s", old_pi_full, P, evaluator.R)
-            
+            # Compute stationary distribution and E-loss matrix S
             mu = evaluator.compute_stationary_distribution_raw(old_pi)[0]
             mu = jnp.append(mu, 0.0)
+            D = jnp.diag(mu)
+            
+            P_pi = jnp.einsum("sa,sam->sm", old_pi_full, P)
+            A_mat = D @ (I - γ * P_pi)
+            λ_val = config['VALUE_LAMBDA']
+            L = jnp.linalg.inv(I - γ * λ_val * P_pi)
+            AL_mat = A_mat@L
+            S_mat = 0.5 * (AL_mat + AL_mat.T)
 
-            # Define Bellman Operator and Resolvent operators
-            I = jnp.eye(len(S) + 1)
-            λ_val = config.get("VALUE_LAMBDA", 0.0)
+            # True value function for the current policy (for E-loss target)
+            V_true = evaluator.compute_true_values_raw(old_pi_full)
+
+            R_pi = jnp.einsum("sa,sam,sam->s", old_pi_full, P, evaluator.R)
             λ_pi = config.get("GAE_LAMBDA", 0.6)
-
-            def T(v):
-                return R_pi + γ * P_pi @ v
-
-            # 2. Compute GAE Advantages
             A = helpers.compute_exact_advantage(
                 P, evaluator.R, P_pi, R_pi, old_v_full, γ, λ_pi
             )
@@ -78,25 +80,20 @@ def make_train(base_config):
             A = helpers.post_process_advantage(A, config, weights=w)
 
 
-            # 3. Critic TD(lambda) Target using VALUE_LAMBDA
-            L_val = jnp.linalg.inv(I - γ * λ_val * P_pi)
-
-            def t_lambda(v):
-                return v + L_val @ (T(v) - v)
 
             def loss_fn(params, network):
-                # A shape is (num_states, num_actions)
-                pi, v = network_inference(params, network, S, n_actions)
-                TD_targets = t_lambda(v)
+                # pi shape (num_states+1, n_actions), v shape (num_states+1,)
+                pi, v = network_inference(params, network, S_states, n_actions)
                 
-                # Value Loss
-                td_errors = v - jax.lax.stop_gradient(TD_targets)
-                value_loss = 0.5 * jnp.sum(mu * (td_errors ** 2))
+                # E-Loss (Bellman error gradient descent loss)
+                # (V_true - v)^T @ S @ (V_true - v)
+                diff = V_true - v
+                value_loss = (diff.T @ S_mat @ diff)
 
                 # Policy Loss
                 log_pi = jnp.log(pi[:-1, :] + 1e-8)
                 log_pi_sum = jnp.sum(pi[:-1, :] * log_pi, axis=-1)
-                entropy = -jnp.sum(mu[:-1] * log_pi_sum)
+                entropy = -jnp.sum(mu[:-1] * log_pi_sum) 
 
                 # PPO clip loss
                 ratio = jnp.exp(log_pi - old_log_pi)
@@ -108,7 +105,8 @@ def make_train(base_config):
                 actor_loss = -jnp.sum(mu[:-1, None] * pi_old * jnp.minimum(surr1, surr2))
 
                 total_loss = config.get("VF_COEF", 0.5) * value_loss + actor_loss - entropy * config.get("ENT_COEF", 0.01)
-                return total_loss, (value_loss, actor_loss, entropy, v)
+
+                return total_loss, (value_loss, actor_loss, entropy)
 
             grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
 
@@ -121,7 +119,7 @@ def make_train(base_config):
             train_state, epoch_metrics = jax.lax.scan(epoch_step, train_state, None, config["NUM_EPOCHS"])
             
             # Metrics
-            value_loss, actor_loss, entropy, v_pred = epoch_metrics
+            value_loss, actor_loss, entropy = epoch_metrics
             metric = bellman_error.value_metrics(
                 evaluator, network, train_state.params, random_policy=False, light=config.get("LIGHT_METRICS", True)
             )
@@ -131,7 +129,7 @@ def make_train(base_config):
                     evaluator, network, train_state.params, random_policy=False,)
                 )
             # Policy tracking metrics (TV distance between policies and stationary distributions, state coverage)
-            new_pi = network.apply(train_state.params, S)[0].probs
+            new_pi = network.apply(train_state.params, S_states)[0].probs
             new_mu = evaluator.compute_stationary_distribution_raw(new_pi)[0]
             metric.update(compute_policy_metrics(new_pi, old_pi, new_mu, mu[:-1]))
             metric.update({
@@ -139,7 +137,7 @@ def make_train(base_config):
                 "value_loss": value_loss.mean(),
                 "actor_loss": actor_loss.mean(),
                 "entropy": entropy.mean(),
-                "v_pred_start": v_pred.squeeze()[evaluator.start_idx],
+                "v_pred_start": old_v[evaluator.start_idx],
                 "Mean_A": A.mean(),
             })
             

@@ -109,7 +109,9 @@ def make_train(config):
                 }
             )
             # def value_metrics(evaluator, network, params, random_policy=False):
-            value_metrics = bellman_error.value_metrics(evaluator, network, train_state.params, random_policy=False)
+            value_metrics = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=False, light=config.get("LIGHT_METRICS", True)
+            )
             metric.update(value_metrics)
 
             runner_state = (train_state, env_state, last_obs, rng, idx + 1)

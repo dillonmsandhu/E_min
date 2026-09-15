@@ -172,7 +172,9 @@ def make_train(base_config):
                 "v_pred_start": old_v[evaluator.start_idx],
             })
 
-            value_metrics = bellman_error.value_metrics_light(evaluator, network, train_state.params, random_policy=False)
+            value_metrics = bellman_error.value_metrics(
+                evaluator, network, train_state.params, random_policy=False, light=config.get("LIGHT_METRICS", True)
+            )
             metric.update(value_metrics)
 
             if config.get("LOG_FEATURE_METRICS", False):

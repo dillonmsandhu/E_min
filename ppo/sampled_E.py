@@ -167,8 +167,8 @@ def make_train(base_config):
             metric.update({"mean_rew": traj_batch.reward.mean()})
 
             if evaluator is not None:
-                value_metrics = bellman_error.value_metrics_light(
-                    evaluator, network, train_state.params, random_policy=False
+                value_metrics = bellman_error.value_metrics(
+                    evaluator, network, train_state.params, random_policy=False, light=config.get("LIGHT_METRICS", True)
                 )
                 metric.update(value_metrics)
 
