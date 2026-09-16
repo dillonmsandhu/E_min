@@ -13,9 +13,13 @@ if [ -z "$SWEEP_ID" ]; then
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$REPO_ROOT"
+if [ -n "$SLURM_SUBMIT_DIR" ]; then
+    cd "$SLURM_SUBMIT_DIR"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cd "$SCRIPT_DIR/../.."
+fi
+REPO_ROOT=$(pwd)
 
 if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
     PYTHON="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python"
