@@ -202,7 +202,12 @@ def extract_best_configuration(
     best_config_meta = sweep_data.get("best_config")
 
     if metric_key not in metrics:
-        raise KeyError(f"Metric '{metric_key}' not found in metrics. Available: {list(metrics.keys())}")
+        # Try case-insensitive matching
+        lower_keys = {k.lower(): k for k in metrics.keys()}
+        if metric_key.lower() in lower_keys:
+            metric_key = lower_keys[metric_key.lower()]
+        else:
+            raise KeyError(f"Metric '{metric_key}' not found in metrics. Available: {list(metrics.keys())}")
 
     arr = np.asarray(metrics[metric_key])
 
@@ -314,6 +319,9 @@ def plot_algorithm_comparison(
     colors = plt.cm.tab10.colors
 
     plotted_count = 0
+    all_plotted_curves = []
+    all_plotted_lowers = []
+    all_plotted_uppers = []
 
     color_map = color_map or {}
     linestyle_map = linestyle_map or {}
@@ -364,7 +372,7 @@ def plot_algorithm_comparison(
 
         if use_geom_mean:
             # Geometric mean & multiplicative std band
-            safe_arr = np.maximum(seed_trajectories, 1e-18)
+            safe_arr = np.maximum(seed_trajectories, 1e-12)
             log_arr = np.log(safe_arr)
             log_mean = np.mean(log_arr, axis=0)
             log_std = np.std(log_arr, axis=0)
@@ -375,6 +383,9 @@ def plot_algorithm_comparison(
             line, = ax.plot(x, geom_mean, label=label_with_hparam, color=color, linewidth=2.2, linestyle=linestyle)
             if n_seeds > 1:
                 ax.fill_between(x, lower, upper, color=color, alpha=0.18)
+                all_plotted_lowers.append(lower)
+                all_plotted_uppers.append(upper)
+            all_plotted_curves.append(geom_mean)
         else:
             # Arithmetic mean & std band
             mean_curve = seed_trajectories.mean(axis=0)
@@ -382,7 +393,22 @@ def plot_algorithm_comparison(
 
             line, = ax.plot(x, mean_curve, label=label_with_hparam, color=color, linewidth=2.2, linestyle=linestyle)
             if n_seeds > 1:
-                ax.fill_between(x, np.maximum(mean_curve - std_curve, 1e-18), mean_curve + std_curve, color=color, alpha=0.18)
+                if log_scale:
+                    # On log scale, linear (mean - std) can drop to <= 0 or tiny values.
+                    # Never floor to 1e-18 which stretches the log-axis across 18 orders of magnitude!
+                    # Floor lower bound to a reasonable fraction of the mean curve
+                    pos_means = mean_curve[mean_curve > 0]
+                    local_min = np.min(pos_means) if len(pos_means) > 0 else 1e-4
+                    floor_val = np.maximum(mean_curve * 0.05, local_min * 0.1)
+                    lower = np.maximum(mean_curve - std_curve, floor_val)
+                    upper = mean_curve + std_curve
+                else:
+                    lower = mean_curve - std_curve
+                    upper = mean_curve + std_curve
+                ax.fill_between(x, lower, upper, color=color, alpha=0.18)
+                all_plotted_lowers.append(lower)
+                all_plotted_uppers.append(upper)
+            all_plotted_curves.append(mean_curve)
 
         plotted_count += 1
 
@@ -393,6 +419,16 @@ def plot_algorithm_comparison(
 
     if log_scale:
         ax.set_yscale("log")
+        # Enforce sensible y-axis bounds based on actual curves so fill_between never stretches the scale
+        if all_plotted_curves:
+            all_curves_flat = np.concatenate([c[c > 0] for c in all_plotted_curves if np.any(c > 0)] or [np.array([1e-3])])
+            all_uppers_flat = np.concatenate([u for u in all_plotted_uppers] or [all_curves_flat])
+            all_lowers_flat = np.concatenate([l[l > 0] for l in all_plotted_lowers if np.any(l > 0)] or [all_curves_flat])
+
+            ymin = max(np.percentile(all_lowers_flat, 1) * 0.7, np.min(all_curves_flat) * 0.2)
+            ymax = np.max(all_uppers_flat) * 1.4
+            if ymin > 0 and ymax > ymin:
+                ax.set_ylim(bottom=ymin, top=ymax)
     
     if x_axis == "env_steps":
         ax.set_xlabel("Environment Steps", fontsize=12)

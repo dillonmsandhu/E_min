@@ -73,9 +73,12 @@ def run_lambda_sweep_worker():
         sys.exit(1)
 
     metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
+    metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
     rank_by = "auc"
     rank_order = "higher" if policy_type in ["ppo", "hybrid"] else "lower"
     window_size = 750
+    window_size = 40
+    log_scale = False if metric_key.lower() == "v_start" else True
 
     for lmbda in lambdas:
         # Create a pseudo-algorithm name so it is treated as a separate algorithm in plots
@@ -101,7 +104,7 @@ def run_lambda_sweep_worker():
                 rank_order=rank_order,
                 window_size=window_size,
                 save_dir=algo_save_dir,
-                log_scale=True,
+                log_scale=log_scale,
                 save_metrics=True,
             )
             print(f"Successfully completed tuning for {pseudo_algo}")
