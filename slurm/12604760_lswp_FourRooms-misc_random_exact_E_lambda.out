@@ -1,0 +1,238 @@
+======================================================================
+Starting SLURM Lambda Sweep Worker
+Environment: FourRooms-misc
+Policy:      random
+Algorithm:   exact_E_lambda
+Sweep ID:    20260915_230741
+======================================================================
+======================================================================
+Starting Lambda Sweep Worker
+Sweep ID: 20260915_230741 | Env: FourRooms-misc | Policy: random | Algo: exact_E_lambda
+Lambdas: [0.0, 0.5, 0.9, 0.95, 0.99]
+======================================================================
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.0
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: FourRooms-misc | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.0 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (17.9s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.0 ... done (1.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0 ... done (1.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.0 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          1.2645e-03
+  Final Window (750 steps): 3.0326e-05
+  Final nn_weighted_VE:         9.3121e-06 (±1.3472e-05)
+  Min nn_weighted_VE:           9.5276e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.0            0.001265                     0.000030               9.312106e-06              1.347206e-05        9.527616e-09            0.019260             0.001265
+    2           1 0.0010           0.0            0.002366                     0.000007               6.110345e-06              6.337758e-06        3.134533e-08            0.019005             0.002366
+    3           2 0.0005           0.0            0.003678                     0.000584               2.555945e-08              9.102177e-09        7.419678e-09            0.019005             0.003678
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/config.json
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.0/tuning/20260915_231805/FourRooms-misc/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.0
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.5
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: FourRooms-misc | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.5 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (3.4s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.5 ... done (1.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5 ... done (1.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.5 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          1.0995e-03
+  Final Window (750 steps): 1.7123e-05
+  Final nn_weighted_VE:         1.7636e-07 (±2.6509e-07)
+  Min nn_weighted_VE:           3.2566e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.5            0.001100                     0.000017               1.763591e-07              2.650859e-07        3.256627e-09            0.019005             0.001100
+    2           1 0.0010           0.5            0.002048                     0.000005               2.360658e-05              4.432511e-05        2.161935e-08            0.019005             0.002048
+    3           2 0.0005           0.5            0.003092                     0.000197               2.102051e-07              2.334814e-07        6.179941e-09            0.019005             0.003092
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/config.json
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.5/tuning/20260915_231842/FourRooms-misc/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.5
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.9
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: FourRooms-misc | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.9 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (3.4s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.9 ... done (1.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9 ... done (1.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.9 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          8.5560e-04
+  Final Window (750 steps): 1.3990e-05
+  Final nn_weighted_VE:         4.0407e-07 (±7.2884e-07)
+  Min nn_weighted_VE:           1.0490e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.9            0.000856                     0.000014               4.040739e-07              7.288413e-07        1.049032e-09            0.019005             0.000856
+    2           1 0.0010           0.9            0.001579                     0.000012               3.365946e-06              5.199574e-06        1.230909e-07            0.019005             0.001579
+    3           2 0.0005           0.9            0.002219                     0.000021               8.842972e-07              6.506780e-07        9.896119e-08            0.019005             0.002219
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/config.json
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.9/tuning/20260915_231901/FourRooms-misc/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.9
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.95
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: FourRooms-misc | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.95 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (3.4s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.95 ... done (1.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95 ... done (1.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.95 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          8.0138e-04
+  Final Window (750 steps): 5.8000e-06
+  Final nn_weighted_VE:         7.0771e-09 (±1.0086e-08)
+  Min nn_weighted_VE:           7.3732e-10
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.95            0.000801                     0.000006               7.077112e-09              1.008607e-08        7.373212e-10            0.019005             0.000801
+    2           1 0.0010          0.95            0.001492                     0.000013               2.437958e-06              2.677739e-06        9.713210e-08            0.019005             0.001492
+    3           2 0.0005          0.95            0.002110                     0.000032               5.391210e-07              6.449392e-07        3.126086e-08            0.019005             0.002110
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/config.json
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.95/tuning/20260915_231919/FourRooms-misc/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.95
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.99
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: FourRooms-misc | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.99 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (3.5s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.99 ... done (1.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99 ... done (1.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          7.6438e-04
+  Final Window (750 steps): 5.3240e-06
+  Final nn_weighted_VE:         2.0022e-08 (±2.7317e-08)
+  Min nn_weighted_VE:           1.5591e-08
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.99            0.000764                     0.000005               2.002228e-08              2.731652e-08        1.559109e-08            0.019005             0.000764
+    2           1 0.0010          0.99            0.001454                     0.000015               7.229451e-06              1.339406e-05        1.819321e-08            0.019005             0.001454
+    3           2 0.0005          0.99            0.002063                     0.000070               2.267741e-07              1.085434e-07        2.267741e-07            0.019005             0.002063
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/config.json
+Config saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/FourRooms-misc/random/exact_E_lambda_0.99/tuning/20260915_231937/FourRooms-misc/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.99
+Sweep pipeline completed successfully for FourRooms-misc / exact_E_lambda

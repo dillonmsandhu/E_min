@@ -1,0 +1,87 @@
+#!/bin/bash
+#SBATCH --job-name=pipeline_tune
+#SBATCH --output=slurm/%j.out
+#SBATCH --time=4:00:00
+#SBATCH --partition compsci-gpu
+#SBATCH --gres=gpu:a5000:1 
+
+# Run like:
+# sbatch slurm_pipeline.sh random_policy.exact_td
+
+START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+SECONDS=0  # start timer
+FILE=$1
+TUNING_SUFFIX=$2
+METRICS_SUFFIX="cline_tune_metrics"
+
+PYTHON="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python"
+
+BASE_CONFIG='{"TOTAL_TIMESTEPS": 5000, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "ENV_NAME": "FourRooms-misc", "LOG_FEATURE_METRICS": false, "LR_END": 0.0000001}'
+
+echo "========================================"
+echo "Step 1: Running hyperparameter sweep for $FILE"
+echo "========================================"
+CMD="$PYTHON -m ${FILE} --run-suffix ${TUNING_SUFFIX} --config '${BASE_CONFIG}' --sweep --n-seeds 10"
+echo "$CMD"
+eval "$CMD"
+
+echo "========================================"
+echo "Step 2: Generating seed plots"
+echo "========================================"
+$PYTHON /usr/xtmp/ds541/bellman_error/plot_cline_tune.py
+
+echo "========================================"
+echo "Step 3: Extracting best hyperparameters from tuning summary"
+echo "========================================"
+
+# Map FILE to results tuning directory
+if [ "$FILE" = "random_policy.exact_td" ]; then
+    TUNING_BASE="/usr/xtmp/ds541/bellman_error/results/random/td_exact/tuning"
+elif [ "$FILE" = "random_policy.exact_mc" ]; then
+    TUNING_BASE="/usr/xtmp/ds541/bellman_error/results/random/mc_exact/tuning"
+else
+    ALG_NAME=$(echo $FILE | cut -d'.' -f2)
+    TUNING_BASE="/usr/xtmp/ds541/bellman_error/results/random/${ALG_NAME}/tuning"
+fi
+
+BEST_CONFIG_JSON=$($PYTHON -c "
+import os, pandas as pd, json
+base = '${TUNING_BASE}'
+if os.path.exists(base):
+    timestamps = sorted(os.listdir(base))
+    if timestamps:
+        latest_ts = timestamps[-1]
+        env_dir = os.path.join(base, latest_ts, 'FourRooms-misc')
+        csv_path = os.path.join(env_dir, 'tuning_summary.csv')
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            best_row = df.iloc[0].to_dict()
+            hparams = {k: v for k, v in best_row.items() if not k.startswith('final_') and not k.startswith('mean_') and not k.startswith('min_') and k != 'config_idx'}
+            hparams['LOG_FEATURE_METRICS'] = True
+            hparams['TOTAL_TIMESTEPS'] = 3000
+            hparams['NUM_ENVS'] = 1
+            hparams['NUM_STEPS'] = 1
+            hparams['NUM_EPOCHS'] = 1
+            hparams['MINIBATCH_SIZE'] = 1
+            hparams['ENV_NAME'] = 'FourRooms-misc'
+            print(json.dumps(hparams))
+        else:
+            print('{}')
+else:
+    print('{}')
+")
+
+echo "Best hyperparameters extracted: $BEST_CONFIG_JSON"
+
+echo "========================================"
+echo "Step 4: Running diagnostic run with best hyperparameters and LOG_FEATURE_METRICS=True"
+echo "========================================"
+
+DIAG_CMD="$PYTHON -m ${FILE} --run-suffix ${METRICS_SUFFIX} --config '$BEST_CONFIG_JSON' --save-metrics --n-seeds 5"
+echo "$DIAG_CMD"
+eval "$DIAG_CMD"
+
+END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+DURATION=$SECONDS
+echo "Total pipeline runtime: $(($DURATION / 3600))h $((($DURATION % 3600) / 60))m $(($DURATION % 60))s"
+echo "Job finished at: $END_TIME"

@@ -1,0 +1,238 @@
+/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python -m ppo.ground_truth --run-suffix fixed_policies --config '{"TOTAL_TIMESTEPS": 100, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.01}' --save-metrics --save-video --save-checkpoint --env-ids FourRooms-misc EightRooms MountainCar-v0 Whirlpool
+/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/lib/python3.10/site-packages/jax/_src/numpy/lax_numpy.py:5592: FutureWarning: None encountered in jnp.array(); this is currently treated as NaN. In the future this will result in an error.
+  return array(a, dtype=dtype, copy=bool(copy), order=order, device=device)
+MovieWriter stderr:
+[out#0/gif @ 0x64f8af6ace40] Error writing trailer: Invalid argument
+
+/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/lib/python3.10/site-packages/jax/_src/numpy/lax_numpy.py:5592: FutureWarning: None encountered in jnp.array(); this is currently treated as NaN. In the future this will result in an error.
+  return array(a, dtype=dtype, copy=bool(copy), order=order, device=device)
+/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/lib/python3.10/site-packages/jax/_src/numpy/lax_numpy.py:5592: FutureWarning: None encountered in jnp.array(); this is currently treated as NaN. In the future this will result in an error.
+  return array(a, dtype=dtype, copy=bool(copy), order=order, device=device)
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/lib/python3.10/site-packages/jax/_src/numpy/lax_numpy.py:5592: FutureWarning: None encountered in jnp.array(); this is currently treated as NaN. In the future this will result in an error.
+  return array(a, dtype=dtype, copy=bool(copy), order=order, device=device)
+
+==================================================
+RUNNING ENV 1/4: FourRooms-misc
+Config: {"TOTAL_TIMESTEPS": 100, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.01}
+==================================================
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+Traced<ShapedArray(int32[], weak_type=True)>with<DynamicJaxprTrace(level=3/0)>
+[FourRooms-misc] Mean return: 0.0000
+[FourRooms-misc] Max return:  0.0000
+Saving FourRooms-misc results to results/ppo/ground_truth/fixed_policies/FourRooms-misc
+Results saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/out.pkl
+Config saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/config.json
+Config saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/config.json
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/E.png
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/E.png
+failed to save ntk 'eNTK'
+failed to save gradient_covariance_matrix 'gradient_covariance_matrix'
+failed to save top five jacovian left singular vectors 'Jacobian_top_singular_vectors'
+failed to plot singular value spectrum 'feature_singular_values'
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/V_start.png
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/entropy.png
+Plot saved to results/ppo/ground_truth/fixed_policies/FourRooms-misc/V_mean.png
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+Generating video for environment: FourRooms-misc...
+Error during animation/saving: Command '['ffmpeg', '-f', 'rawvideo', '-vcodec', 'rawvideo', '-s', '600x500', '-pix_fmt', 'rgba', '-r', '10.0', '-loglevel', 'error', '-i', 'pipe:', '-filter_complex', 'split [a][b];[a] palettegen [p];[b][p] paletteuse', '-y', 'results/ppo/ground_truth/fixed_policies/FourRooms-misc/policy.gif']' returned non-zero exit status 234.
+
+==================================================
+RUNNING ENV 2/4: EightRooms
+Config: {"TOTAL_TIMESTEPS": 100, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.01}
+==================================================
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+Traced<ShapedArray(int32[], weak_type=True)>with<DynamicJaxprTrace(level=3/0)>
+[EightRooms] Mean return: 0.0000
+[EightRooms] Max return:  0.0000
+Saving EightRooms results to results/ppo/ground_truth/fixed_policies/EightRooms
+Results saved to results/ppo/ground_truth/fixed_policies/EightRooms/out.pkl
+Config saved to results/ppo/ground_truth/fixed_policies/EightRooms/config.json
+Config saved to results/ppo/ground_truth/fixed_policies/EightRooms/config.json
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/E.png
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/E.png
+failed to save ntk 'eNTK'
+failed to save gradient_covariance_matrix 'gradient_covariance_matrix'
+failed to save top five jacovian left singular vectors 'Jacobian_top_singular_vectors'
+failed to plot singular value spectrum 'feature_singular_values'
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/V_start.png
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/entropy.png
+Plot saved to results/ppo/ground_truth/fixed_policies/EightRooms/V_mean.png
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+Environment 'EightRooms' is not supported by Gymnax's Visualizer. Skipping video generation.
+
+==================================================
+RUNNING ENV 3/4: MountainCar-v0
+Config: {"TOTAL_TIMESTEPS": 100, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.01}
+==================================================
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+- obs shape for initialization is  (2,)
+number of features is  16
+Traced<ShapedArray(int32[], weak_type=True)>with<DynamicJaxprTrace(level=3/0)>
+[MountainCar-v0] Mean return: 0.0000
+[MountainCar-v0] Max return:  0.0000
+Saving MountainCar-v0 results to results/ppo/ground_truth/fixed_policies/MountainCar-v0
+Results saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/out.pkl
+Config saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/config.json
+Config saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/config.json
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/E.png
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/E.png
+failed to save ntk 'eNTK'
+failed to save gradient_covariance_matrix 'gradient_covariance_matrix'
+failed to save top five jacovian left singular vectors 'Jacobian_top_singular_vectors'
+failed to plot singular value spectrum 'feature_singular_values'
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/V_start.png
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/entropy.png
+Plot saved to results/ppo/ground_truth/fixed_policies/MountainCar-v0/V_mean.png
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+Generating video for environment: MountainCar-v0...
+Successfully saved animation to: results/ppo/ground_truth/fixed_policies/MountainCar-v0/policy.gif
+
+==================================================
+RUNNING ENV 4/4: Whirlpool
+Config: {"TOTAL_TIMESTEPS": 100, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.01}
+==================================================
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+Traced<ShapedArray(int32[], weak_type=True)>with<DynamicJaxprTrace(level=3/0)>
+[Whirlpool] Mean return: 0.0000
+[Whirlpool] Max return:  0.0000
+Saving Whirlpool results to results/ppo/ground_truth/fixed_policies/Whirlpool
+Results saved to results/ppo/ground_truth/fixed_policies/Whirlpool/out.pkl
+Config saved to results/ppo/ground_truth/fixed_policies/Whirlpool/config.json
+Config saved to results/ppo/ground_truth/fixed_policies/Whirlpool/config.json
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/E.png
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/E_local.png
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/E.png
+failed to save ntk 'eNTK'
+failed to save gradient_covariance_matrix 'gradient_covariance_matrix'
+failed to save top five jacovian left singular vectors 'Jacobian_top_singular_vectors'
+failed to plot singular value spectrum 'feature_singular_values'
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/V_start.png
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/entropy.png
+Plot saved to results/ppo/ground_truth/fixed_policies/Whirlpool/V_mean.png
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+Environment 'Whirlpool' is not supported by Gymnax's Visualizer. Skipping video generation.
+Total runtime: 0h 2m 23s
+Job finished at: 2026-09-15 23:07:22

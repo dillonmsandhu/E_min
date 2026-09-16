@@ -1,0 +1,278 @@
+======================================================================
+Starting SLURM Lambda Sweep Worker
+Environment: MountainCar-v0
+Policy:      ppo
+Algorithm:   exact_td_lambda
+Sweep ID:    20260915_230741
+======================================================================
+======================================================================
+Starting Lambda Sweep Worker
+Sweep ID: 20260915_230741 | Env: MountainCar-v0 | Policy: ppo | Algo: exact_td_lambda
+Lambdas: [0.0, 0.5, 0.9, 0.95, 0.99]
+======================================================================
+
+---> Running sweep for pseudo-algorithm: exact_td_lambda_0.0
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 9 configs x 5 seeds = 45 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: auc (higher is better)
+============================================================
+
+[1/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.0, ACTOR_LR=0.005 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (125.3s)
+[2/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.0, ACTOR_LR=0.001 ... done (96.8s)
+[3/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.0, ACTOR_LR=0.0005 ... done (96.5s)
+[4/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.0, ACTOR_LR=0.005 ... done (96.6s)
+[5/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.0, ACTOR_LR=0.001 ... done (96.6s)
+[6/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.0, ACTOR_LR=0.0005 ... done (96.5s)
+[7/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0, ACTOR_LR=0.005 ... done (96.6s)
+[8/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0, ACTOR_LR=0.001 ... done (96.5s)
+[9/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0, ACTOR_LR=0.0005 ... done (96.5s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.0, ACTOR_LR=0.005 (Ranked by auc [higher is better])
+  AUC V_start:          2.7763e-01
+  Final Window (750 steps): 3.2597e-01
+  Final V_start:         3.2230e-01 (±2.2164e-02)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           3 0.0010           0.0     0.005     0.277626              0.325972            0.322296           0.022164     0.016742     0.350542      0.277626
+    2           6 0.0005           0.0     0.005     0.264466              0.324063            0.343381           0.003725     0.016742     0.346412      0.264466
+    3           4 0.0010           0.0     0.001     0.248022              0.309913            0.333982           0.009588     0.016742     0.342139      0.248022
+    4           7 0.0005           0.0     0.001     0.244451              0.310126            0.336865           0.014241     0.016742     0.345786      0.244451
+    5           0 0.0050           0.0     0.005     0.237623              0.278623            0.302275           0.027508     0.016742     0.320883      0.237623
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/config.json
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.0/tuning/20260915_234133/MountainCar-v0/all_configs_seeds_grid.png
+Successfully completed tuning for exact_td_lambda_0.0
+
+---> Running sweep for pseudo-algorithm: exact_td_lambda_0.5
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 9 configs x 5 seeds = 45 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: auc (higher is better)
+============================================================
+
+[1/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.5, ACTOR_LR=0.005 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (104.5s)
+[2/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.5, ACTOR_LR=0.001 ... done (96.6s)
+[3/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.5, ACTOR_LR=0.0005 ... done (96.5s)
+[4/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.5, ACTOR_LR=0.005 ... done (96.7s)
+[5/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.5, ACTOR_LR=0.001 ... done (96.7s)
+[6/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.5, ACTOR_LR=0.0005 ... done (96.6s)
+[7/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5, ACTOR_LR=0.005 ... done (96.7s)
+[8/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5, ACTOR_LR=0.001 ... done (96.7s)
+[9/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5, ACTOR_LR=0.0005 ... done (96.6s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.5, ACTOR_LR=0.005 (Ranked by auc [higher is better])
+  AUC V_start:          2.8601e-01
+  Final Window (750 steps): 3.3183e-01
+  Final V_start:         3.4792e-01 (±3.4544e-03)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           3 0.0010           0.5     0.005     0.286012              0.331834            0.347920           0.003454     0.016742     0.350453      0.286012
+    2           6 0.0005           0.5     0.005     0.273822              0.334085            0.343421           0.005779     0.016742     0.346955      0.273822
+    3           0 0.0050           0.5     0.005     0.257593              0.299001            0.321503           0.027089     0.016742     0.341515      0.257593
+    4           4 0.0010           0.5     0.001     0.255826              0.316161            0.339539           0.005468     0.016742     0.343948      0.255826
+    5           7 0.0005           0.5     0.001     0.253725              0.322404            0.345285           0.004401     0.016742     0.346611      0.253725
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/config.json
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.5/tuning/20260915_235636/MountainCar-v0/all_configs_seeds_grid.png
+Successfully completed tuning for exact_td_lambda_0.5
+
+---> Running sweep for pseudo-algorithm: exact_td_lambda_0.9
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 9 configs x 5 seeds = 45 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: auc (higher is better)
+============================================================
+
+[1/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.005 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (104.6s)
+[2/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (96.6s)
+[3/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0005 ... done (96.5s)
+[4/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.005 ... done (96.7s)
+[5/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (96.5s)
+[6/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0005 ... done (96.5s)
+[7/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9, ACTOR_LR=0.005 ... done (96.8s)
+[8/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (96.7s)
+[9/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0005 ... done (96.7s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.005 (Ranked by auc [higher is better])
+  AUC V_start:          3.0885e-01
+  Final Window (750 steps): 3.4411e-01
+  Final V_start:         3.4699e-01 (±5.5502e-03)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           0 0.0050           0.9     0.005     0.308853              0.344113            0.346987           0.005550     0.016742     0.350009      0.308853
+    2           3 0.0010           0.9     0.005     0.306146              0.344084            0.346927           0.002071     0.016742     0.348350      0.306146
+    3           6 0.0005           0.9     0.005     0.293978              0.343351            0.346932           0.001517     0.016742     0.348008      0.293978
+    4           4 0.0010           0.9     0.001     0.280169              0.338669            0.348996           0.001581     0.016742     0.349292      0.280169
+    5           1 0.0050           0.9     0.001     0.278767              0.332477            0.340440           0.001159     0.016742     0.341950      0.278767
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/config.json
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.9/tuning/20260916_001117/MountainCar-v0/all_configs_seeds_grid.png
+Successfully completed tuning for exact_td_lambda_0.9
+
+---> Running sweep for pseudo-algorithm: exact_td_lambda_0.95
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 9 configs x 5 seeds = 45 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: auc (higher is better)
+============================================================
+
+[1/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.95, ACTOR_LR=0.005 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (104.1s)
+[2/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.95, ACTOR_LR=0.001 ... done (96.6s)
+[3/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.95, ACTOR_LR=0.0005 ... done (96.5s)
+[4/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.95, ACTOR_LR=0.005 ... done (96.7s)
+[5/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.95, ACTOR_LR=0.001 ... done (96.6s)
+[6/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.95, ACTOR_LR=0.0005 ... done (96.5s)
+[7/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95, ACTOR_LR=0.005 ... done (96.7s)
+[8/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95, ACTOR_LR=0.001 ... done (96.5s)
+[9/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95, ACTOR_LR=0.0005 ... done (96.6s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.95, ACTOR_LR=0.005 (Ranked by auc [higher is better])
+  AUC V_start:          3.2068e-01
+  Final Window (750 steps): 3.4974e-01
+  Final V_start:         3.5192e-01 (±4.2538e-03)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           0 0.0050          0.95     0.005     0.320676              0.349740            0.351920           0.004254     0.016742     0.353448      0.320676
+    2           3 0.0010          0.95     0.005     0.312730              0.349091            0.352043           0.001328     0.016742     0.352747      0.312730
+    3           6 0.0005          0.95     0.005     0.299076              0.345766            0.350068           0.002573     0.016742     0.350074      0.299076
+    4           1 0.0050          0.95     0.001     0.292424              0.345035            0.352782           0.001000     0.016742     0.352985      0.292424
+    5           4 0.0010          0.95     0.001     0.287563              0.344877            0.352256           0.002019     0.016742     0.352256      0.287563
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/config.json
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.95/tuning/20260916_002558/MountainCar-v0/all_configs_seeds_grid.png
+Successfully completed tuning for exact_td_lambda_0.95
+
+---> Running sweep for pseudo-algorithm: exact_td_lambda_0.99
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 9 configs x 5 seeds = 45 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: auc (higher is better)
+============================================================
+
+[1/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.005 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (104.5s)
+[2/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (96.6s)
+[3/9] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0005 ... done (96.6s)
+[4/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.005 ... done (96.6s)
+[5/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (96.5s)
+[6/9] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0005 ... done (96.7s)
+[7/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99, ACTOR_LR=0.005 ... done (96.7s)
+[8/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (96.7s)
+[9/9] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0005 ... done (96.6s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.005 (Ranked by auc [higher is better])
+  AUC V_start:          3.2642e-01
+  Final Window (750 steps): 3.5503e-01
+  Final V_start:         3.5676e-01 (±1.0429e-03)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           0 0.0050          0.99     0.005     0.326421              0.355035            0.356764           0.001043     0.016742     0.356780      0.326421
+    2           3 0.0010          0.99     0.005     0.313076              0.349046            0.351593           0.002034     0.016742     0.351593      0.313076
+    3           1 0.0050          0.99     0.001     0.298695              0.349405            0.354540           0.000357     0.016742     0.354540      0.298695
+    4           6 0.0005          0.99     0.005     0.297220              0.341946            0.349126           0.001350     0.016742     0.349144      0.297220
+    5           4 0.0010          0.99     0.001     0.289875              0.345187            0.353007           0.001123     0.016742     0.353007      0.289875
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/config.json
+Config saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/MountainCar-v0/ppo/exact_td_lambda_0.99/tuning/20260916_004038/MountainCar-v0/all_configs_seeds_grid.png
+Successfully completed tuning for exact_td_lambda_0.99
+Sweep pipeline completed successfully for MountainCar-v0 / exact_td_lambda

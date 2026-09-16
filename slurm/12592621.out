@@ -1,0 +1,811 @@
+======================================================================
+STARTING SLURM SAMPLED PPO CONTROL SWEEP
+Comparing: Sampled E Minimization vs TD(lambda)
+Start Time: 2026-09-14 18:47:49
+Environments: EightRooms FourRooms-misc Whirlpool MountainCar-v0
+Algorithms: sampled_E sampled_td_lambda sampled_mc
+Seeds: 8 | Timesteps: 2048000
+Critic LR Grid: 0.005 0.001 0.0003 | Actor LR Grid: 0.001 0.0003
+Value Lambda Grid: 0.9 0.99 1.0
+Fixed GAE Lambda: 0.9
+Base Config: {"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}
+Optimization Metric: V_start (final_window, higher is better)
+======================================================================
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=EightRooms
+Sweep Root Directory: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name EightRooms         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: EightRooms | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_E']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_E...
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: EightRooms | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (203.3s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (179.5s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (179.8s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (180.4s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (180.0s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (179.9s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (180.6s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (180.8s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (180.5s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (180.7s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (180.5s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (180.6s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (180.6s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (180.9s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (180.7s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (180.8s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (180.7s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (180.7s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          5.2494e-01
+  Final Window (125 steps): 5.2494e-01
+  Final V_start:         6.1265e-01 (±1.6600e-03)
+  Min V_start:           1.0655e-03
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1          10 0.0010          1.00    0.0010     0.524937              0.524937            0.612647           0.001660     0.001065     0.613459      0.524937
+    2           8 0.0010          0.99    0.0010     0.518335              0.518335            0.612677           0.001560     0.001065     0.612790      0.518335
+    3          11 0.0010          1.00    0.0003     0.498232              0.498232            0.617908           0.000973     0.001077     0.618028      0.498232
+    4           3 0.0050          0.99    0.0003     0.496649              0.496649            0.618082           0.000932     0.001077     0.618082      0.496649
+    5          16 0.0003          1.00    0.0010     0.495901              0.495901            0.612172           0.001933     0.001065     0.613205      0.495901
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/out.pkl
+Config saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/config.json
+Config saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank Algorithm                       Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds Run Dir
+    1 sampled_E LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001     0.524937                  0.524937              0.612647              0.00166     0.001065     0.614814      8     N/A
+Comparison plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name EightRooms         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: EightRooms | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_td_lambda']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_td_lambda...
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: EightRooms | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (129.9s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (107.2s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (107.6s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (107.8s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (107.5s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (107.7s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (108.0s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (108.0s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (108.0s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (108.0s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (108.0s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (108.0s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (108.0s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (108.1s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (108.1s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (108.1s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (108.0s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (108.2s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          5.4055e-01
+  Final Window (125 steps): 5.4055e-01
+  Final V_start:         6.2022e-01 (±6.7185e-04)
+  Min V_start:           1.0655e-03
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1          10 0.0010          1.00     0.001     0.540552              0.540552            0.620219           0.000672     0.001065     0.621193      0.540552
+    2           8 0.0010          0.99     0.001     0.540094              0.540094            0.621041           0.001143     0.001065     0.621146      0.540094
+    3          14 0.0003          0.99     0.001     0.534354              0.534354            0.620289           0.000905     0.001065     0.621094      0.534354
+    4          16 0.0003          1.00     0.001     0.533825              0.533825            0.620280           0.001232     0.001065     0.620945      0.533825
+    5           6 0.0010          0.90     0.001     0.530552              0.530552            0.620349           0.001096     0.001065     0.621260      0.530552
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/out.pkl
+Config saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/config.json
+Config saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_td_lambda/tuning/20260914_194256/EightRooms/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank         Algorithm                       Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                       Run Dir
+    1 sampled_td_lambda LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001     0.540552                  0.540552              0.620219             0.000672     0.001065     0.621776      8                                                                                                           N/A
+    2         sampled_E LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001     0.524937                  0.524937              0.612647             0.001660     0.001065     0.614814      8 results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/sampled_E/tuning/20260914_184755/EightRooms
+Comparison plot saved to results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_EightRooms_20260914_184749_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: unrecognized arguments: --final-window 500
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=FourRooms-misc
+Sweep Root Directory: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name FourRooms-misc         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: FourRooms-misc | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_E']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_E...
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: FourRooms-misc | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (143.6s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (122.0s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (122.1s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (122.1s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (122.1s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (122.1s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (122.2s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (122.3s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (122.2s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (122.2s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (122.2s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (122.2s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (122.2s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (122.3s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (122.2s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (122.2s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (122.2s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (122.3s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          6.9179e-01
+  Final Window (125 steps): 6.9179e-01
+  Final V_start:         7.4846e-01 (±1.2267e-03)
+  Min V_start:           2.6305e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           2 0.005          0.99     0.001     0.691791              0.691791            0.748459           0.001227     0.026305     0.749832      0.691791
+    2           4 0.005          1.00     0.001     0.691693              0.691693            0.749208           0.000708     0.026305     0.750102      0.691693
+    3           0 0.005          0.90     0.001     0.688590              0.688590            0.746814           0.001130     0.026305     0.747828      0.688590
+    4          10 0.001          1.00     0.001     0.687686              0.687686            0.749381           0.000757     0.026305     0.750126      0.687686
+    5           8 0.001          0.99     0.001     0.686985              0.686985            0.748878           0.001188     0.026305     0.749786      0.686985
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/out.pkl
+Config saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/config.json
+Config saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank Algorithm                        Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds Run Dir
+    1 sampled_E LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.691791                  0.691791              0.748459             0.001227     0.026305     0.750713      8     N/A
+Comparison plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name FourRooms-misc         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: FourRooms-misc | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_td_lambda']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_td_lambda...
+Env: FourRooms-misc
+Default Obs Shape: (13, 13, 2)
+Obs Shape: (13, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: FourRooms-misc | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (13, 13, 2)
+number of features is  16
+ done (91.5s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (70.6s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (70.6s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (70.7s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (70.7s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (70.7s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (70.7s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (70.8s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (70.7s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (70.8s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (70.7s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (70.8s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (70.8s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (70.8s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (70.8s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (70.8s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (70.7s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (70.8s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          6.9715e-01
+  Final Window (125 steps): 6.9715e-01
+  Final V_start:         7.5423e-01 (±1.8331e-04)
+  Min V_start:           2.6305e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           2 0.005          0.99     0.001     0.697147              0.697147            0.754232           0.000183     0.026305     0.754600      0.697147
+    2           0 0.005          0.90     0.001     0.696612              0.696612            0.754351           0.000413     0.026305     0.754698      0.696612
+    3           4 0.005          1.00     0.001     0.696220              0.696220            0.754350           0.000642     0.026305     0.754491      0.696220
+    4           8 0.001          0.99     0.001     0.694797              0.694797            0.754251           0.000505     0.026305     0.754494      0.694797
+    5          10 0.001          1.00     0.001     0.694257              0.694257            0.754391           0.000284     0.026305     0.754552      0.694257
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/out.pkl
+Config saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/config.json
+Config saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_td_lambda/tuning/20260914_205331/FourRooms-misc/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank         Algorithm                        Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                               Run Dir
+    1 sampled_td_lambda LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.697147                  0.697147              0.754232             0.000183     0.026305     0.754878      8                                                                                                                   N/A
+    2         sampled_E LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.691791                  0.691791              0.748459             0.001227     0.026305     0.750713      8 results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/sampled_E/tuning/20260914_201612/FourRooms-misc
+Comparison plot saved to results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_FourRooms-misc_20260914_201610_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: unrecognized arguments: --final-window 500
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=Whirlpool
+Sweep Root Directory: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name Whirlpool         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: Whirlpool | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_E']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_E...
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: Whirlpool | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (268.1s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (242.2s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (241.9s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (242.3s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (242.3s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (242.6s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (242.8s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (243.0s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (242.7s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (243.0s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (242.6s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (242.9s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (242.9s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (243.4s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (242.8s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (243.2s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (242.9s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (243.2s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          4.6873e-02
+  Final Window (125 steps): 4.6873e-02
+  Final V_start:         7.7609e-02 (±2.7323e-03)
+  Min V_start:           7.0677e-04
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           4 0.005          1.00    0.0010     0.046873              0.046873            0.077609           0.002732     0.000707     0.077609      0.046873
+    2           2 0.005          0.99    0.0010     0.046347              0.046347            0.077273           0.000958     0.000707     0.077486      0.046347
+    3          10 0.001          1.00    0.0010     0.045256              0.045256            0.076411           0.001616     0.000707     0.076771      0.045256
+    4           8 0.001          0.99    0.0010     0.044738              0.044738            0.076305           0.001425     0.000707     0.076314      0.044738
+    5           5 0.005          1.00    0.0003     0.043938              0.043938            0.078568           0.001035     0.000707     0.078568      0.043938
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/out.pkl
+Config saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/config.json
+Config saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank Algorithm                       Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds Run Dir
+    1 sampled_E LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001     0.046873                  0.046873              0.077609             0.002732     0.000707     0.078447      8     N/A
+Comparison plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name Whirlpool         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: Whirlpool | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_td_lambda']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_td_lambda...
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: Whirlpool | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (178.4s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (153.4s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (153.1s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (153.4s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (153.0s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (153.3s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (153.2s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (153.6s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (153.1s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (153.4s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (153.1s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (153.5s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (153.6s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (153.9s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (153.5s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (153.7s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (153.3s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (153.4s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          4.5730e-02
+  Final Window (125 steps): 4.5730e-02
+  Final V_start:         7.6830e-02 (±1.6125e-03)
+  Min V_start:           7.0677e-04
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           8 0.0010          0.99     0.001     0.045730              0.045730            0.076830           0.001612     0.000707     0.076830      0.045730
+    2           2 0.0050          0.99     0.001     0.044918              0.044918            0.074954           0.002032     0.000707     0.074954      0.044918
+    3          14 0.0003          0.99     0.001     0.044410              0.044410            0.074044           0.001934     0.000707     0.074437      0.044410
+    4           4 0.0050          1.00     0.001     0.044190              0.044190            0.073683           0.001833     0.000707     0.073683      0.044190
+    5          10 0.0010          1.00     0.001     0.044064              0.044064            0.074996           0.001699     0.000707     0.075035      0.044064
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/out.pkl
+Config saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/config.json
+Config saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_td_lambda/tuning/20260914_222859/Whirlpool/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank         Algorithm                        Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                     Run Dir
+    1         sampled_E  LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001     0.046873                  0.046873              0.077609             0.002732     0.000707     0.078447      8 results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/sampled_E/tuning/20260914_211527/Whirlpool
+    2 sampled_td_lambda LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.045730                  0.045730              0.076830             0.001612     0.000707     0.077148      8                                                                                                         N/A
+Comparison plot saved to results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_Whirlpool_20260914_211525_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: unrecognized arguments: --final-window 500
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=MountainCar-v0
+Sweep Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: MountainCar-v0 | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_E']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_E...
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (70.7s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (35.9s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (35.7s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (35.7s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (35.7s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (35.8s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (35.8s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (35.8s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (35.8s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (35.9s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (36.0s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (35.8s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (35.9s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (35.9s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (35.9s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (35.8s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (36.0s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (35.9s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          2.8923e-01
+  Final Window (125 steps): 2.8923e-01
+  Final V_start:         3.4486e-01 (±4.8872e-03)
+  Min V_start:           1.6721e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           2 0.005          0.99     0.001     0.289232              0.289232            0.344856           0.004887     0.016721     0.347605      0.289232
+    2           0 0.005          0.90     0.001     0.288908              0.288908            0.349513           0.002767     0.016721     0.350920      0.288908
+    3           4 0.005          1.00     0.001     0.288325              0.288325            0.343761           0.005632     0.016721     0.346368      0.288325
+    4          10 0.001          1.00     0.001     0.281878              0.281878            0.344891           0.003584     0.016721     0.346787      0.281878
+    5           8 0.001          0.99     0.001     0.281831              0.281831            0.346720           0.001882     0.016721     0.347617      0.281831
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/out.pkl
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/config.json
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank Algorithm                        Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds Run Dir
+    1 sampled_E LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.289232                  0.289232              0.344856             0.004887     0.016537     0.349951      8     N/A
+Comparison plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: MountainCar-v0 | Timesteps: 2048000 | Seeds: 8
+NUM_ENVS: 64 | NUM_STEPS: 256 | MINIBATCH_SIZE: 1024 | NUM_EPOCHS: 4
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['sampled_td_lambda']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc
+======================================================================
+
+
+[1/1] Running sweep for algorithm: sampled_td_lambda...
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 18 configs x 8 seeds = 144 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (67.1s)
+[2/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (34.7s)
+[3/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (34.9s)
+[4/18] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (34.9s)
+[5/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (34.9s)
+[6/18] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (35.0s)
+[7/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (34.7s)
+[8/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (34.8s)
+[9/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (35.0s)
+[10/18] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (34.9s)
+[11/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (34.9s)
+[12/18] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (34.8s)
+[13/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (34.8s)
+[14/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (34.8s)
+[15/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (34.9s)
+[16/18] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (34.8s)
+[17/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (34.8s)
+[18/18] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (34.9s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          2.8511e-01
+  Final Window (125 steps): 2.8511e-01
+  Final V_start:         3.4206e-01 (±6.3303e-03)
+  Min V_start:           1.6721e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           8 0.0010          0.99     0.001     0.285109              0.285109            0.342055           0.006330     0.016721     0.342517      0.285109
+    2           2 0.0050          0.99     0.001     0.284651              0.284651            0.346117           0.003045     0.016721     0.347080      0.284651
+    3          10 0.0010          1.00     0.001     0.283927              0.283927            0.339969           0.006024     0.016721     0.341948      0.283927
+    4           4 0.0050          1.00     0.001     0.283891              0.283891            0.346213           0.002919     0.016721     0.347012      0.283891
+    5          14 0.0003          0.99     0.001     0.283154              0.283154            0.341188           0.003441     0.016721     0.344462      0.283154
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/out.pkl
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/config.json
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_td_lambda/tuning/20260914_232713/MountainCar-v0/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank         Algorithm                        Best Hyperparameters  AUC V_start  Final Window (125 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                               Run Dir
+    1         sampled_E LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.289232                  0.289232              0.344856             0.004887     0.016537     0.349951      8 results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/sampled_E/tuning/20260914_231546/MountainCar-v0
+    2 sampled_td_lambda LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.285109                  0.285109              0.342055             0.006330     0.016537     0.346786      8                                                                                                                   N/A
+Comparison plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc
+Comparison Plot: results/ppo/sweeps/ppo_MountainCar-v0_20260914_231543_sampled_with_mc/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: unrecognized arguments: --final-window 500
+
+======================================================================
+Sampled PPO Control Sweep Completed!
+Total runtime: 4h 50m 30s
+Job finished at: 2026-09-14 23:38:19
+======================================================================

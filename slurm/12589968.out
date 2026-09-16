@@ -1,0 +1,273 @@
+/var/lib/slurm/slurmd/job12589968/slurm_script: line 34: =final_window: command not found
+/var/lib/slurm/slurmd/job12589968/slurm_script: line 35: =500: command not found
+======================================================================
+STARTING SLURM SAMPLED PPO CONTROL SWEEP
+Comparing: Sampled E Minimization vs TD(lambda)
+Start Time: 2026-09-14 09:35:10
+Environments: EightRooms FourRooms-misc Whirlpool MountainCar-v0
+Algorithms: sampled_E sampled_td_lambda
+Seeds: 8 | Timesteps: 2048000
+Critic LR Grid: 0.005 0.001 0.0003 | Actor LR Grid: 0.001 0.0003
+Value Lambda Grid: 0.9 0.99 1.0
+Fixed GAE Lambda: 0.9
+Base Config: {"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}
+Optimization Metric: V_start (AUC, higher is better)
+======================================================================
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=EightRooms
+Sweep Root Directory: results/ppo/sweeps/ppo_EightRooms_20260914_093510_sampled
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name EightRooms         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_EightRooms_20260914_093510_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name EightRooms         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_EightRooms_20260914_093510_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: argument --rank-by: expected one argument
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=FourRooms-misc
+Sweep Root Directory: results/ppo/sweeps/ppo_FourRooms-misc_20260914_093525_sampled
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name FourRooms-misc         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_FourRooms-misc_20260914_093525_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name FourRooms-misc         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_FourRooms-misc_20260914_093525_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: argument --rank-by: expected one argument
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=Whirlpool
+Sweep Root Directory: results/ppo/sweeps/ppo_Whirlpool_20260914_093536_sampled
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name Whirlpool         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_Whirlpool_20260914_093536_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name Whirlpool         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_Whirlpool_20260914_093536_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: argument --rank-by: expected one argument
+
+======================================================================
+Running Sampled PPO Control Sweep: Environment=MountainCar-v0
+Sweep Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_093548_sampled
+======================================================================
+
+--> [1/2] Sweeping sampled_E (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos sampled_E         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_093548_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> [2/2] Sweeping sampled_td_lambda (LR: 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos sampled_td_lambda         --lr-grid 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003         --value-lambda-grid 0.9 0.99 1.0         --config '{"NUM_ENVS": 64, "NUM_STEPS": 256, "MINIBATCH_SIZE": 1024, "TOTAL_TIMESTEPS": 2048000, "NUM_EPOCHS": 4, "GAE_LAMBDA": 0.9}'         --n-seeds 8         --total-timesteps 2048000         --metric V_start         --rank-by          --window-size          --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_093548_sampled         --no-log-scale
+usage: sweep_pipeline.py [-h] [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--algos ALGOS [ALGOS ...]]
+                         [--n-seeds N_SEEDS]
+                         [--total-timesteps TOTAL_TIMESTEPS]
+                         [--num-envs NUM_ENVS] [--num-steps NUM_STEPS]
+                         [--model-dir MODEL_DIR] [--metric METRIC]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE]
+                         [--lr-grid LR_GRID [LR_GRID ...]]
+                         [--actor-lr-grid ACTOR_LR_GRID [ACTOR_LR_GRID ...]]
+                         [--lr-end LR_END] [--actor-lr-end ACTOR_LR_END]
+                         [--lambda-grid LAMBDA_GRID [LAMBDA_GRID ...]]
+                         [--gae-lambda-grid GAE_LAMBDA_GRID [GAE_LAMBDA_GRID ...]]
+                         [--value-lambda-grid VALUE_LAMBDA_GRID [VALUE_LAMBDA_GRID ...]]
+                         [--custom-grids-json CUSTOM_GRIDS_JSON]
+                         [--config CONFIG] [--use-geom-mean] [--log-scale]
+                         [--no-log-scale] [--sweep-root-dir SWEEP_ROOT_DIR]
+                         [--sweep-suffix SWEEP_SUFFIX] [--use-greedy-policy]
+                         [--policy-epsilon POLICY_EPSILON]
+sweep_pipeline.py: error: argument --rank-by: expected one argument
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+usage: analyze_sweeps.py [-h] [--sweep-dir SWEEP_DIR]
+                         [--policy {fixed,random,ppo,hybrid}]
+                         [--env-name ENV_NAME] [--metric METRIC]
+                         [--use-geom-mean]
+                         [--rank-by {auc,final_window,final_step,min,max}]
+                         [--rank-order {lower,higher}] [--higher-is-better]
+                         [--window-size WINDOW_SIZE] [--linear-scale]
+analyze_sweeps.py: error: argument --rank-by: expected one argument
+
+======================================================================
+Sampled PPO Control Sweep Completed!
+Total runtime: 0h 0m 48s
+Job finished at: 2026-09-14 09:35:58
+======================================================================

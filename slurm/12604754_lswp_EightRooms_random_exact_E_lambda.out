@@ -1,0 +1,238 @@
+======================================================================
+Starting SLURM Lambda Sweep Worker
+Environment: EightRooms
+Policy:      random
+Algorithm:   exact_E_lambda
+Sweep ID:    20260915_230741
+======================================================================
+======================================================================
+Starting Lambda Sweep Worker
+Sweep ID: 20260915_230741 | Env: EightRooms | Policy: random | Algo: exact_E_lambda
+Lambdas: [0.0, 0.5, 0.9, 0.95, 0.99]
+======================================================================
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.0
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: EightRooms | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.0 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (23.6s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.0 ... done (2.9s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0 ... done (3.0s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.0 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          1.7614e-03
+  Final Window (750 steps): 6.1337e-04
+  Final nn_weighted_VE:         8.0544e-05 (±1.4345e-04)
+  Min nn_weighted_VE:           8.7956e-08
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           1 0.0010           0.0            0.001761                     0.000613                   0.000081                  0.000143        8.795634e-08            0.005898             0.001761
+    2           2 0.0005           0.0            0.002684                     0.001804                   0.000014                  0.000020        9.692130e-06            0.005898             0.002684
+    3           0 0.0050           0.0            0.002848                     0.001986                   0.001094                  0.002091        1.071710e-03            0.028317             0.002848
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/config.json
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.0/tuning/20260915_231137/EightRooms/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.0
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.5
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: EightRooms | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.5 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (5.8s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.5 ... done (2.9s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5 ... done (3.0s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.5 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          1.4142e-03
+  Final Window (750 steps): 2.8399e-04
+  Final nn_weighted_VE:         7.9178e-06 (±8.1370e-06)
+  Min nn_weighted_VE:           1.3503e-06
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           1 0.0010           0.5            0.001414                     0.000284                   0.000008                  0.000008            0.000001            0.005898             0.001414
+    2           2 0.0005           0.5            0.002097                     0.001046                   0.000023                  0.000028            0.000002            0.005898             0.002097
+    3           0 0.0050           0.5            0.002581                     0.002100                   0.002092                  0.002551            0.001804            0.012920             0.002581
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/config.json
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.5/tuning/20260915_231233/EightRooms/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.5
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.9
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: EightRooms | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.9 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (5.9s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.9 ... done (2.9s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9 ... done (2.9s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.9 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          9.0440e-04
+  Final Window (750 steps): 5.4364e-05
+  Final nn_weighted_VE:         5.7905e-05 (±8.1475e-05)
+  Min nn_weighted_VE:           2.6367e-07
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           1 0.0010           0.9            0.000904                     0.000054                   0.000058                  0.000081        2.636733e-07            0.005898             0.000904
+    2           2 0.0005           0.9            0.001280                     0.000177                   0.000002                  0.000003        6.632304e-07            0.005898             0.001280
+    3           0 0.0050           0.9            0.001462                     0.001048                   0.001361                  0.001998        1.032758e-03            0.006019             0.001462
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/config.json
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.9/tuning/20260915_231308/EightRooms/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.9
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.95
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: EightRooms | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.95 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (5.7s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.95 ... done (3.0s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95 ... done (3.0s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.95 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          5.2427e-04
+  Final Window (750 steps): 6.8268e-06
+  Final nn_weighted_VE:         5.7255e-05 (±1.0811e-04)
+  Min nn_weighted_VE:           2.4874e-06
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.95            0.000524                     0.000007                   0.000057                  0.000108            0.000002            0.005898             0.000524
+    2           1 0.0010          0.95            0.000831                     0.000050                   0.000001                  0.000001            0.000001            0.005898             0.000831
+    3           2 0.0005          0.95            0.001143                     0.000105                   0.000012                  0.000013            0.000002            0.005898             0.001143
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/config.json
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.95/tuning/20260915_231342/EightRooms/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.95
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.99
+Env: EightRooms
+Default Obs Shape: (25, 13, 2)
+Obs Shape: (25, 13, 2)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: EightRooms | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.99 ...- obs shape for initialization is  (25, 13, 2)
+number of features is  16
+ done (5.8s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.99 ... done (2.9s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99 ... done (3.0s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          4.5543e-04
+  Final Window (750 steps): 5.7605e-06
+  Final nn_weighted_VE:         5.8437e-06 (±6.8805e-06)
+  Min nn_weighted_VE:           3.0802e-06
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.99            0.000455                     0.000006                   0.000006                  0.000007            0.000003            0.005898             0.000455
+    2           1 0.0010          0.99            0.000778                     0.000059                   0.000003                  0.000003            0.000002            0.005898             0.000778
+    3           2 0.0005          0.99            0.001050                     0.000095                   0.000011                  0.000013            0.000008            0.005898             0.001050
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/config.json
+Config saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/EightRooms/random/exact_E_lambda_0.99/tuning/20260915_231417/EightRooms/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.99
+Sweep pipeline completed successfully for EightRooms / exact_E_lambda
