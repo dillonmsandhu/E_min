@@ -22,7 +22,7 @@ CONFIG='{"TOTAL_TIMESTEPS": 2000, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1
 
 # CONFIG='{"TOTAL_TIMESTEPS": 262144000, "NUM_ENVS": 512, "NUM_STEPS": 512, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 8192, "ENV_NAME": "FourRooms-misc", "FAIL_PROB": 0.01, "GAE_LAMBDA": 0.0, "VALUE_LAMBDA": 0.0, "MODEL_LOAD_DIR": "250_steps_layer_norm", "LAPLACE_SMOOTHING_COEFF": 10.0}'
 
-CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python -m ${FILE} --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics"
+CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python -m ${FILE} --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics --env-ids --save-video --save-checkpoint"
 echo $CMD
 eval $CMD
 

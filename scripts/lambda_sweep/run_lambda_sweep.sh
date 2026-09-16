@@ -18,7 +18,7 @@ DEFAULT_POLICIES=("fixed" "random" "ppo")
 DEFAULT_ALGOS=("exact_td_lambda" "exact_E_lambda")
 
 PARTITION="compsci-gpu"
-TIME_LIMIT="12:00:00"
+TIME_LIMIT="4:00:00"
 GPU_GRES="gpu:a5000:1"
 WORKER_SCRIPT="scripts/lambda_sweep/lambda_sweep_worker.sh"
 DIAGNOSTICS_SCRIPT="scripts/lambda_sweep/lambda_sweep_diagnostics.sh"
