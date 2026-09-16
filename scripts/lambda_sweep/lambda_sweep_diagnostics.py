@@ -14,11 +14,13 @@ if _repo_root not in sys.path:
 
 import glob
 import json
+import shutil
 import importlib
 import argparse
 import jax
 import pandas as pd
 
+import core.config as default_cfg
 from notebooks.analyze_sweeps import load_sweep_data, plot_algorithm_comparison, summarize_algorithm_comparison
 from scripts.sweep_pipeline import ALGO_REGISTRY
 from core.visualizations import generate_and_save_grid_gif
@@ -68,10 +70,11 @@ def main():
             comparison_dir = os.path.join(policy_path, "comparison")
             os.makedirs(comparison_dir, exist_ok=True)
 
-            metric_key = "v_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
+            metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
             rank_by = "auc"
             rank_order = "higher" if policy_type in ["ppo", "hybrid"] else "lower"
             window_size = 40
+            log_scale = False if metric_key.lower() == "v_start" else True
 
             # 1. Generate Summary Dataframe
             try:
@@ -88,7 +91,7 @@ def main():
                 print(f"Failed to generate summary: {e}")
                 summary_df = pd.DataFrame()
 
-            # 2. Generate Comparison Plot
+            # 2. Generate Comparison Plots
             try:
                 import matplotlib.pyplot as plt
                 base_colors = plt.cm.tab10.colors
@@ -122,24 +125,96 @@ def main():
                     color_map[pa] = base_algo_colors[base_algo]
                     linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
 
+                # A. Combined Comparison Plot (Both E and TD across all lambdas)
                 plot_path = os.path.join(comparison_dir, "lambda_comparison_plot.png")
                 plot_algorithm_comparison(
                     completed_runs,
                     metric_key=metric_key,
                     env_name=env_name,
-                    log_scale=True,
+                    log_scale=log_scale,
                     use_geom_mean=False,
                     rank_by=rank_by,
                     rank_order=rank_order,
                     window_size=window_size,
                     save_path=plot_path,
-                    title=f"Lambda Comparison: {policy_type.capitalize()} Policy on {env_name}",
+                    title=f"Lambda Comparison (E vs TD): {policy_type.capitalize()} Policy on {env_name}",
                     color_map=color_map,
                     linestyle_map=linestyle_map
                 )
-                print(f"Plot saved to {plot_path}")
+                print(f"Combined plot saved to {plot_path}")
+
+                # B. E(lambda) Only Comparison Plot (Different colors per lambda)
+                e_runs = {k: v for k, v in completed_runs.items() if "exact_e" in k.lower() or "e_lambda" in k.lower()}
+                if e_runs:
+                    e_color_map = {}
+                    e_linestyle_map = {}
+                    e_lambdas = sorted(list({pa.rsplit('_', 1)[1] for pa in e_runs.keys() if '_' in pa}))
+                    for pa in e_runs.keys():
+                        parts = pa.rsplit('_', 1)
+                        lmbda = parts[1] if len(parts) == 2 else None
+                        c_idx = e_lambdas.index(lmbda) if lmbda in e_lambdas else 0
+                        e_color_map[pa] = base_colors[c_idx % len(base_colors)]
+                        e_linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+
+                    e_plot_path = os.path.join(comparison_dir, "exact_E_lambda_comparison_plot.png")
+                    plot_algorithm_comparison(
+                        e_runs,
+                        metric_key=metric_key,
+                        env_name=env_name,
+                        log_scale=log_scale,
+                        use_geom_mean=False,
+                        rank_by=rank_by,
+                        rank_order=rank_order,
+                        window_size=window_size,
+                        save_path=e_plot_path,
+                        title=f"Exact E(λ) Comparison: {policy_type.capitalize()} Policy on {env_name}",
+                        color_map=e_color_map,
+                        linestyle_map=e_linestyle_map
+                    )
+                    # Also save as E_lambda_comparison_plot.png for convenient access
+                    e_alt_path = os.path.join(comparison_dir, "E_lambda_comparison_plot.png")
+                    if os.path.exists(e_plot_path):
+                        shutil.copyfile(e_plot_path, e_alt_path)
+                    print(f"E-only plot saved to {e_plot_path}")
+
+                # C. TD(lambda) Only Comparison Plot (Different colors per lambda)
+                td_runs = {k: v for k, v in completed_runs.items() if "exact_td" in k.lower() or "td_lambda" in k.lower()}
+                if td_runs:
+                    td_color_map = {}
+                    td_linestyle_map = {}
+                    td_lambdas = sorted(list({pa.rsplit('_', 1)[1] for pa in td_runs.keys() if '_' in pa}))
+                    for pa in td_runs.keys():
+                        parts = pa.rsplit('_', 1)
+                        lmbda = parts[1] if len(parts) == 2 else None
+                        c_idx = td_lambdas.index(lmbda) if lmbda in td_lambdas else 0
+                        td_color_map[pa] = base_colors[c_idx % len(base_colors)]
+                        td_linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+
+                    td_plot_path = os.path.join(comparison_dir, "exact_td_lambda_comparison_plot.png")
+                    plot_algorithm_comparison(
+                        td_runs,
+                        metric_key=metric_key,
+                        env_name=env_name,
+                        log_scale=log_scale,
+                        use_geom_mean=False,
+                        rank_by=rank_by,
+                        rank_order=rank_order,
+                        window_size=window_size,
+                        save_path=td_plot_path,
+                        title=f"Exact TD(λ) Comparison: {policy_type.capitalize()} Policy on {env_name}",
+                        color_map=td_color_map,
+                        linestyle_map=td_linestyle_map
+                    )
+                    # Also save as td_lambda_comparison_plot.png for convenient access
+                    td_alt_path = os.path.join(comparison_dir, "td_lambda_comparison_plot.png")
+                    if os.path.exists(td_plot_path):
+                        shutil.copyfile(td_plot_path, td_alt_path)
+                    print(f"TD-only plot saved to {td_plot_path}")
+
             except Exception as e:
-                print(f"Failed to generate plot: {e}")
+                print(f"Failed to generate plots: {e}")
+                import traceback
+                traceback.print_exc()
 
             # 3. Generate Diagnostic GIFs for the best config of each pseudo-algorithm
             print(f"Generating diagnostic GIFs for best configs...")
@@ -161,7 +236,17 @@ def main():
                     module = importlib.import_module(module_path)
                     make_train = getattr(module, "make_train")
                     
-                    cfg = best_config.copy()
+                    # Unpack nested config from best_config.json metadata if needed
+                    cfg_source = best_config.get("config", best_config) if isinstance(best_config, dict) else data.get("config", {})
+                    cfg = cfg_source.copy()
+
+                    # Guarantee all base config keys are present
+                    for k, v in default_cfg.config.items():
+                        if k not in cfg:
+                            cfg[k] = v
+                    if "TOTAL_TIMESTEPS" not in cfg:
+                        cfg["TOTAL_TIMESTEPS"] = data.get("config", {}).get("TOTAL_TIMESTEPS", 1000)
+
                     cfg["LIGHT_METRICS"] = False
                     cfg["N_SEEDS"] = 1
                     
