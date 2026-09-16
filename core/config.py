@@ -41,7 +41,7 @@ config = {
     "BATCH_SIZE": 104,
     # For the fixed:
     # 'MODEL_LOAD_DIR': "cont",
-    "MODEL_LOAD_DIR": "short_run",
+    "MODEL_LOAD_DIR": "ground_truth/short_run",
     "LOG_FEATURE_METRICS": False,
     "LIGHT_METRICS": True,
 }

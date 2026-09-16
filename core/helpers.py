@@ -557,6 +557,7 @@ def get_evaluation_policies(base_config, evaluator):
     else:
         import core.utils as utils
         model_dir = 'ppo/' + base_config['MODEL_LOAD_DIR']
+        print(model_dir)
         _, out = utils.load_run_data(model_dir, base_config['ENV_NAME'], 'results') 
         policy_train_state = out['runner_state'][0]
         policy_params = jax.tree_util.tree_map(lambda x: x[0], policy_train_state.params)

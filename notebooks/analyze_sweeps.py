@@ -283,6 +283,8 @@ def plot_algorithm_comparison(
     x_axis="update_steps",
     steps_per_pi=None,
     save_path=None,
+    color_map=None,
+    linestyle_map=None,
 ):
     """
     Plots a comparison of the best hyperparameter configurations across multiple algorithms.
@@ -313,6 +315,9 @@ def plot_algorithm_comparison(
 
     plotted_count = 0
 
+    color_map = color_map or {}
+    linestyle_map = linestyle_map or {}
+    
     for idx, (algo_name, source) in enumerate(algorithms_dict.items()):
         try:
             if isinstance(source, str):
@@ -344,7 +349,8 @@ def plot_algorithm_comparison(
         else:
             x = list(range(time_steps))
 
-        color = colors[idx % len(colors)]
+        color = color_map.get(algo_name, colors[idx % len(colors)])
+        linestyle = linestyle_map.get(algo_name, "-")
         
         # Build clean label with hyperparams and env steps/update for sampled methods
         label_parts = []
@@ -366,7 +372,7 @@ def plot_algorithm_comparison(
             lower = np.exp(log_mean - log_std)
             upper = np.exp(log_mean + log_std)
 
-            line, = ax.plot(x, geom_mean, label=label_with_hparam, color=color, linewidth=2.2)
+            line, = ax.plot(x, geom_mean, label=label_with_hparam, color=color, linewidth=2.2, linestyle=linestyle)
             if n_seeds > 1:
                 ax.fill_between(x, lower, upper, color=color, alpha=0.18)
         else:
@@ -374,7 +380,7 @@ def plot_algorithm_comparison(
             mean_curve = seed_trajectories.mean(axis=0)
             std_curve = seed_trajectories.std(axis=0)
 
-            line, = ax.plot(x, mean_curve, label=label_with_hparam, color=color, linewidth=2.2)
+            line, = ax.plot(x, mean_curve, label=label_with_hparam, color=color, linewidth=2.2, linestyle=linestyle)
             if n_seeds > 1:
                 ax.fill_between(x, np.maximum(mean_curve - std_curve, 1e-18), mean_curve + std_curve, color=color, alpha=0.18)
 

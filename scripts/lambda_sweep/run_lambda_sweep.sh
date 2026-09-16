@@ -9,7 +9,7 @@
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # Config
@@ -20,8 +20,8 @@ DEFAULT_ALGOS=("exact_td_lambda" "exact_E_lambda")
 PARTITION="compsci-gpu"
 TIME_LIMIT="12:00:00"
 GPU_GRES="gpu:a5000:1"
-WORKER_SCRIPT="scripts/lambda_sweep_worker.sh"
-DIAGNOSTICS_SCRIPT="scripts/lambda_sweep_diagnostics.sh"
+WORKER_SCRIPT="scripts/lambda_sweep/lambda_sweep_worker.sh"
+DIAGNOSTICS_SCRIPT="scripts/lambda_sweep/lambda_sweep_diagnostics.sh"
 
 mkdir -p slurm
 
@@ -117,7 +117,7 @@ if [ "$DRY_RUN" = false ]; then
         # Diagnostics doesn't necessarily need a GPU, but if it runs model rollouts it does.
         # We'll request one GPU to be safe since it runs LIGHT_METRICS=False rollout.
         DIAG_CMD="sbatch \
-            --dependency=afterok:$JOB_IDS \
+            --dependency=afterany:$JOB_IDS \
             --job-name=\"$DIAG_JOB_NAME\" \
             --output=\"$DIAG_LOG_OUT\" \
             --time=\"04:00:00\" \

@@ -8,7 +8,7 @@ import os
 import sys
 
 _current_dir = os.path.dirname(os.path.abspath(__file__))
-_repo_root = os.path.abspath(os.path.join(_current_dir, ".."))
+_repo_root = os.path.abspath(os.path.join(_current_dir, "..", ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
@@ -90,6 +90,38 @@ def main():
 
             # 2. Generate Comparison Plot
             try:
+                import matplotlib.pyplot as plt
+                base_colors = plt.cm.tab10.colors
+                
+                lambda_linestyles = {
+                    "0.0": ":",
+                    "0.5": (0, (5, 5)),
+                    "0.9": "-.",
+                    "0.95": "--",
+                    "1.0": "-",
+                }
+                
+                color_map = {}
+                linestyle_map = {}
+                base_algo_colors = {}
+                color_idx = 0
+                
+                for pa in completed_runs.keys():
+                    parts = pa.rsplit('_', 1)
+                    if len(parts) == 2 and (parts[1] in lambda_linestyles or parts[1].replace('.','',1).isdigit()):
+                        base_algo = parts[0]
+                        lmbda = parts[1]
+                    else:
+                        base_algo = pa
+                        lmbda = None
+                        
+                    if base_algo not in base_algo_colors:
+                        base_algo_colors[base_algo] = base_colors[color_idx % len(base_colors)]
+                        color_idx += 1
+                        
+                    color_map[pa] = base_algo_colors[base_algo]
+                    linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+
                 plot_path = os.path.join(comparison_dir, "lambda_comparison_plot.png")
                 plot_algorithm_comparison(
                     completed_runs,
@@ -101,7 +133,9 @@ def main():
                     rank_order=rank_order,
                     window_size=window_size,
                     save_path=plot_path,
-                    title=f"Lambda Comparison: {policy_type.capitalize()} Policy on {env_name}"
+                    title=f"Lambda Comparison: {policy_type.capitalize()} Policy on {env_name}",
+                    color_map=color_map,
+                    linestyle_map=linestyle_map
                 )
                 print(f"Plot saved to {plot_path}")
             except Exception as e:

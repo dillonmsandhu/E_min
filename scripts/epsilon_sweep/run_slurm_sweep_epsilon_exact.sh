@@ -9,6 +9,9 @@
 # Hyperparameter Sweep over Epsilon values for Exact Algorithms 
 # ==============================================================================
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
     PYTHON="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python"
 else
@@ -36,11 +39,12 @@ for env in "${ENVS[@]}"; do
     echo "======================================================================"
 
     for epsilon in "${EPSILON_VALUES[@]}"; do
+
         EPS_DIR="$MASTER_DIR/eps_$epsilon"
         mkdir -p "$EPS_DIR"
 
         # 1. exact_E_gd (LR only)
-        CMD_E="$PYTHON scripts/sweep_pipeline.py \
+        CMD_E="$PYTHON $REPO_ROOT/scripts/sweep_pipeline.py \
             --policy fixed \
             --env-name $env \
             --algos exact_E_gd \
@@ -74,7 +78,7 @@ for env in "${ENVS[@]}"; do
     done
     
     echo "Generating plot for $env..."
-    $PYTHON scripts/plot_epsilon_sweep.py \
+    $PYTHON scripts/epsilon_sweep/plot_epsilon_sweep.py \
         --results-dir "$MASTER_DIR" \
         --env-name "$env" \
         --metric "nn_advantage_cossim_uniform" \

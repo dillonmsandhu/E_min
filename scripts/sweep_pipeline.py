@@ -82,6 +82,7 @@ ALGO_REGISTRY = {
         "exact_dirichlet_E": "ppo.exact_E_sampling_form",
         "exact_E_dirichlet": "ppo.exact_E_sampling_form",
         "exact_td_lambda": "ppo.exact_td_lambda",
+        "exact_E_lambda": "ppo.exact_E_lambda",
         "hybrid_exact_E": "ppo.hybrid_exact_E",
         "hybrid_exact_E_gd": "ppo.hybrid_exact_E",
         "hybrid_E": "ppo.hybrid_exact_E",

@@ -20,7 +20,7 @@ if [ -z "$ENV_NAME" ] || [ -z "$POLICY_TYPE" ] || [ -z "$ALGO" ] || [ -z "$SWEEP
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
@@ -41,7 +41,7 @@ export PYTHONPATH="$REPO_ROOT"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 # Run the python pipeline
-$PYTHON -m scripts.lambda_sweep_pipeline \
+$PYTHON -m scripts.lambda_sweep.lambda_sweep_pipeline \
     --env-name "$ENV_NAME" \
     --policy "$POLICY_TYPE" \
     --algo "$ALGO" \
