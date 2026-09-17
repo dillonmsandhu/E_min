@@ -64,16 +64,33 @@ def generate_master_grid_summary(
     print(f"Generating Master 2-Column Summary ({num_tasks} Tasks: Random -> Fixed -> PPO) -> {pdf_filename}")
     print(f"{'='*80}")
 
-    # Intuitive Cold-to-Warm chromatic spectrum:
-    # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
-    lambda_colors = {
-        "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
-        "0.5": "#17becf",   # Cyan / Teal (Intermediate)
-        "0.9": "#ff7f0e",   # Amber Orange
-        "0.95": "#d62728",  # Crimson Red
-        "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
-        "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
+    # =========================================================================
+    # COLOR PALETTES FOR LAMBDA VALUES (Easily customize or switch schemes)
+    # =========================================================================
+    LAMBDA_PALETTES = {
+        # Natural Cool-to-Warm: Light Sky Blue -> Royal Blue -> Amber Orange -> Crimson Red -> Deep Wine -> Black
+        "light_blue_to_dark_red": {
+            "0.0": "#5dade2",   # Light Sky Blue (Lightest Blue, lambda=0.0)
+            "0.5": "#1f618d",   # Deep Royal Blue (lambda=0.5)
+            "0.9": "#f39c12",   # Amber Orange (lambda=0.9)
+            "0.95": "#e74c3c",  # Crimson Red (lambda=0.95)
+            "0.99": "#78281f",  # Deep Dark Burgundy / Wine (lambda=0.99)
+            "1.0": "#111111",   # Dark Charcoal / Black (lambda=1.0)
+        },
+        # Sequential Blue Gradient (Light Ice Blue -> Dark Navy -> Black)
+        "blues": {
+            "0.0": "#85c1e9",   # Light Ice Blue
+            "0.5": "#3498db",   # Sky Blue
+            "0.9": "#2874a6",   # Deep Steel Blue
+            "0.95": "#1b4f72",  # Dark Navy
+            "0.99": "#0e2f44",  # Midnight Blue
+            "1.0": "#000000",   # Black
+        },
     }
+
+    # Selected active palette (change key to switch or edit hex codes above)
+    lambda_colors = LAMBDA_PALETTES["light_blue_to_dark_red"]
+
     lambda_styles = {
         "0.0": ":",             # Dotted
         "0.5": "-.",            # Dash-dot

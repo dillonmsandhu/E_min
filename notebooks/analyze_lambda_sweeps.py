@@ -508,15 +508,14 @@ def _(
         _plots_dir = os.path.join(active_sweep_dir, "plots")
         os.makedirs(_plots_dir, exist_ok=True)
 
-        # Intuitive Cold-to-Warm chromatic spectrum:
-        # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
+        # Natural Cool-to-Warm: Light Sky Blue -> Royal Blue -> Amber Orange -> Crimson Red -> Deep Wine -> Black
         _lambda_colors = {
-            "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
-            "0.5": "#17becf",   # Cyan / Teal (Intermediate)
-            "0.9": "#ff7f0e",   # Amber Orange
-            "0.95": "#d62728",  # Crimson Red
-            "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
-            "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
+            "0.0": "#5dade2",   # Light Sky Blue (Lightest Blue, lambda=0.0)
+            "0.5": "#1f618d",   # Deep Royal Blue (lambda=0.5)
+            "0.9": "#f39c12",   # Amber Orange (lambda=0.9)
+            "0.95": "#e74c3c",  # Crimson Red (lambda=0.95)
+            "0.99": "#78281f",  # Deep Dark Burgundy / Wine (lambda=0.99)
+            "1.0": "#111111",   # Dark Charcoal / Black (lambda=1.0)
         }
         _lambda_linestyles = {
             "0.0": ":",             # Dotted
@@ -695,15 +694,14 @@ def _(
         _task_keys = sorted(list(tasks_data.keys()), key=_task_sort_key)
         _num_tasks = len(_task_keys)
 
-        # Intuitive Cold-to-Warm chromatic spectrum:
-        # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
+        # Natural Cool-to-Warm: Light Sky Blue -> Royal Blue -> Amber Orange -> Crimson Red -> Deep Wine -> Black
         _lambda_colors = {
-            "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
-            "0.5": "#17becf",   # Cyan / Teal (Intermediate)
-            "0.9": "#ff7f0e",   # Amber Orange
-            "0.95": "#d62728",  # Crimson Red
-            "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
-            "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
+            "0.0": "#5dade2",   # Light Sky Blue (Lightest Blue, lambda=0.0)
+            "0.5": "#1f618d",   # Deep Royal Blue (lambda=0.5)
+            "0.9": "#f39c12",   # Amber Orange (lambda=0.9)
+            "0.95": "#e74c3c",  # Crimson Red (lambda=0.95)
+            "0.99": "#78281f",  # Deep Dark Burgundy / Wine (lambda=0.99)
+            "1.0": "#111111",   # Dark Charcoal / Black (lambda=1.0)
         }
         _lambda_styles = {
             "0.0": ":",             # Dotted
