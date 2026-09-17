@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 # Config
 DEFAULT_ENVS=("EightRooms" "FourRooms-misc" "Whirlpool" "MountainCar-v0")
-DEFAULT_POLICIES=("fixed" "random" "ppo")
+DEFAULT_POLICIES=("random" "fixed" "ppo")
 DEFAULT_ALGOS=("exact_td_lambda" "exact_E_lambda")
 
 PARTITION="compsci-gpu"

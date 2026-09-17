@@ -50,28 +50,37 @@ def generate_master_grid_summary(
         print("No task data found to generate master grid summary.")
         return None, None
 
-    task_keys = list(all_tasks_data.keys())
+    policy_priority = {"random": 0, "fixed": 1, "ppo": 2, "hybrid": 3}
+    def _task_sort_key(name):
+        _info = all_tasks_data[name]
+        _env = _info["env_name"]
+        _pol = _info["policy_type"].lower()
+        return (_env, policy_priority.get(_pol, 99))
+
+    task_keys = sorted(list(all_tasks_data.keys()), key=_task_sort_key)
     num_tasks = len(task_keys)
 
     print(f"\n{'='*80}")
-    print(f"Generating Master 2-Column Summary ({num_tasks} Tasks) -> {pdf_filename}")
+    print(f"Generating Master 2-Column Summary ({num_tasks} Tasks: Random -> Fixed -> PPO) -> {pdf_filename}")
     print(f"{'='*80}")
 
+    # Intuitive Cold-to-Warm chromatic spectrum:
+    # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
     lambda_colors = {
-        "0.0": "#1f77b4",   # Blue
-        "0.5": "#ff7f0e",   # Orange
-        "0.9": "#2ca02c",   # Green
-        "0.95": "#d62728",  # Red
-        "0.99": "#9467bd",  # Purple
-        "1.0": "#8c564b",   # Brown
+        "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
+        "0.5": "#17becf",   # Cyan / Teal (Intermediate)
+        "0.9": "#ff7f0e",   # Amber Orange
+        "0.95": "#d62728",  # Crimson Red
+        "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
+        "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
     }
     lambda_styles = {
-        "0.0": ":",
-        "0.5": "--",
-        "0.9": "-.",
-        "0.95": (0, (3, 1, 1, 1)),
-        "0.99": "-",
-        "1.0": "-",
+        "0.0": ":",             # Dotted
+        "0.5": "-.",            # Dash-dot
+        "0.9": "--",            # Dashed
+        "0.95": (0, (5, 2)),    # Long dash
+        "0.99": "-",            # Solid
+        "1.0": "-",             # Solid bold
     }
 
     fig, axes = plt.subplots(
@@ -83,8 +92,8 @@ def generate_master_grid_summary(
     )
 
     # Column Super-Headers
-    axes[0, 0].set_title("Exact $\mathbf{E(\lambda)}$ (Ours)", fontsize=14, fontweight="bold", pad=12)
-    axes[0, 1].set_title("Exact $\mathbf{TD(\lambda)}$ (Baseline)", fontsize=14, fontweight="bold", pad=12)
+    axes[0, 0].set_title("Exact $\mathbf{E(\lambda)}$", fontsize=14, fontweight="bold", pad=12)
+    axes[0, 1].set_title("Exact $\mathbf{TD(\lambda)}$", fontsize=14, fontweight="bold", pad=12)
 
     master_table_rows = []
 

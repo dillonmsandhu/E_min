@@ -311,7 +311,16 @@ def _(
         _table_rows = []
         task_summaries = {}
 
-        for _task_name, _t_info in tasks_data.items():
+        _policy_priority = {"random": 0, "fixed": 1, "ppo": 2, "hybrid": 3}
+        def _task_sort_key(item):
+            _name, _info = item
+            _env = _info["env_name"]
+            _pol = _info["policy_type"].lower()
+            return (_env, _policy_priority.get(_pol, 99))
+
+        _sorted_tasks = sorted(tasks_data.items(), key=_task_sort_key)
+
+        for _task_name, _t_info in _sorted_tasks:
             _pol = _t_info["policy_type"].lower()
             _runs = _t_info["runs"]
 
@@ -499,13 +508,23 @@ def _(
         _plots_dir = os.path.join(active_sweep_dir, "plots")
         os.makedirs(_plots_dir, exist_ok=True)
 
-        _base_colors = plt.cm.tab10.colors
+        # Intuitive Cold-to-Warm chromatic spectrum:
+        # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
+        _lambda_colors = {
+            "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
+            "0.5": "#17becf",   # Cyan / Teal (Intermediate)
+            "0.9": "#ff7f0e",   # Amber Orange
+            "0.95": "#d62728",  # Crimson Red
+            "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
+            "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
+        }
         _lambda_linestyles = {
-            "0.0": ":",
-            "0.5": (0, (5, 5)),
-            "0.9": "-.",
-            "0.95": "--",
-            "1.0": "-",
+            "0.0": ":",             # Dotted
+            "0.5": "-.",            # Dash-dot
+            "0.9": "--",            # Dashed
+            "0.95": (0, (5, 2)),    # Long dash
+            "0.99": "-",            # Solid
+            "1.0": "-",             # Solid bold
         }
 
         _win_size = int(window_size_ui.value)
@@ -525,23 +544,12 @@ def _(
             # Color and Linestyle maps for combined plot
             _color_map = {}
             _linestyle_map = {}
-            _base_algo_colors = {}
-            _c_idx = 0
 
             for _pa in _runs.keys():
                 _parts = _pa.rsplit('_', 1)
-                if len(_parts) == 2 and (_parts[1] in _lambda_linestyles or _parts[1].replace('.', '', 1).isdigit()):
-                    _base_algo = _parts[0]
-                    _lmbda = _parts[1]
-                else:
-                    _base_algo = _pa
-                    _lmbda = None
+                _lmbda = _parts[1] if len(_parts) == 2 else None
 
-                if _base_algo not in _base_algo_colors:
-                    _base_algo_colors[_base_algo] = _base_colors[_c_idx % len(_base_colors)]
-                    _c_idx += 1
-
-                _color_map[_pa] = _base_algo_colors[_base_algo]
+                _color_map[_pa] = _lambda_colors.get(_lmbda, "#333333")
                 _linestyle_map[_pa] = _lambda_linestyles.get(_lmbda, "-") if _lmbda else "-"
 
             # 1. Combined Plot (E vs TD) saved directly to disk
@@ -572,12 +580,10 @@ def _(
                 if _e_runs:
                     _e_color_map = {}
                     _e_linestyle_map = {}
-                    _e_lambdas = sorted(list({_k.rsplit('_', 1)[1] for _k in _e_runs.keys() if '_' in _k}))
                     for _pa_e in _e_runs.keys():
                         _parts_e = _pa_e.rsplit('_', 1)
                         _lmbda_e = _parts_e[1] if len(_parts_e) == 2 else None
-                        _color_pos = _e_lambdas.index(_lmbda_e) if _lmbda_e in _e_lambdas else 0
-                        _e_color_map[_pa_e] = _base_colors[_color_pos % len(_base_colors)]
+                        _e_color_map[_pa_e] = _lambda_colors.get(_lmbda_e, "#333333")
                         _e_linestyle_map[_pa_e] = _lambda_linestyles.get(_lmbda_e, "-") if _lmbda_e else "-"
 
                     _e_png_path = os.path.join(_plots_dir, f"{_task_id}_e_lambda.png")
@@ -603,12 +609,10 @@ def _(
                 if _td_runs:
                     _td_color_map = {}
                     _td_linestyle_map = {}
-                    _td_lambdas = sorted(list({_k.rsplit('_', 1)[1] for _k in _td_runs.keys() if '_' in _k}))
                     for _pa_td in _td_runs.keys():
                         _parts_td = _pa_td.rsplit('_', 1)
                         _lmbda_td = _parts_td[1] if len(_parts_td) == 2 else None
-                        _color_pos = _td_lambdas.index(_lmbda_td) if _lmbda_td in _td_lambdas else 0
-                        _td_color_map[_pa_td] = _base_colors[_color_pos % len(_base_colors)]
+                        _td_color_map[_pa_td] = _lambda_colors.get(_lmbda_td, "#333333")
                         _td_linestyle_map[_pa_td] = _lambda_linestyles.get(_lmbda_td, "-") if _lmbda_td else "-"
 
                     _td_png_path = os.path.join(_plots_dir, f"{_task_id}_td_lambda.png")
@@ -664,6 +668,201 @@ def _(
 
     plots_view
     return (plots_view,)
+
+
+@app.cell
+def _(
+    active_sweep_dir,
+    extract_best_configuration,
+    mo,
+    np,
+    os,
+    plt,
+    task_summaries,
+    tasks_data,
+    window_size_ui,
+):
+    if not tasks_data or not task_summaries:
+        export_view = mo.md("")
+    else:
+        _policy_priority = {"random": 0, "fixed": 1, "ppo": 2, "hybrid": 3}
+        def _task_sort_key(name):
+            _info = tasks_data[name]
+            _env = _info["env_name"]
+            _pol = _info["policy_type"].lower()
+            return (_env, _policy_priority.get(_pol, 99))
+
+        _task_keys = sorted(list(tasks_data.keys()), key=_task_sort_key)
+        _num_tasks = len(_task_keys)
+
+        # Intuitive Cold-to-Warm chromatic spectrum:
+        # Cold Blue (TD(0), pure bootstrapping) -> Teal -> Orange -> Crimson Red -> Deep Purple -> Black (Monte Carlo, pure returns)
+        _lambda_colors = {
+            "0.0": "#1f77b4",   # Deep Royal Blue (Pure Bootstrap, lambda=0)
+            "0.5": "#17becf",   # Cyan / Teal (Intermediate)
+            "0.9": "#ff7f0e",   # Amber Orange
+            "0.95": "#d62728",  # Crimson Red
+            "0.99": "#6a1b9a",  # Deep Royal Purple (Near-MC, lambda=0.99)
+            "1.0": "#111111",   # Dark Charcoal / Black (Pure Monte Carlo)
+        }
+        _lambda_styles = {
+            "0.0": ":",             # Dotted
+            "0.5": "-.",            # Dash-dot
+            "0.9": "--",            # Dashed
+            "0.95": (0, (5, 2)),    # Long dash
+            "0.99": "-",            # Solid
+            "1.0": "-",             # Solid bold
+        }
+
+        _win_size = int(window_size_ui.value)
+
+        _fig, _axes = plt.subplots(
+            nrows=_num_tasks,
+            ncols=2,
+            figsize=(15, 3.2 * _num_tasks),
+            sharex=False,
+            squeeze=False,
+        )
+
+        _axes[0, 0].set_title("Exact $\mathbf{E(\lambda)}$", fontsize=14, fontweight="bold", pad=12)
+        _axes[0, 1].set_title("Exact $\mathbf{TD(\lambda)}$", fontsize=14, fontweight="bold", pad=12)
+
+        for _row_idx, _task_name in enumerate(_task_keys):
+            _t_info = tasks_data[_task_name]
+            _runs = _t_info["runs"]
+            _pol = _t_info["policy_type"].lower()
+
+            if _pol in ["ppo", "hybrid"]:
+                _metric_key = "V_start"
+                _rank_order = "higher"
+                _log_scale = False
+                _metric_label = "$V_{\\mathrm{start}}$"
+            else:
+                _metric_key = "nn_weighted_VE"
+                _rank_order = "lower"
+                _log_scale = True
+                _metric_label = "Value Error (VE)"
+
+            _ax_e = _axes[_row_idx, 0]
+            _ax_td = _axes[_row_idx, 1]
+
+            _row_min_vals = []
+            _row_max_vals = []
+
+            def _plot_family(ax, family_filter):
+                _fam_runs = {_k: _v for _k, _v in _runs.items() if family_filter(_k)}
+
+                def _lmbda_val(name):
+                    parts = name.rsplit("_", 1)
+                    try:
+                        return float(parts[1]) if len(parts) == 2 else 0.0
+                    except ValueError:
+                        return 0.0
+
+                _sorted_keys = sorted(_fam_runs.keys(), key=_lmbda_val)
+
+                for _pa in _sorted_keys:
+                    _s_data = _fam_runs[_pa]
+                    _parts = _pa.rsplit("_", 1)
+                    _lmbda_str = _parts[1] if len(_parts) == 2 else "0.0"
+
+                    try:
+                        _actual_metric = _metric_key
+                        if _actual_metric not in _s_data["metrics"]:
+                            _avail = {_k.lower(): _k for _k in _s_data["metrics"].keys()}
+                            if _actual_metric.lower() in _avail:
+                                _actual_metric = _avail[_actual_metric.lower()]
+                            elif _actual_metric == "V_start" and "returned_discounted_episode_returns" in _s_data["metrics"]:
+                                _actual_metric = "returned_discounted_episode_returns"
+
+                        _trajs, _best_label, _, _ = extract_best_configuration(
+                            _s_data,
+                            metric_key=_actual_metric,
+                            rank_by="final_window",
+                            rank_order=_rank_order,
+                            window_size=_win_size,
+                        )
+                        _n_seeds, _time_steps = _trajs.shape
+                        _x = np.arange(_time_steps)
+                        _mean = _trajs.mean(axis=0)
+                        _std = _trajs.std(axis=0)
+
+                        _c = _lambda_colors.get(_lmbda_str, "#333333")
+                        _ls = _lambda_styles.get(_lmbda_str, "-")
+                        _lbl = f"$\\lambda={_lmbda_str}$"
+
+                        ax.plot(_x, _mean, label=_lbl, color=_c, linestyle=_ls, linewidth=1.8)
+                        if _n_seeds > 1:
+                            if _log_scale:
+                                _lower = np.maximum(_mean - _std, _mean * 0.05)
+                            else:
+                                _lower = _mean - _std
+                            _upper = _mean + _std
+                            ax.fill_between(_x, _lower, _upper, color=_c, alpha=0.15)
+                            _row_min_vals.append(_lower)
+                            _row_max_vals.append(_upper)
+                        else:
+                            _row_min_vals.append(_mean)
+                            _row_max_vals.append(_mean)
+
+                    except Exception as _e:
+                        continue
+
+            _plot_family(_ax_e, lambda k: "exact_e" in k.lower() or "e_lambda" in k.lower())
+            _plot_family(_ax_td, lambda k: "exact_td" in k.lower() or "td_lambda" in k.lower())
+
+            if _row_min_vals and _row_max_vals:
+                _all_low = np.concatenate([_arr[_arr > 0] if _log_scale else _arr for _arr in _row_min_vals] or [np.array([1e-3])])
+                _all_high = np.concatenate(_row_max_vals)
+
+                if len(_all_low) > 0 and len(_all_high) > 0:
+                    if _log_scale:
+                        _ymin = max(np.percentile(_all_low, 1) * 0.7, np.min(_all_low) * 0.3)
+                        _ymax = np.percentile(_all_high, 99) * 1.3
+                    else:
+                        _span = np.max(_all_high) - np.min(_all_low)
+                        _ymin = np.min(_all_low) - 0.05 * _span
+                        _ymax = np.max(_all_high) + 0.05 * _span
+
+                    if _ymax > _ymin and (_ymin > 0 or not _log_scale):
+                        _ax_e.set_ylim(bottom=_ymin, top=_ymax)
+                        _ax_td.set_ylim(bottom=_ymin, top=_ymax)
+
+            if _log_scale:
+                _ax_e.set_yscale("log")
+                _ax_td.set_yscale("log")
+
+            _ax_e.set_ylabel(f"{_task_name}\n{_metric_label}", fontsize=10, fontweight="bold")
+            _ax_e.grid(True, which="both", linestyle="--", alpha=0.35)
+            _ax_td.grid(True, which="both", linestyle="--", alpha=0.35)
+
+            if _row_idx == 0:
+                _ax_e.legend(loc="upper right", fontsize=9, framealpha=0.85, title="$\lambda$ (E)")
+                _ax_td.legend(loc="upper right", fontsize=9, framealpha=0.85, title="$\lambda$ (TD)")
+
+            if _row_idx == _num_tasks - 1:
+                _ax_e.set_xlabel("Update Steps", fontsize=11)
+                _ax_td.set_xlabel("Update Steps", fontsize=11)
+
+        _fig.tight_layout()
+
+        _pdf_path = os.path.join(active_sweep_dir, "lambda_sweep_master_summary.pdf")
+        _fig.savefig(_pdf_path, format="pdf", bbox_inches="tight")
+        plt.close(_fig)
+
+        export_view = mo.vstack([
+            mo.md("---"),
+            mo.md("### 📄 Master 12-Task Advisor Vector PDF"),
+            mo.md(f"✅ **Master PDF Saved:** `{_pdf_path}`"),
+            mo.download(
+                data=open(_pdf_path, "rb").read() if os.path.exists(_pdf_path) else b"",
+                filename="lambda_sweep_master_summary.pdf",
+                label="⬇️ Download Advisor Summary (Vector PDF)",
+            ),
+        ])
+
+    export_view
+    return (export_view,)
 
 
 if __name__ == "__main__":
