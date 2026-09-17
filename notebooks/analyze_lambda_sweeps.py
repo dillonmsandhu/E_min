@@ -116,28 +116,28 @@ def _(default_sweep, discovered_sweeps, mo):
 
     ranking_criterion_ui = mo.ui.dropdown(
         options={
-            "final_window": "Final Window Mean",
-            "auc": "Area Under Curve (AUC / Full Trajectory Mean)",
-            "final_step": "Final Step Value",
-            "min": "Minimum Across Trajectory",
-            "max": "Maximum Across Trajectory",
+            "Final Window Mean": "final_window",
+            "Area Under Curve (AUC / Full Trajectory Mean)": "auc",
+            "Final Step Value": "final_step",
+            "Minimum Across Trajectory": "min",
+            "Maximum Across Trajectory": "max",
         },
-        value="final_window",
+        value="Final Window Mean",
         label="Ranking Criterion:",
     )
 
     metric_override_ui = mo.ui.dropdown(
         options={
-            "auto": "Auto (nn_weighted_VE for Eval, V_start for PPO)",
-            "nn_weighted_VE": "Value Error (nn_weighted_VE)",
-            "V_start": "Start State Value (V_start)",
-            "nn_greedy_correct": "Greedy Policy Accuracy (nn_greedy_correct)",
-            "nn_advantage_cossim": "Advantage Cosine Similarity (nn_advantage_cossim)",
-            "E": "Dirichlet Energy Error (E)",
-            "nn_greedy_performance": "Greedy Policy Return (nn_greedy_performance)",
-            "total_loss": "Total Loss",
+            "Auto (nn_weighted_VE for Eval, V_start for PPO)": "auto",
+            "Value Error (nn_weighted_VE)": "nn_weighted_VE",
+            "Start State Value (V_start)": "V_start",
+            "Greedy Policy Accuracy (nn_greedy_correct)": "nn_greedy_correct",
+            "Advantage Cosine Similarity (nn_advantage_cossim)": "nn_advantage_cossim",
+            "Dirichlet Energy Error (E)": "E",
+            "Greedy Policy Return (nn_greedy_performance)": "nn_greedy_performance",
+            "Total Loss (total_loss)": "total_loss",
         },
-        value="auto",
+        value="Auto (nn_weighted_VE for Eval, V_start for PPO)",
         label="Metric Mode:",
     )
 
@@ -263,15 +263,56 @@ def _(
             return name
 
         _win_size = int(window_size_ui.value)
-        _rank_crit = ranking_criterion_ui.value
-        _metric_choice = metric_override_ui.value
+
+        # Robustly resolve ranking criterion (handles dictionary value or label)
+        _raw_rank = str(ranking_criterion_ui.value).strip()
+        _rank_map = {
+            "Final Window Mean": "final_window",
+            "Area Under Curve (AUC / Full Trajectory Mean)": "auc",
+            "Final Step Value": "final_step",
+            "Minimum Across Trajectory": "min",
+            "Maximum Across Trajectory": "max",
+            "final_window": "final_window",
+            "auc": "auc",
+            "final_step": "final_step",
+            "min": "min",
+            "max": "max",
+        }
+        _rank_crit = _rank_map.get(_raw_rank, "final_window")
+
+        # Robustly resolve metric mode (handles dictionary value, label, or custom string)
+        _raw_metric = str(metric_override_ui.value).strip()
+        _metric_map = {
+            "Auto (nn_weighted_VE for Eval, V_start for PPO)": "auto",
+            "Value Error (nn_weighted_VE)": "nn_weighted_VE",
+            "Start State Value (V_start)": "V_start",
+            "Greedy Policy Accuracy (nn_greedy_correct)": "nn_greedy_correct",
+            "Advantage Cosine Similarity (nn_advantage_cossim)": "nn_advantage_cossim",
+            "Dirichlet Energy Error (E)": "E",
+            "Greedy Policy Return (nn_greedy_performance)": "nn_greedy_performance",
+            "Total Loss (total_loss)": "total_loss",
+            "Total Loss": "total_loss",
+            "auto": "auto",
+            "nn_weighted_ve": "nn_weighted_VE",
+            "nn_weighted_VE": "nn_weighted_VE",
+            "v_start": "V_start",
+            "V_start": "V_start",
+        }
+        _metric_choice = _metric_map.get(_raw_metric, _raw_metric)
+        if _metric_choice not in ["auto", "nn_weighted_VE", "V_start", "nn_greedy_correct", "nn_advantage_cossim", "E", "nn_greedy_performance", "total_loss"]:
+            if "auto" in _metric_choice.lower():
+                _metric_choice = "auto"
+            elif "weighted_ve" in _metric_choice.lower():
+                _metric_choice = "nn_weighted_VE"
+            elif "v_start" in _metric_choice.lower():
+                _metric_choice = "V_start"
 
         # Build master comparison table
         _table_rows = []
         task_summaries = {}
 
         for _task_name, _t_info in tasks_data.items():
-            _pol = _t_info["policy_type"]
+            _pol = _t_info["policy_type"].lower()
             _runs = _t_info["runs"]
 
             # Determine task metric
@@ -286,7 +327,7 @@ def _(
                     _metric_label = f"nn_weighted_VE, Final Window ({_win_size} steps)"
             else:
                 _metric_key = _metric_choice
-                _is_higher = _metric_key in ["V_start", "nn_greedy_correct", "nn_greedy_performance", "nn_advantage_cossim", "reward", "return"]
+                _is_higher = _metric_key in ["V_start", "nn_greedy_correct", "nn_greedy_performance", "nn_advantage_cossim", "reward", "return", "returned_discounted_episode_returns"]
                 _rank_order = "higher" if _is_higher else "lower"
                 _metric_label = f"{_metric_key}, Final Window ({_win_size} steps)"
 
@@ -305,9 +346,19 @@ def _(
 
                 _sweep_data = _runs[_pa]
                 try:
+                    # Fallback check for PPO return metrics if V_start is not present
+                    _actual_metric = _metric_key
+                    if _actual_metric not in _sweep_data["metrics"]:
+                        _avail = list(_sweep_data["metrics"].keys())
+                        _lower_avail = {k.lower(): k for k in _avail}
+                        if _actual_metric.lower() in _lower_avail:
+                            _actual_metric = _lower_avail[_actual_metric.lower()]
+                        elif _actual_metric == "V_start" and "returned_discounted_episode_returns" in _avail:
+                            _actual_metric = "returned_discounted_episode_returns"
+
                     _seed_trajectories, _best_label, _best_idx, _best_hparams = extract_best_configuration(
                         _sweep_data,
-                        metric_key=_metric_key,
+                        metric_key=_actual_metric,
                         rank_by=_rank_crit,
                         rank_order=_rank_order,
                         window_size=_win_size,
@@ -336,7 +387,7 @@ def _(
                     }
                     _row_data[_pretty_algo_name(_pa)] = _fmt_str
                 except Exception as _e:
-                    _row_data[_pretty_algo_name(_pa)] = "Error"
+                    _row_data[_pretty_algo_name(_pa)] = f"Err ({type(_e).__name__})"
                     _task_algo_scores[_pa] = float("inf") if _rank_order == "lower" else float("-inf")
 
             # Identify winning algorithm for this task
