@@ -12,7 +12,7 @@
 import marimo
 
 __generated_with = "0.23.9"
-app = marimo.App(width="wide")
+app = marimo.App(width="normal")
 
 
 @app.cell
@@ -67,14 +67,14 @@ def _():
 @app.cell
 def _(mo, os, repo_root):
     # Discover available lambda sweep directories
-    lambda_sweep_base = os.path.join(repo_root, "results", "lambda_sweep")
+    _lambda_sweep_base = os.path.join(repo_root, "results", "lambda_sweep")
     discovered_sweeps = []
-    if os.path.exists(lambda_sweep_base):
+    if os.path.exists(_lambda_sweep_base):
         # Look for sweep timestamp folders
-        for d in sorted(os.listdir(lambda_sweep_base), reverse=True):
-            full_p = os.path.join(lambda_sweep_base, d)
-            if os.path.isdir(full_p) and not d.startswith("."):
-                discovered_sweeps.append(f"results/lambda_sweep/{d}")
+        for _d in sorted(os.listdir(_lambda_sweep_base), reverse=True):
+            _full_p = os.path.join(_lambda_sweep_base, _d)
+            if os.path.isdir(_full_p) and not _d.startswith("."):
+                discovered_sweeps.append(f"results/lambda_sweep/{_d}")
 
     default_sweep = discovered_sweeps[0] if discovered_sweeps else "results/lambda_sweep/20260916_222811"
 
@@ -84,7 +84,7 @@ def _(mo, os, repo_root):
         Analyze cross-algorithm performance across $\\lambda$ values for both **Policy Evaluation** ($E(\\lambda)$ vs. $\\text{{TD}}(\\lambda)$) and **Policy Optimization** (PPO).
         """
     )
-    return default_sweep, discovered_sweeps, lambda_sweep_base
+    return default_sweep, discovered_sweeps
 
 
 @app.cell
@@ -144,15 +144,14 @@ def _(default_sweep, discovered_sweeps, mo):
     show_plots_ui = mo.ui.checkbox(value=True, label="Show Comparison Learning Curves")
     show_individual_plots_ui = mo.ui.checkbox(value=True, label="Show Separate E(λ) and TD(λ) Plots")
 
-    controls = mo.vstack([
+    _controls = mo.vstack([
         mo.hstack([sweep_input, custom_sweep_text], justify="start", align="center"),
         mo.hstack([window_size_ui, ranking_criterion_ui, metric_override_ui], justify="start", align="center"),
         mo.hstack([show_plots_ui, show_individual_plots_ui], justify="start", align="center"),
     ])
 
-    mo.accordion({"⚙️ Sweep Configuration & Ranking Settings": controls})
+    mo.accordion({"⚙️ Sweep Configuration & Ranking Settings": _controls})
     return (
-        controls,
         custom_sweep_text,
         metric_override_ui,
         ranking_criterion_ui,
@@ -172,44 +171,44 @@ def _(
     sweep_input,
 ):
     # Resolve active sweep directory
-    raw_path = custom_sweep_text.value.strip() if custom_sweep_text.value.strip() else sweep_input.value
-    if not os.path.isabs(raw_path):
-        active_sweep_dir = os.path.join(repo_root, raw_path)
+    _raw_path = custom_sweep_text.value.strip() if custom_sweep_text.value.strip() else sweep_input.value
+    if not os.path.isabs(_raw_path):
+        active_sweep_dir = os.path.join(repo_root, _raw_path)
     else:
-        active_sweep_dir = raw_path
+        active_sweep_dir = _raw_path
 
     # Structure: results/lambda_sweep/<sweep_id>/<env_name>/<policy_type>/<pseudo_algo>/tuning/
     tasks_data = {}
-    load_errors = []
+    _load_errors = []
 
     if os.path.exists(active_sweep_dir):
-        env_names = sorted([d for d in os.listdir(active_sweep_dir) if os.path.isdir(os.path.join(active_sweep_dir, d)) and not d.startswith(".")])
-        for env_name in env_names:
-            env_path = os.path.join(active_sweep_dir, env_name)
-            policy_names = sorted([d for d in os.listdir(env_path) if os.path.isdir(os.path.join(env_path, d)) and not d.startswith(".")])
-            for pol_name in policy_names:
-                pol_path = os.path.join(env_path, pol_name)
-                task_key = f"{env_name} ({pol_name.capitalize()} Policy)"
-                task_id = f"{env_name}_{pol_name}"
+        _env_names = sorted([_d for _d in os.listdir(active_sweep_dir) if os.path.isdir(os.path.join(active_sweep_dir, _d)) and not _d.startswith(".")])
+        for _env_name in _env_names:
+            _env_path = os.path.join(active_sweep_dir, _env_name)
+            _policy_names = sorted([_d for _d in os.listdir(_env_path) if os.path.isdir(os.path.join(_env_path, _d)) and not _d.startswith(".")])
+            for _pol_name in _policy_names:
+                _pol_path = os.path.join(_env_path, _pol_name)
+                _task_key = f"{_env_name} ({_pol_name.capitalize()} Policy)"
+                _task_id = f"{_env_name}_{_pol_name}"
                 
-                algo_runs = {}
-                pseudo_algos = sorted([d for d in os.listdir(pol_path) if os.path.isdir(os.path.join(pol_path, d)) and d != "comparison" and not d.startswith(".")])
-                for pa_name in pseudo_algos:
-                    tuning_dir = os.path.join(pol_path, pa_name, "tuning")
-                    if os.path.exists(tuning_dir):
+                _algo_runs = {}
+                _pseudo_algos = sorted([_d for _d in os.listdir(_pol_path) if os.path.isdir(os.path.join(_pol_path, _d)) and _d != "comparison" and not _d.startswith(".")])
+                for _pa_name in _pseudo_algos:
+                    _tuning_dir = os.path.join(_pol_path, _pa_name, "tuning")
+                    if os.path.exists(_tuning_dir):
                         try:
-                            sweep_data = load_sweep_data(tuning_dir)
-                            algo_runs[pa_name] = sweep_data
-                        except Exception as e:
-                            load_errors.append(f"Error loading {task_key} / {pa_name}: {e}")
+                            _sweep_data = load_sweep_data(_tuning_dir)
+                            _algo_runs[_pa_name] = _sweep_data
+                        except Exception as _e:
+                            _load_errors.append(f"Error loading {_task_key} / {_pa_name}: {_e}")
                 
-                if algo_runs:
-                    tasks_data[task_key] = {
-                        "task_id": task_id,
-                        "env_name": env_name,
-                        "policy_type": pol_name,
-                        "pol_path": pol_path,
-                        "runs": algo_runs,
+                if _algo_runs:
+                    tasks_data[_task_key] = {
+                        "task_id": _task_id,
+                        "env_name": _env_name,
+                        "policy_type": _pol_name,
+                        "pol_path": _pol_path,
+                        "runs": _algo_runs,
                     }
 
     return active_sweep_dir, tasks_data
@@ -238,9 +237,9 @@ def _(
         task_summaries = {}
     else:
         # Collect all unique pseudo-algorithms across all tasks
-        all_algo_set = set()
-        for t_info in tasks_data.values():
-            all_algo_set.update(t_info["runs"].keys())
+        _all_algo_set = set()
+        for _t_info in tasks_data.values():
+            _all_algo_set.update(_t_info["runs"].keys())
 
         # Sort pseudo-algorithms logically (e.g. exact_E_lambda before exact_td_lambda, then sorted by lambda value)
         def _algo_sort_key(name):
@@ -253,7 +252,7 @@ def _(
             algo_priority = 0 if "E" in base else 1
             return (algo_priority, base, lmbda)
 
-        all_pseudo_algos = sorted(list(all_algo_set), key=_algo_sort_key)
+        _all_pseudo_algos = sorted(list(_all_algo_set), key=_algo_sort_key)
 
         def _pretty_algo_name(name):
             parts = name.rsplit('_', 1)
@@ -263,136 +262,136 @@ def _(
                 return f"{base.upper()}(λ={lmbda})"
             return name
 
-        win_size = int(window_size_ui.value)
-        rank_crit = ranking_criterion_ui.value
-        metric_choice = metric_override_ui.value
+        _win_size = int(window_size_ui.value)
+        _rank_crit = ranking_criterion_ui.value
+        _metric_choice = metric_override_ui.value
 
         # Build master comparison table
-        table_rows = []
+        _table_rows = []
         task_summaries = {}
 
-        for task_name, t_info in tasks_data.items():
-            pol = t_info["policy_type"]
-            runs = t_info["runs"]
+        for _task_name, _t_info in tasks_data.items():
+            _pol = _t_info["policy_type"]
+            _runs = _t_info["runs"]
 
             # Determine task metric
-            if metric_choice == "auto":
-                if pol in ["ppo", "hybrid"]:
-                    metric_key = "V_start"
-                    rank_order = "higher"
-                    metric_label = f"V_start, Final Window ({win_size} steps)"
+            if _metric_choice == "auto":
+                if _pol in ["ppo", "hybrid"]:
+                    _metric_key = "V_start"
+                    _rank_order = "higher"
+                    _metric_label = f"V_start, Final Window ({_win_size} steps)"
                 else:
-                    metric_key = "nn_weighted_VE"
-                    rank_order = "lower"
-                    metric_label = f"nn_weighted_VE, Final Window ({win_size} steps)"
+                    _metric_key = "nn_weighted_VE"
+                    _rank_order = "lower"
+                    _metric_label = f"nn_weighted_VE, Final Window ({_win_size} steps)"
             else:
-                metric_key = metric_choice
-                is_higher = metric_key in ["V_start", "nn_greedy_correct", "nn_greedy_performance", "nn_advantage_cossim", "reward", "return"]
-                rank_order = "higher" if is_higher else "lower"
-                metric_label = f"{metric_key}, Final Window ({win_size} steps)"
+                _metric_key = _metric_choice
+                _is_higher = _metric_key in ["V_start", "nn_greedy_correct", "nn_greedy_performance", "nn_advantage_cossim", "reward", "return"]
+                _rank_order = "higher" if _is_higher else "lower"
+                _metric_label = f"{_metric_key}, Final Window ({_win_size} steps)"
 
-            row_data = {
-                "Task": task_name,
-                "Evaluation Metric": metric_label,
+            _row_data = {
+                "Task": _task_name,
+                "Evaluation Metric": _metric_label,
             }
 
-            task_algo_scores = {}
-            task_algo_formatted = {}
+            _task_algo_scores = {}
+            _task_algo_formatted = {}
 
-            for pa in all_pseudo_algos:
-                if pa not in runs:
-                    row_data[_pretty_algo_name(pa)] = "—"
+            for _pa in _all_pseudo_algos:
+                if _pa not in _runs:
+                    _row_data[_pretty_algo_name(_pa)] = "—"
                     continue
 
-                sweep_data = runs[pa]
+                _sweep_data = _runs[_pa]
                 try:
-                    seed_trajectories, best_label, best_idx, best_hparams = extract_best_configuration(
-                        sweep_data,
-                        metric_key=metric_key,
-                        rank_by=rank_crit,
-                        rank_order=rank_order,
-                        window_size=win_size,
+                    _seed_trajectories, _best_label, _best_idx, _best_hparams = extract_best_configuration(
+                        _sweep_data,
+                        metric_key=_metric_key,
+                        rank_by=_rank_crit,
+                        rank_order=_rank_order,
+                        window_size=_win_size,
                     )
-                    n_seeds, time_steps = seed_trajectories.shape
-                    actual_win = max(1, min(time_steps, win_size))
+                    _n_seeds, _time_steps = _seed_trajectories.shape
+                    _actual_win = max(1, min(_time_steps, _win_size))
 
                     # Compute metric score for cell display (mean over seeds in final window)
-                    seed_window_means = seed_trajectories[:, -actual_win:].mean(axis=-1)
-                    mean_val = float(seed_window_means.mean())
-                    std_val = float(seed_window_means.std()) if n_seeds > 1 else 0.0
+                    _seed_window_means = _seed_trajectories[:, -_actual_win:].mean(axis=-1)
+                    _mean_val = float(_seed_window_means.mean())
+                    _std_val = float(_seed_window_means.std()) if _n_seeds > 1 else 0.0
 
-                    task_algo_scores[pa] = mean_val
+                    _task_algo_scores[_pa] = _mean_val
 
                     # Formatting: clean scientific or fixed float
-                    if abs(mean_val) < 1e-2 and abs(mean_val) > 0:
-                        fmt_str = f"{mean_val:.2e} ± {std_val:.1e}" if n_seeds > 1 else f"{mean_val:.2e}"
+                    if abs(_mean_val) < 1e-2 and abs(_mean_val) > 0:
+                        _fmt_str = f"{_mean_val:.2e} ± {_std_val:.1e}" if _n_seeds > 1 else f"{_mean_val:.2e}"
                     else:
-                        fmt_str = f"{mean_val:.4f} ± {std_val:.4f}" if n_seeds > 1 else f"{mean_val:.4f}"
+                        _fmt_str = f"{_mean_val:.4f} ± {_std_val:.4f}" if _n_seeds > 1 else f"{_mean_val:.4f}"
 
-                    task_algo_formatted[pa] = {
-                        "mean": mean_val,
-                        "std": std_val,
-                        "fmt": fmt_str,
-                        "best_label": best_label,
+                    _task_algo_formatted[_pa] = {
+                        "mean": _mean_val,
+                        "std": _std_val,
+                        "fmt": _fmt_str,
+                        "best_label": _best_label,
                     }
-                    row_data[_pretty_algo_name(pa)] = fmt_str
-                except Exception as e:
-                    row_data[_pretty_algo_name(pa)] = "Error"
-                    task_algo_scores[pa] = float("inf") if rank_order == "lower" else float("-inf")
+                    _row_data[_pretty_algo_name(_pa)] = _fmt_str
+                except Exception as _e:
+                    _row_data[_pretty_algo_name(_pa)] = "Error"
+                    _task_algo_scores[_pa] = float("inf") if _rank_order == "lower" else float("-inf")
 
             # Identify winning algorithm for this task
-            if task_algo_scores:
-                valid_scores = {k: v for k, v in task_algo_scores.items() if v not in [float("inf"), float("-inf")]}
-                if valid_scores:
-                    if rank_order == "lower":
-                        winning_algo = min(valid_scores, key=valid_scores.get)
+            if _task_algo_scores:
+                _valid_scores = {_k: _v for _k, _v in _task_algo_scores.items() if _v not in [float("inf"), float("-inf")]}
+                if _valid_scores:
+                    if _rank_order == "lower":
+                        _winning_algo = min(_valid_scores, key=_valid_scores.get)
                     else:
-                        winning_algo = max(valid_scores, key=valid_scores.get)
+                        _winning_algo = max(_valid_scores, key=_valid_scores.get)
                     
-                    winning_col = _pretty_algo_name(winning_algo)
-                    if winning_col in row_data:
-                        row_data[winning_col] = f"**{row_data[winning_col]} 🏆**"
-                    row_data["Winning Algorithm"] = f"**{winning_col}**"
+                    _winning_col = _pretty_algo_name(_winning_algo)
+                    if _winning_col in _row_data:
+                        _row_data[_winning_col] = f"**{_row_data[_winning_col]} 🏆**"
+                    _row_data["Winning Algorithm"] = f"**{_winning_col}**"
                 else:
-                    winning_algo = None
-                    row_data["Winning Algorithm"] = "—"
+                    _winning_algo = None
+                    _row_data["Winning Algorithm"] = "—"
             else:
-                winning_algo = None
-                row_data["Winning Algorithm"] = "—"
+                _winning_algo = None
+                _row_data["Winning Algorithm"] = "—"
 
-            table_rows.append(row_data)
-            task_summaries[task_name] = {
-                "info": t_info,
-                "metric_key": metric_key,
-                "rank_order": rank_order,
-                "metric_label": metric_label,
-                "winning_algo": winning_algo,
-                "algo_results": task_algo_formatted,
+            _table_rows.append(_row_data)
+            task_summaries[_task_name] = {
+                "info": _t_info,
+                "metric_key": _metric_key,
+                "rank_order": _rank_order,
+                "metric_label": _metric_label,
+                "winning_algo": _winning_algo,
+                "algo_results": _task_algo_formatted,
             }
 
-        master_df = pd.DataFrame(table_rows)
+        master_df = pd.DataFrame(_table_rows)
 
         # Move Winning Algorithm to the front after Task and Metric
-        cols = list(master_df.columns)
-        if "Winning Algorithm" in cols:
-            cols.remove("Winning Algorithm")
-            cols.insert(2, "Winning Algorithm")
-            master_df = master_df[cols]
+        _cols = list(master_df.columns)
+        if "Winning Algorithm" in _cols:
+            _cols.remove("Winning Algorithm")
+            _cols.insert(2, "Winning Algorithm")
+            master_df = master_df[_cols]
 
         # Convert DataFrame to high-impact Markdown table
-        md_table_lines = []
-        headers = list(master_df.columns)
-        md_table_lines.append("| " + " | ".join(headers) + " |")
-        md_table_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
-        for _, r in master_df.iterrows():
-            row_cells = [str(r[h]) for h in headers]
-            md_table_lines.append("| " + " | ".join(row_cells) + " |")
+        _md_table_lines = []
+        _headers = list(master_df.columns)
+        _md_table_lines.append("| " + " | ".join(_headers) + " |")
+        _md_table_lines.append("| " + " | ".join(["---"] * len(_headers)) + " |")
+        for _, _r in master_df.iterrows():
+            _row_cells = [str(_r[_h]) for _h in _headers]
+            _md_table_lines.append("| " + " | ".join(_row_cells) + " |")
         
-        markdown_table_str = "\n".join(md_table_lines)
+        _markdown_table_str = "\n".join(_md_table_lines)
 
         task_view = mo.vstack([
             mo.md("### 📊 Master Sweep Comparison Table"),
-            mo.md(markdown_table_str),
+            mo.md(_markdown_table_str),
         ])
 
     task_view
@@ -416,10 +415,10 @@ def _(
     if not task_summaries or not show_plots_ui.value:
         plots_view = mo.md("")
     else:
-        task_plot_elements = []
+        _task_plot_elements = []
 
-        base_colors = plt.cm.tab10.colors
-        lambda_linestyles = {
+        _base_colors = plt.cm.tab10.colors
+        _lambda_linestyles = {
             "0.0": ":",
             "0.5": (0, (5, 5)),
             "0.9": "-.",
@@ -427,138 +426,138 @@ def _(
             "1.0": "-",
         }
 
-        win_size = int(window_size_ui.value)
+        _win_size = int(window_size_ui.value)
 
-        for task_name, summary in task_summaries.items():
-            t_info = summary["info"]
-            env = t_info["env_name"]
-            runs = t_info["runs"]
-            metric_key = summary["metric_key"]
-            rank_order = summary["rank_order"]
-            winning_algo = summary["winning_algo"]
+        for _task_name, _summary in task_summaries.items():
+            _t_info = _summary["info"]
+            _env = _t_info["env_name"]
+            _runs = _t_info["runs"]
+            _metric_key = _summary["metric_key"]
+            _rank_order = _summary["rank_order"]
+            _winning_algo = _summary["winning_algo"]
 
-            log_scale = False if metric_key.lower() == "v_start" or rank_order == "higher" else True
+            _log_scale = False if _metric_key.lower() == "v_start" or _rank_order == "higher" else True
 
             # Color and Linestyle maps for combined plot
-            color_map = {}
-            linestyle_map = {}
-            base_algo_colors = {}
-            c_idx = 0
+            _color_map = {}
+            _linestyle_map = {}
+            _base_algo_colors = {}
+            _c_idx = 0
 
-            for pa in runs.keys():
-                parts = pa.rsplit('_', 1)
-                if len(parts) == 2 and (parts[1] in lambda_linestyles or parts[1].replace('.', '', 1).isdigit()):
-                    base_algo = parts[0]
-                    lmbda = parts[1]
+            for _pa in _runs.keys():
+                _parts = _pa.rsplit('_', 1)
+                if len(_parts) == 2 and (_parts[1] in _lambda_linestyles or _parts[1].replace('.', '', 1).isdigit()):
+                    _base_algo = _parts[0]
+                    _lmbda = _parts[1]
                 else:
-                    base_algo = pa
-                    lmbda = None
+                    _base_algo = _pa
+                    _lmbda = None
 
-                if base_algo not in base_algo_colors:
-                    base_algo_colors[base_algo] = base_colors[c_idx % len(base_colors)]
-                    c_idx += 1
+                if _base_algo not in _base_algo_colors:
+                    _base_algo_colors[_base_algo] = _base_colors[_c_idx % len(_base_colors)]
+                    _c_idx += 1
 
-                color_map[pa] = base_algo_colors[base_algo]
-                linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+                _color_map[_pa] = _base_algo_colors[_base_algo]
+                _linestyle_map[_pa] = _lambda_linestyles.get(_lmbda, "-") if _lmbda else "-"
 
             # 1. Combined Plot (E vs TD)
-            fig_combined = plot_algorithm_comparison(
-                runs,
-                metric_key=metric_key,
-                env_name=env,
-                log_scale=log_scale,
+            _fig_combined = plot_algorithm_comparison(
+                _runs,
+                metric_key=_metric_key,
+                env_name=_env,
+                log_scale=_log_scale,
                 use_geom_mean=False,
                 rank_by="final_window",
-                rank_order=rank_order,
-                window_size=win_size,
-                title=f"Combined Lambda Comparison: {task_name}",
-                color_map=color_map,
-                linestyle_map=linestyle_map,
+                rank_order=_rank_order,
+                window_size=_win_size,
+                title=f"Combined Lambda Comparison: {_task_name}",
+                color_map=_color_map,
+                linestyle_map=_linestyle_map,
             )
 
             # Sub-plots for E only and TD only if requested
-            fig_e = None
-            fig_td = None
+            _fig_e = None
+            _fig_td = None
             if show_individual_plots_ui.value:
                 # E-only
-                e_runs = {k: v for k, v in runs.items() if "exact_e" in k.lower() or "e_lambda" in k.lower()}
-                if e_runs:
-                    e_color_map = {}
-                    e_linestyle_map = {}
-                    e_lambdas = sorted(list({k.rsplit('_', 1)[1] for k in e_runs.keys() if '_' in k}))
-                    for pa_e in e_runs.keys():
-                        parts_e = pa_e.rsplit('_', 1)
-                        lmbda_e = parts_e[1] if len(parts_e) == 2 else None
-                        color_pos = e_lambdas.index(lmbda_e) if lmbda_e in e_lambdas else 0
-                        e_color_map[pa_e] = base_colors[color_pos % len(base_colors)]
-                        e_linestyle_map[pa_e] = lambda_linestyles.get(lmbda_e, "-") if lmbda_e else "-"
+                _e_runs = {_k: _v for _k, _v in _runs.items() if "exact_e" in _k.lower() or "e_lambda" in _k.lower()}
+                if _e_runs:
+                    _e_color_map = {}
+                    _e_linestyle_map = {}
+                    _e_lambdas = sorted(list({_k.rsplit('_', 1)[1] for _k in _e_runs.keys() if '_' in _k}))
+                    for _pa_e in _e_runs.keys():
+                        _parts_e = _pa_e.rsplit('_', 1)
+                        _lmbda_e = _parts_e[1] if len(_parts_e) == 2 else None
+                        _color_pos = _e_lambdas.index(_lmbda_e) if _lmbda_e in _e_lambdas else 0
+                        _e_color_map[_pa_e] = _base_colors[_color_pos % len(_base_colors)]
+                        _e_linestyle_map[_pa_e] = _lambda_linestyles.get(_lmbda_e, "-") if _lmbda_e else "-"
 
-                    fig_e = plot_algorithm_comparison(
-                        e_runs,
-                        metric_key=metric_key,
-                        env_name=env,
-                        log_scale=log_scale,
+                    _fig_e = plot_algorithm_comparison(
+                        _e_runs,
+                        metric_key=_metric_key,
+                        env_name=_env,
+                        log_scale=_log_scale,
                         use_geom_mean=False,
                         rank_by="final_window",
-                        rank_order=rank_order,
-                        window_size=win_size,
-                        title=f"Exact E(λ) Progression: {task_name}",
-                        color_map=e_color_map,
-                        linestyle_map=e_linestyle_map,
+                        rank_order=_rank_order,
+                        window_size=_win_size,
+                        title=f"Exact E(λ) Progression: {_task_name}",
+                        color_map=_e_color_map,
+                        linestyle_map=_e_linestyle_map,
                     )
 
                 # TD-only
-                td_runs = {k: v for k, v in runs.items() if "exact_td" in k.lower() or "td_lambda" in k.lower()}
-                if td_runs:
-                    td_color_map = {}
-                    td_linestyle_map = {}
-                    td_lambdas = sorted(list({k.rsplit('_', 1)[1] for k in td_runs.keys() if '_' in k}))
-                    for pa_td in td_runs.keys():
-                        parts_td = pa_td.rsplit('_', 1)
-                        lmbda_td = parts_td[1] if len(parts_td) == 2 else None
-                        color_pos = td_lambdas.index(lmbda_td) if lmbda_td in td_lambdas else 0
-                        td_color_map[pa_td] = base_colors[color_pos % len(base_colors)]
-                        td_linestyle_map[pa_td] = lambda_linestyles.get(lmbda_td, "-") if lmbda_td else "-"
+                _td_runs = {_k: _v for _k, _v in _runs.items() if "exact_td" in _k.lower() or "td_lambda" in _k.lower()}
+                if _td_runs:
+                    _td_color_map = {}
+                    _td_linestyle_map = {}
+                    _td_lambdas = sorted(list({_k.rsplit('_', 1)[1] for _k in _td_runs.keys() if '_' in _k}))
+                    for _pa_td in _td_runs.keys():
+                        _parts_td = _pa_td.rsplit('_', 1)
+                        _lmbda_td = _parts_td[1] if len(_parts_td) == 2 else None
+                        _color_pos = _td_lambdas.index(_lmbda_td) if _lmbda_td in _td_lambdas else 0
+                        _td_color_map[_pa_td] = _base_colors[_color_pos % len(_base_colors)]
+                        _td_linestyle_map[_pa_td] = _lambda_linestyles.get(_lmbda_td, "-") if _lmbda_td else "-"
 
-                    fig_td = plot_algorithm_comparison(
-                        td_runs,
-                        metric_key=metric_key,
-                        env_name=env,
-                        log_scale=log_scale,
+                    _fig_td = plot_algorithm_comparison(
+                        _td_runs,
+                        metric_key=_metric_key,
+                        env_name=_env,
+                        log_scale=_log_scale,
                         use_geom_mean=False,
                         rank_by="final_window",
-                        rank_order=rank_order,
-                        window_size=win_size,
-                        title=f"Exact TD(λ) Progression: {task_name}",
-                        color_map=td_color_map,
-                        linestyle_map=td_linestyle_map,
+                        rank_order=_rank_order,
+                        window_size=_win_size,
+                        title=f"Exact TD(λ) Progression: {_task_name}",
+                        color_map=_td_color_map,
+                        linestyle_map=_td_linestyle_map,
                     )
 
             # Build Per-Task UI Card
-            winning_text = f"🏆 **Winning Algorithm:** `{winning_algo}`" if winning_algo else ""
-            task_card_content = [
-                mo.md(f"## 🎯 Task: {task_name}"),
-                mo.md(f"**Metric Evaluated:** `{summary['metric_label']}` | {winning_text}"),
+            _winning_text = f"🏆 **Winning Algorithm:** `{_winning_algo}`" if _winning_algo else ""
+            _task_card_content = [
+                mo.md(f"## 🎯 Task: {_task_name}"),
+                mo.md(f"**Metric Evaluated:** `{_summary['metric_label']}` | {_winning_text}"),
             ]
 
-            if fig_combined:
-                task_card_content.append(mo.as_html(fig_combined))
+            if _fig_combined:
+                _task_card_content.append(mo.as_html(_fig_combined))
 
-            if fig_e and fig_td:
-                task_card_content.append(
-                    mo.hstack([mo.as_html(fig_e), mo.as_html(fig_td)], justify="space-around")
+            if _fig_e and _fig_td:
+                _task_card_content.append(
+                    mo.hstack([mo.as_html(_fig_e), mo.as_html(_fig_td)], justify="space-around")
                 )
-            elif fig_e:
-                task_card_content.append(mo.as_html(fig_e))
-            elif fig_td:
-                task_card_content.append(mo.as_html(fig_td))
+            elif _fig_e:
+                _task_card_content.append(mo.as_html(_fig_e))
+            elif _fig_td:
+                _task_card_content.append(mo.as_html(_fig_td))
 
-            task_plot_elements.append(mo.vstack(task_card_content))
+            _task_plot_elements.append(mo.vstack(_task_card_content))
 
         plots_view = mo.vstack([
             mo.md("---"),
             mo.md("## 📈 Cross-Algorithm Learning Curves per Task"),
-            *task_plot_elements
+            *_task_plot_elements
         ])
 
     plots_view
