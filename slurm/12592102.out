@@ -1,0 +1,237 @@
+======================================================================
+STARTING SLURM EXACT PPO / CONTROL ALGORITHMS SWEEP
+Comparing: E minimization vs TD(lambda)
+Start Time: 2026-09-14 16:11:45
+Environments: MountainCar-v0
+Algorithms: exact_E exact_td_lambda
+Seeds: 5 | Timesteps: 3000
+Critic LR Grid: 0.01 0.005 0.001 0.0003 | Actor LR Grid: 0.001 0.0003 0.0001 | Lambda: 0.9 0.99 1.0
+Optimization Metric: V_start (AUC, higher is better)
+======================================================================
+
+======================================================================
+Running PPO Control Sweep: Environment=MountainCar-v0
+Sweep Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact
+======================================================================
+
+--> [1/2] Sweeping exact_E (LR: 0.01 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 0.0001)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos exact_E         --lr-grid 0.01 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003 0.0001         --config '{"GAE_LAMBDA": 0.1}'         --n-seeds 5         --total-timesteps 3000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: MountainCar-v0 | Timesteps: 3000 | Seeds: 5
+NUM_ENVS: 1 | NUM_STEPS: 1 | MINIBATCH_SIZE: 1 | NUM_EPOCHS: 1
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['exact_E']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact
+======================================================================
+
+
+[1/1] Running sweep for algorithm: exact_E...
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 12 configs x 5 seeds = 60 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/12] Evaluating: LR=0.01, ACTOR_LR=0.001 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (327.8s)
+[2/12] Evaluating: LR=0.01, ACTOR_LR=0.0003 ... done (286.7s)
+[3/12] Evaluating: LR=0.01, ACTOR_LR=0.0001 ... done (287.2s)
+[4/12] Evaluating: LR=0.005, ACTOR_LR=0.001 ... done (287.0s)
+[5/12] Evaluating: LR=0.005, ACTOR_LR=0.0003 ... done (287.5s)
+[6/12] Evaluating: LR=0.005, ACTOR_LR=0.0001 ... done (287.3s)
+[7/12] Evaluating: LR=0.001, ACTOR_LR=0.001 ... done (286.2s)
+[8/12] Evaluating: LR=0.001, ACTOR_LR=0.0003 ... done (287.7s)
+[9/12] Evaluating: LR=0.001, ACTOR_LR=0.0001 ... done (286.8s)
+[10/12] Evaluating: LR=0.0003, ACTOR_LR=0.001 ... done (286.2s)
+[11/12] Evaluating: LR=0.0003, ACTOR_LR=0.0003 ... done (286.7s)
+[12/12] Evaluating: LR=0.0003, ACTOR_LR=0.0001 ... done (286.3s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          3.2777e-01
+  Final Window (500 steps): 3.5719e-01
+  Final V_start:         3.5719e-01 (±3.3204e-04)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1           3 0.005    0.0010     0.327770              0.357187            0.357193           0.000332     0.016742     0.357207      0.327770
+    2           0 0.010    0.0010     0.328501              0.356857            0.356868           0.000390     0.016742     0.356896      0.328501
+    3           6 0.001    0.0010     0.319606              0.355403            0.355683           0.001097     0.016742     0.355683      0.319606
+    4           4 0.005    0.0003     0.301004              0.354615            0.354948           0.000462     0.016742     0.354948      0.301004
+    5           1 0.010    0.0003     0.302104              0.354545            0.354915           0.000492     0.016742     0.354915      0.302104
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/out.pkl
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/config.json
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/best_config_seeds.png
+All configs seed grid saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0/all_configs_seeds_grid.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank Algorithm     Best Hyperparameters  AUC V_start  Final Window (500 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds Run Dir
+    1   exact_E LR=0.005, ACTOR_LR=0.001      0.32777                  0.357187              0.357193             0.000332     0.016703     0.357241      5     N/A
+Comparison plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact
+Comparison Plot: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> [2/2] Sweeping exact_td_lambda (LR: 0.01 0.005 0.001 0.0003 | ACTOR_LR: 0.001 0.0003 0.0001 | VALUE_LAMBDA: 0.9 0.99 1.0)...
+Command: /home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python scripts/sweep_pipeline.py         --policy ppo         --env-name MountainCar-v0         --algos exact_td_lambda         --lr-grid 0.01 0.005 0.001 0.0003         --actor-lr-grid 0.001 0.0003 0.0001         --value-lambda-grid 0.9 0.99 1.0         --config '{"GAE_LAMBDA": 0.1}'         --n-seeds 5         --total-timesteps 3000         --metric V_start         --rank-by final_window         --window-size 500         --higher-is-better         --sweep-root-dir results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact         --no-log-scale
+
+======================================================================
+STARTING SWEEP PIPELINE: PPO POLICY
+Environment: MountainCar-v0 | Timesteps: 3000 | Seeds: 5
+NUM_ENVS: 1 | NUM_STEPS: 1 | MINIBATCH_SIZE: 1 | NUM_EPOCHS: 1
+Critic LR_END: None | Actor LR_END: None
+Algorithms to sweep: ['exact_td_lambda']
+Ranking: final_window (higher is better)
+Output Root Directory: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact
+======================================================================
+
+
+[1/1] Running sweep for algorithm: exact_td_lambda...
+Env: MountainCar-v0
+Default Obs Shape: (2,)
+Obs Shape: (2,)
+Action Shape: ()
+
+============================================================
+RUNNING SWEEP: 36 configs x 5 seeds = 180 runs
+Environment: MountainCar-v0 | Primary Metric: V_start
+Hyperparameters: ['LR', 'VALUE_LAMBDA', 'ACTOR_LR']
+Ranking By: final_window (higher is better)
+============================================================
+
+[1/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ...- obs shape for initialization is  (2,)
+number of features is  16
+ done (319.2s)
+[2/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (290.0s)
+[3/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.9, ACTOR_LR=0.0001 ... done (289.4s)
+[4/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (290.7s)
+[5/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (290.2s)
+[6/36] Evaluating: LR=0.01, VALUE_LAMBDA=0.99, ACTOR_LR=0.0001 ... done (289.1s)
+[7/36] Evaluating: LR=0.01, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (289.1s)
+[8/36] Evaluating: LR=0.01, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (290.0s)
+[9/36] Evaluating: LR=0.01, VALUE_LAMBDA=1.0, ACTOR_LR=0.0001 ... done (289.9s)
+[10/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (289.5s)
+[11/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (290.2s)
+[12/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.9, ACTOR_LR=0.0001 ... done (290.4s)
+[13/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (290.5s)
+[14/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (290.3s)
+[15/36] Evaluating: LR=0.005, VALUE_LAMBDA=0.99, ACTOR_LR=0.0001 ... done (290.5s)
+[16/36] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (290.4s)
+[17/36] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (290.4s)
+[18/36] Evaluating: LR=0.005, VALUE_LAMBDA=1.0, ACTOR_LR=0.0001 ... done (291.0s)
+[19/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (290.0s)
+[20/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (289.9s)
+[21/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.9, ACTOR_LR=0.0001 ... done (290.6s)
+[22/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (289.3s)
+[23/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (290.2s)
+[24/36] Evaluating: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.0001 ... done (291.0s)
+[25/36] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (289.8s)
+[26/36] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (291.1s)
+[27/36] Evaluating: LR=0.001, VALUE_LAMBDA=1.0, ACTOR_LR=0.0001 ... done (289.8s)
+[28/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.001 ... done (290.5s)
+[29/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0003 ... done (290.1s)
+[30/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.9, ACTOR_LR=0.0001 ... done (290.0s)
+[31/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 ... done (290.4s)
+[32/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0003 ... done (289.9s)
+[33/36] Evaluating: LR=0.0003, VALUE_LAMBDA=0.99, ACTOR_LR=0.0001 ... done (289.5s)
+[34/36] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.001 ... done (289.6s)
+[35/36] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0003 ... done (290.0s)
+[36/36] Evaluating: LR=0.0003, VALUE_LAMBDA=1.0, ACTOR_LR=0.0001 ... done (289.8s)
+
+Tuning summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/tuning_summary.csv
+Best configuration saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001 (Ranked by final_window [higher is better])
+  AUC V_start:          3.2586e-01
+  Final Window (500 steps): 3.5740e-01
+  Final V_start:         3.5743e-01 (±4.8102e-04)
+  Min V_start:           1.6742e-02
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx    LR  VALUE_LAMBDA  ACTOR_LR  auc_V_start  final_window_V_start  final_V_start_mean  final_V_start_std  min_V_start  max_V_start  mean_V_start
+    1          21 0.001          0.99     0.001     0.325863              0.357396            0.357425           0.000481     0.016742     0.357432      0.325863
+    2          15 0.005          1.00     0.001     0.328918              0.357342            0.357322           0.000532     0.016742     0.357368      0.328918
+    3           6 0.010          1.00     0.001     0.329560              0.357275            0.357220           0.000438     0.016742     0.357337      0.329560
+    4          12 0.005          0.99     0.001     0.328988              0.357220            0.357186           0.000382     0.016742     0.357241      0.328988
+    5           3 0.010          0.99     0.001     0.329237              0.357147            0.356959           0.000387     0.016742     0.357248      0.329237
+============================================================
+
+Results saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/out.pkl
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/config.json
+Config saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/config.json
+Sweep plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/hyperparameter_sweep_V_start.png
+Best config seeds plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0/best_config_seeds.png
+
+======================================================================
+GENERATING CROSS-ALGORITHM COMPARISON
+======================================================================
+Comparison summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_summary.csv
+
+SUMMARY OF BEST PERFORMING CONFIGURATIONS:
+ Rank       Algorithm                        Best Hyperparameters  AUC V_start  Final Window (500 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                   Run Dir
+    1 exact_td_lambda LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.325863                  0.357396              0.357425             0.000481     0.016660     0.357563      5                                                                                                       N/A
+    2         exact_E                    LR=0.005, ACTOR_LR=0.001     0.327770                  0.357187              0.357193             0.000332     0.016703     0.357241      5 results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0
+Comparison plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs.png
+
+======================================================================
+SWEEP PIPELINE COMPLETED SUCCESSFULLY!
+Results & Plots saved in: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact
+Comparison Plot: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs.png
+======================================================================
+
+
+--> Generating Final Cross-Algorithm Comparison Plot & Summary...
+
+Analyzing sweep directory: 'results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact'
+Found 2 algorithm runs: ['exact_E', 'exact_td_lambda']
+Metric: 'V_start' | Rank By: 'final_window' (higher is better)
+Comparison summary saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_summary_V_start.csv
+
+======================================================================
+ALGORITHM COMPARISON SUMMARY:
+======================================================================
+ Rank       Algorithm                        Best Hyperparameters  AUC V_start  Final Window (500 steps)  Final V_start (Mean)  Final V_start (Std)  Min V_start  Max V_start  Seeds                                                                                                           Run Dir
+    1 exact_td_lambda LR=0.001, VALUE_LAMBDA=0.99, ACTOR_LR=0.001     0.325863                  0.357396              0.357425             0.000481     0.016660     0.357563      5 results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_td_lambda/tuning/20260914_171003/MountainCar-v0
+    2         exact_E                    LR=0.005, ACTOR_LR=0.001     0.327770                  0.357187              0.357193             0.000332     0.016703     0.357241      5         results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/exact_E/tuning/20260914_161151/MountainCar-v0
+======================================================================
+Comparison plot saved to results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs_V_start.png
+
+Saved summary to: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_summary_V_start.csv
+Saved comparison plot to: results/ppo/sweeps/ppo_MountainCar-v0_20260914_161145_exact/comparison/comparison_best_configs_V_start.png
+
+
+======================================================================
+Exact PPO Control Sweep Completed!
+Total runtime: 3h 53m 0s
+Job finished at: 2026-09-14 20:04:45
+======================================================================

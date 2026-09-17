@@ -27,9 +27,9 @@ def parse_args():
     parser.add_argument("--policy", type=str, required=True, choices=["fixed", "random", "ppo", "hybrid"], help="Policy type")
     parser.add_argument("--algo", type=str, required=True, help="Algorithm base name (e.g., exact_td_lambda)")
     parser.add_argument("--sweep-id", type=str, required=True, help="Sweep batch ID")
-    parser.add_argument("--lambdas", type=float, nargs="+", default=[0.0, 0.5, 0.9, 0.95, 1.0], help="List of VALUE_LAMBDA to sweep")
-    parser.add_argument("--lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005], help="Learning rate grid")
-    parser.add_argument("--actor-lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005], help="Actor learning rate grid for PPO")
+    parser.add_argument("--lambdas", type=float, nargs="+", default=[0.0, 0.5, 0.9, 0.95, 0.99], help="List of VALUE_LAMBDA to sweep")
+    parser.add_argument("--lr-grid", type=float, nargs="+", default=[0.01, 0.005, 0.001, 0.0005, 0.0001], help="Learning rate grid")
+    parser.add_argument("--actor-lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005, 0.0001], help="Actor learning rate grid for PPO")
     return parser.parse_args()
 
 def run_lambda_sweep_worker():
@@ -51,7 +51,7 @@ def run_lambda_sweep_worker():
 
     base_config = default_cfg.config.copy()
     base_config["ENV_NAME"] = env_name
-    base_config["N_SEEDS"] = 3
+    base_config["N_SEEDS"] = 5
     base_config["MODEL_LOAD_DIR"] = model_load_dir
 
     print("=" * 70)
@@ -73,8 +73,10 @@ def run_lambda_sweep_worker():
         sys.exit(1)
 
     metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
+    metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
     rank_by = "auc"
     rank_order = "higher" if policy_type in ["ppo", "hybrid"] else "lower"
+    window_size = 750
     window_size = 40
     log_scale = False if metric_key.lower() == "v_start" else True
 

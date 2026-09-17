@@ -69,50 +69,46 @@ def _():
 @app.cell
 def _():
     TASKS = [
-        {"id": "mountain_car", "name": "MountainCar", "policy": "ppo", "env": "MountainCar-v0"},
-        {"id": "four_rooms", "name": "FourRooms", "policy": "ppo", "env": "FourRooms-misc"},
-        {"id": "eight_rooms", "name": "EightRooms", "policy": "ppo", "env": "EightRooms"},
-        {"id": "whirlpool", "name": "Whirlpool", "policy": "ppo", "env": "Whirlpool"},
+        {"id": "fixed_mountaincar", "name": "Fixed Policy - MountainCar-v0", "policy": "fixed", "env": "MountainCar-v0"},
+        {"id": "fixed_fourrooms", "name": "Fixed Policy - FourRooms-misc", "policy": "fixed", "env": "FourRooms-misc"},
+        {"id": "random_mountaincar", "name": "Random Policy - MountainCar-v0", "policy": "random", "env": "MountainCar-v0"},
+        {"id": "random_fourrooms", "name": "Random Policy - FourRooms-misc", "policy": "random", "env": "FourRooms-misc"},
     ]
 
-    EXACT_ALGOS = ["exact_E", "exact_td_lambda"]
-    SAMPLED_ALGOS = ["sampled_E", "sampled_td_lambda"]
+    EXACT_ALGOS = ["exact_td", "exact_mc", "exact_E_gd", "exact_td_lambda", "exact_td_symmetric", "exact_E_td"]
+    SAMPLED_ALGOS = ["td", "sampled_E", "monte_carlo", "mc", "td0"]
 
     ALGO_DISPLAY_NAMES = {
-        "exact_E": "Exact E (GD)",
-        "exact_E_gd": "Exact E (GD)",
-        "exact_td_lambda": "Exact TD(λ)",
         "exact_td": "Exact TD(0)",
         "exact_mc": "Exact MC",
+        "exact_E_gd": "Exact E (GD)",
+        "exact_E": "Exact E (GD)",
         "exact_Etd": "Exact E + TD",
         "exact_E_td": "Exact E + TD",
+        "exact_td_lambda": "Exact TD(λ)",
         "exact_td_symmetric": "Exact TD (Sym)",
-        "sampled_E": "Sampled E",
-        "sampled_td_lambda": "Sampled TD(λ)",
-        "sampled_td": "Sampled TD(λ)",
-        "sampled_mc": "Sampled MC",
-        "monte_carlo": "Sampled MC",
-        "td0": "Sampled TD(0)",
         "td": "Sampled TD(λ)",
+        "sampled_E": "Sampled E",
+        "monte_carlo": "Sampled MC",
+        "mc": "Sampled MC",
+        "td0": "Sampled TD(0)",
         "E_td": "Sampled E + TD update",
     }
 
     ALGO_COLORS = {
-        "exact_E": "#1f741fff",         # Green
+        "exact_td": "#1f77b4",        # Blue
+        "exact_mc": "#492d14ff",        # Orange
         "exact_E_gd": "#1f741fff",      # Green
-        "exact_td_lambda": "#cb8144ff", # Orange/Red
-        "exact_td": "#1f77b4",          # Blue
-        "exact_mc": "#492d14ff",        # Brown
-        "exact_Etd": "#8c564b",         # Brown
-        "exact_E_td": "#8c564b",        # Brown
+        "exact_E": "#1f741fff",         # Green
+        "exact_Etd": "#8c564b",       # Brown
+        "exact_E_td": "#8c564b",      # Brown
+        "exact_td_lambda": "#cb8144ff", # Red
         "exact_td_symmetric": "#9467bd", # Purple
-        "sampled_E": "#1f741fff",       # Green
-        "sampled_td_lambda": "#cb8144ff", # Orange/Red
-        "sampled_td": "#cb8144ff",      # Orange/Red
-        "sampled_mc": "#492d14ff",      # Brown
-        "monte_carlo": "#492d14ff",     # Brown
-        "td0": "#1f77b4",               # Blue
-        "td": "#cb8144ff",              # Orange/Red
+        "td": "#cb8144ff",              # Blue
+        "sampled_E": "#1f741fff",        # Green
+        "monte_carlo": "#492d14ff",     # Orange
+        "mc": "#492d14ff",              # Orange
+        "td0": "#1f77b4",             # Purple
     }
     return ALGO_COLORS, ALGO_DISPLAY_NAMES, EXACT_ALGOS, SAMPLED_ALGOS, TASKS
 
@@ -120,7 +116,6 @@ def _():
 @app.cell
 def _(
     ALGO_DISPLAY_NAMES,
-    TASKS,
     extract_best_configuration,
     get_selected_config_idx,
     os,
@@ -129,19 +124,19 @@ def _(
     def generate_task_summary_table(
         all_task_data,
         algo_list,
-        metric_key="V_start",
-        window_size=500,
-        selection_metric="V_start",
+        metric_key="nn_weighted_VE",
+        window_size=20,
+        selection_metric="nn_greedy_correct",
         save_path=None,
     ):
         """
         Creates a unified summary table across all 4 tasks for the specified algorithms,
-        evaluating the single configuration selected by selection_metric.
+        evaluating the single configuration selected by selection_metric (window_size=1000).
         """
-        task_keys = [t["id"] for t in TASKS]
+        task_keys = ["fixed_mountaincar", "fixed_fourrooms", "random_mountaincar", "random_fourrooms"]
         rows = []
 
-        is_percent = ("correct" in metric_key.lower() or "acc" in metric_key.lower())
+        is_percent = ("correct" in metric_key or "acc" in metric_key)
 
         for task_id in task_keys:
             if task_id not in all_task_data:
@@ -157,6 +152,7 @@ def _(
 
                 sweep_data = runs_dict[algo]
                 try:
+                    # Single selection based on greedy accuracy
                     best_idx, best_label, _ = get_selected_config_idx(
                         sweep_data,
                         selection_metric=selection_metric,
@@ -203,7 +199,7 @@ def _(
                     rows.append({
                         "Task": task_info["name"],
                         "Algorithm": display_name,
-                        f"Best Hyperparameters (by {selection_metric})": best_label,
+                        "Best Hyperparameters (by Greedy Acc)": best_label,
                         f"Converged Window (Past {win} steps)": conv_str,
                         f"AUC ({metric_key})": auc_str,
                         f"Final ({metric_key})": final_str,
@@ -249,34 +245,22 @@ def _(
 
         Args:
             base_results_dir: Root results directory (default "results").
-            custom_batches: List or string of batch directory paths.
+            custom_batches: List or string of batch directory paths, e.g.:
+                ["results/fixed/sweeps/fixed_MountainCar-v0_20260828_094649", ...]
             custom_paths: Dict mapping (policy, env) or task_id to batch dirs or algo paths.
         """
-        # Resolve base_results_dir relative to current or parent directory
-        if not os.path.exists(base_results_dir):
-            parent_attempt = os.path.join("..", base_results_dir)
-            if os.path.exists(parent_attempt):
-                base_results_dir = parent_attempt
-
         all_task_data = {t["id"]: {"task_info": t, "runs": {}} for t in TASKS}
 
         # 1. If custom_batches provided (list or multi-line string)
         if custom_batches:
             if isinstance(custom_batches, str):
                 custom_batches = [line.strip() for line in custom_batches.strip().splitlines() if line.strip() and not line.strip().startswith("#")]
-            for b_path in custom_batches:
-                batch_dir = b_path
+            for batch_dir in custom_batches:
                 if not os.path.exists(batch_dir):
-                    parent_batch = os.path.join("..", b_path)
-                    if os.path.exists(parent_batch):
-                        batch_dir = parent_batch
-                    else:
-                        continue
-
+                    print(f"Warning: Custom batch directory not found: {batch_dir}")
+                    continue
                 # Inspect algorithms inside batch directory
-                for item in sorted(os.listdir(batch_dir)):
-                    if item == "comparison" or item.startswith("."):
-                        continue
+                for item in os.listdir(batch_dir):
                     item_path = os.path.join(batch_dir, item)
                     if not os.path.isdir(item_path):
                         continue
@@ -309,11 +293,8 @@ def _(
                 if isinstance(paths, str):
                     paths = [paths]
                 for p in paths:
-                    resolved_p = p if os.path.exists(p) else os.path.join("..", p)
-                    if not os.path.exists(resolved_p):
-                        continue
-                    for algo in os.listdir(resolved_p) if os.path.isdir(resolved_p) else [os.path.basename(resolved_p)]:
-                        algo_path = os.path.join(resolved_p, algo, "tuning") if os.path.exists(os.path.join(resolved_p, algo, "tuning")) else resolved_p
+                    for algo in os.listdir(p) if os.path.isdir(p) else [os.path.basename(p)]:
+                        algo_path = os.path.join(p, algo, "tuning") if os.path.exists(os.path.join(p, algo, "tuning")) else p
                         ts, env, run_path = find_latest_run_dir(algo_path)
                         if run_path:
                             try:
@@ -346,41 +327,25 @@ def _(
 def _(extract_best_configuration):
     def get_selected_config_idx(
         sweep_data,
-        selection_metric="V_start",
-        window_size=500,
+        selection_metric="nn_greedy_correct",
+        window_size=1000,
         rank_by="final_window",
     ):
         """
-        Selects the single best configuration index for this sweep run.
-        Performs case-insensitive matching for selection_metric (default: 'V_start').
+        Selects the single best configuration index once for this sweep run based on greedy accuracy.
+        Uses rank_by='final_window', window_size=1000, rank_order='higher'.
+        Falls back to 'nn_weighted_VE' (rank_order='lower') if selection_metric is not available.
         """
         metrics = sweep_data.get("metrics", {})
-        metric_to_use = None
-        for k in metrics.keys():
-            if k.lower() == selection_metric.lower():
-                metric_to_use = k
-                break
-
-        if metric_to_use is None:
-            for fallback in ["V_start", "mean_rew", "nn_greedy_performance", "nn_weighted_VE", "E"]:
-                for k in metrics.keys():
-                    if k.lower() == fallback.lower():
-                        metric_to_use = k
-                        break
-                if metric_to_use:
-                    break
-
-        if metric_to_use is None and metrics:
-            metric_to_use = list(metrics.keys())[0]
-
-        if metric_to_use is None:
-            return 0, "Default", {}
-
-        k_lower = metric_to_use.lower()
-        if any(x in k_lower for x in ["v_start", "rew", "perf", "acc", "correct"]):
+        if selection_metric in metrics:
+            metric_to_use = selection_metric
             order = "higher"
-        else:
+        elif "nn_weighted_VE" in metrics:
+            metric_to_use = "nn_weighted_VE"
             order = "lower"
+        else:
+            metric_to_use = list(metrics.keys())[0]
+            order = "higher"
 
         _, label, idx, hparams = extract_best_configuration(
             sweep_data,
@@ -398,7 +363,6 @@ def _(extract_best_configuration):
 def _(
     ALGO_COLORS,
     ALGO_DISPLAY_NAMES,
-    TASKS,
     extract_best_configuration,
     get_selected_config_idx,
     np,
@@ -409,27 +373,27 @@ def _(
         all_task_data,
         algo_list,
         title_prefix="Algorithms Comparison",
-        metric_key="V_start",
-        ylabel="Start State Value (V_start)",
-        log_scale=False,
-        use_geom_mean=False,
-        selection_metric="V_start",
-        selection_window=500,
+        metric_key="nn_weighted_VE",
+        ylabel="Value Error (nn_weighted_VE)",
+        log_scale=True,
+        use_geom_mean=True,
+        selection_metric="nn_greedy_correct",
+        selection_window=1000,
         legend_loc="auto",
         save_path=None,
     ):
         """
         Plots a 2x2 grid comparing specified algorithms across the 4 core tasks.
-        Uses the run selected via selection_metric (window_size=500).
+        Uses the single run selected via selection_metric (window_size=1000, higher is better).
         """
         fig, axes = plt.subplots(2, 2, figsize=(15, 10), sharex=False)
         axes = axes.flatten()
 
-        task_keys = [t["id"] for t in TASKS]
+        task_keys = ["fixed_mountaincar", "fixed_fourrooms", "random_mountaincar", "random_fourrooms"]
 
         # Determine automatic legend placement
         if legend_loc == "auto":
-            loc = "lower right" if any(x in metric_key.lower() for x in ["correct", "acc", "v_start", "perf", "rew"]) else "upper right"
+            loc = "lower right" if ("correct" in metric_key or "acc" in metric_key) else "upper right"
         else:
             loc = legend_loc
 
@@ -451,6 +415,7 @@ def _(
 
                 sweep_data = runs_dict[algo]
                 try:
+                    # 1. Select the single winning configuration once based on greedy accuracy
                     best_idx, best_label, _ = get_selected_config_idx(
                         sweep_data,
                         selection_metric=selection_metric,
@@ -458,6 +423,7 @@ def _(
                         rank_by="final_window",
                     )
 
+                    # 2. Extract trajectory for the requested metric_key for that exact best_idx
                     seed_trajectories, _, _, _ = extract_best_configuration(
                         sweep_data,
                         metric_key=metric_key,
@@ -472,10 +438,7 @@ def _(
                 display_name = ALGO_DISPLAY_NAMES.get(algo, algo)
                 label = f"{display_name} ({best_label})" if best_label else display_name
 
-                # Geometric mean requires strictly positive values and log_scale
-                can_use_geom = use_geom_mean and log_scale and not np.any(seed_trajectories <= 0)
-
-                if can_use_geom:
+                if use_geom_mean:
                     safe_arr = np.maximum(seed_trajectories, 1e-18)
                     log_arr = np.log(safe_arr)
                     log_mean = np.mean(log_arr, axis=0)
@@ -504,6 +467,7 @@ def _(
             ax.grid(True, which="both", linestyle="--", alpha=0.5)
 
             if plotted_any:
+                # Collect y-values strictly from the mean lines (excluding CI shading)
                 lines = ax.get_lines()
                 if lines:
                     all_y = np.concatenate([l.get_ydata() for l in lines])
@@ -516,11 +480,14 @@ def _(
                         ymax = np.max(valid_y)
 
                         if log_scale:
+                            # 50% lower padding, 2x upper padding in log space
                             ax.set_ylim(ymin * 0.5, ymax * 2.0)
                         else:
                             pad = (ymax - ymin) * 0.08 if ymax > ymin else 0.1
                             ax.set_ylim(ymin - pad, ymax + pad)
 
+
+        
             if plotted_any and loc is not None:
                 ax.legend(loc=loc, fontsize=8.5, frameon=True)
             elif not plotted_any:
@@ -531,7 +498,7 @@ def _(
 
         if save_path:
             os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-            fig.savefig(save_path, bbox_inches="tight", dpi=120)
+            fig.savefig(save_path, bbox_inches="tight", dpi=90)
             print(f"Saved 4-task grid plot to {save_path}")
 
         return fig
@@ -542,13 +509,13 @@ def _(
 @app.cell
 def _(mo):
     mo.md("""
-    # 🔬 PPO Control Sweep Benchmark Suite
+    # 🔬 Reinforcement Learning Sweep Benchmark Suite
     ### Cross-Algorithm & Cross-Task Learning Curves & Converged Metric Analysis
     Tasks evaluated:
-    1. **MountainCar-v0**
-    2. **FourRooms-misc**
-    3. **EightRooms**
-    4. **Whirlpool**
+    1. **Fixed Policy** — MountainCar-v0
+    2. **Fixed Policy** — FourRooms-misc
+    3. **Random Policy** — MountainCar-v0
+    4. **Random Policy** — FourRooms-misc
     """)
     return
 
@@ -557,29 +524,29 @@ def _(mo):
 def _():
     # Paste your sweep directories here to save them permanently in code/git:
     SWEEPS_TO_LOAD = [
-        "results/ppo/sweeps/ppo_EightRooms_20260914_093440_exact",
-        "results/ppo/sweeps/ppo_FourRooms-misc_20260914_100545_exact",
-        "results/ppo/sweeps/ppo_MountainCar-v0_20260914_184819_exact_mountain_car",
-        "results/ppo/sweeps/ppo_Whirlpool_20260914_101645_exact",
+        "results/fixed/sweeps/fixed_FourRooms-misc_20260909_093444",
+        "results/fixed/sweeps/fixed_FourRooms-misc_20260909_093324",
+        "results/fixed/sweeps/fixed_MountainCar-v0_20260909_094456",
+        "results/fixed/sweeps/fixed_MountainCar-v0_20260909_101526",
 
-        "results/ppo/sweeps/ppo_EightRooms_20260914_093940_sampled",
-        "results/ppo/sweeps/ppo_FourRooms-misc_20260914_110726_sampled",
-        "results/ppo/sweeps/ppo_MountainCar-v0_20260914_140547_sampled",
-        "results/ppo/sweeps/ppo_Whirlpool_20260914_120623_sampled",
+        "results/random/sweeps/random_FourRooms-misc_20260902_160256",
+        "results/random/sweeps/random/random_FourRooms-misc_20260909_092919",
+        "results/random/sweeps/random_MountainCar-v0_20260909_093537",
+        "results/random/sweeps/random_MountainCar-v0_20260909_093950",
     ]
     return (SWEEPS_TO_LOAD,)
 
 
 @app.cell
 def _(mo):
-    base_dir_input = mo.ui.text(value="results", label="Base Results Dir")
-    window_size_slider = mo.ui.slider(start=10, stop=5000, step=10, value=500, label="Selection Tail Window Size")
+    base_dir_input = mo.ui.text(value="../results", label="Base Results Dir")
+    window_size_slider = mo.ui.slider(start=10, stop=20000, step=10, value=1800, label="Selection Tail Window Size")
     selection_metric_dropdown = mo.ui.dropdown(
-        options=["V_start", "mean_rew", "E", "nn_weighted_VE", "nn_greedy_performance", "nn_greedy_correct"],
-        value="V_start",
+        options=["nn_greedy_correct", "nn_weighted_VE", "E", "nn_greedy_performance"],
+        value="nn_greedy_performance",
         label="Select Best Config By",
     )
-    use_geom_mean_checkbox = mo.ui.checkbox(value=False, label="Geometric Mean Bands")
+    use_geom_mean_checkbox = mo.ui.checkbox(value=True, label="Geometric Mean Bands")
 
     controls = mo.hstack([base_dir_input, selection_metric_dropdown, window_size_slider, use_geom_mean_checkbox], justify="start")
     controls
@@ -615,26 +582,71 @@ def _(
     fig_exact = plot_4task_grid(
         task_data,
         algo_list=EXACT_ALGOS,
-        title_prefix="Exact PPO Control Performance Across 4 Tasks",
-        metric_key=selection_metric_dropdown.value,
-        ylabel=f"Performance ({selection_metric_dropdown.value})",
-        log_scale=False if any(x in selection_metric_dropdown.value.lower() for x in ["v_start", "perf", "rew", "correct", "acc"]) else True,
+        title_prefix="Exact Algorithms Performance Across 4 Tasks",
+        metric_key="nn_weighted_VE",
+        ylabel="Value Error (nn_weighted_VE)",
+        log_scale=True,
         use_geom_mean=use_geom_mean_checkbox.value,
         selection_metric=selection_metric_dropdown.value,
         selection_window=window_size_slider.value,
-        save_path="results/comparison_exact_ppo.png",
+        save_path="results/comparison_exact_4tasks_VE.png",
+    )
+
+    fig_greedy_exact = plot_4task_grid(
+        task_data,
+        algo_list=EXACT_ALGOS,
+        title_prefix="Exact Algorithms Performance Across 4 Tasks",
+        metric_key="nn_greedy_correct",
+        ylabel="Greedy Policy Accuracy",
+        log_scale=False,
+        use_geom_mean=use_geom_mean_checkbox.value,
+        selection_metric=selection_metric_dropdown.value,
+        selection_window=window_size_slider.value,
+        legend_loc='lower right',
+        save_path="results/comparison_exact_4tasks_greedy_acc.png",
+    )
+
+    fig_greedy_val = plot_4task_grid(
+        task_data,
+        algo_list=EXACT_ALGOS,
+        title_prefix="Exact Algorithms Performance Across 4 Tasks",
+        metric_key="nn_greedy_performance",
+        ylabel="Greedy Policy Performance",
+        log_scale=False,
+        use_geom_mean=use_geom_mean_checkbox.value,
+        selection_metric=selection_metric_dropdown.value,
+        selection_window=window_size_slider.value,
+        legend_loc='lower right',
+        save_path="results/comparison_exact_4tasks_greedy_val.png",
+    )
+
+    fig_E_exact = plot_4task_grid(
+        task_data,
+        algo_list=EXACT_ALGOS,
+        title_prefix="Exact Algorithms Performance Across 4 Tasks",
+        metric_key="E",
+        ylabel="E (A-weighted value error)",
+        log_scale=True,
+        use_geom_mean=use_geom_mean_checkbox.value,
+        selection_metric=selection_metric_dropdown.value,
+        selection_window=window_size_slider.value,
+        save_path="results/comparison_exact_4tasks_E.png",
     )
 
     mo.vstack([
-        mo.md(f"## 📊 1. Exact Algorithms: 4-Task Performance (`{selection_metric_dropdown.value}`)"),
-        mo.image(src="results/comparison_exact_ppo.png"),
+        mo.md("## 📊 2. Exact Algorithms: 4-Task Value Error (`nn_weighted_VE`) & Greedy Accuracy"),
+        mo.image(src="results/comparison_exact_4tasks_VE.png"),
+        mo.image(src="results/comparison_exact_4tasks_greedy_acc.png"),
+        mo.image(src="results/comparison_exact_4tasks_greedy_val.png"),  
     ])
     return
 
 
 @app.cell
 def _(email_pdf):
-    email_pdf("results/comparison_exact_ppo.png")
+    # email_pdf("results/comparison_exact_4tasks_VE.png")
+    # email_pdf("results/comparison_exact_4tasks_greedy_acc.png")
+    email_pdf("results/comparison_exact_4tasks_greedy_val.png")
     return
 
 
@@ -650,15 +662,12 @@ def _(
     exact_table = generate_task_summary_table(
         task_data,
         algo_list=EXACT_ALGOS,
-        metric_key=selection_metric_dropdown.value,
+        metric_key="nn_greedy_performance",
         window_size=window_size_slider.value,
         selection_metric=selection_metric_dropdown.value,
         save_path="results/exact_algorithms_converged_summary.csv",
     )
-    mo.vstack([
-        mo.md(f"## 📋 Exact Algorithms: Converged Summary Table (Tail Window: Past {window_size_slider.value} steps)"),
-        mo.ui.table(exact_table),
-    ])
+    mo.ui.table(exact_table)
     return
 
 
@@ -667,41 +676,69 @@ def _(
     SAMPLED_ALGOS,
     mo,
     plot_4task_grid,
+    plt,
     selection_metric_dropdown,
     task_data,
     use_geom_mean_checkbox,
-    window_size_slider,
 ):
     fig_sampled = plot_4task_grid(
         task_data,
         algo_list=SAMPLED_ALGOS,
-        title_prefix="Sampled PPO Control Performance Across 4 Tasks",
-        metric_key=selection_metric_dropdown.value,
-        ylabel=f"Performance ({selection_metric_dropdown.value})",
-        log_scale=False if any(x in selection_metric_dropdown.value.lower() for x in ["v_start", "perf", "rew", "correct", "acc"]) else True,
+        title_prefix="Sampled Algorithms Performance Across 4 Tasks",
+        metric_key="nn_weighted_VE",
+        ylabel="Value Error (nn_weighted_VE)",
+        log_scale=True,
+        selection_window = 40,
         use_geom_mean=use_geom_mean_checkbox.value,
         selection_metric=selection_metric_dropdown.value,
-        selection_window=window_size_slider.value,
-        save_path="results/comparison_sampled_ppo.png",
+        save_path="results/comparison_sampled_4tasks_VE.png",
     )
 
+    fig_greedy_sampled = plot_4task_grid(
+        task_data,
+        algo_list=SAMPLED_ALGOS,
+        title_prefix="Sampled Algorithms Performance Across 4 Tasks",
+        metric_key="nn_greedy_correct",
+        ylabel="Greedy Policy Accuracy",
+        log_scale=False,
+        selection_window = 40,
+        legend_loc = 'lower right',
+        use_geom_mean=use_geom_mean_checkbox.value,
+        selection_metric=selection_metric_dropdown.value,
+        save_path="results/comparison_sampled_4tasks_greedy_acc.png",
+    )
+
+    fig_greedy_val_sampled = plot_4task_grid(
+        task_data,
+        algo_list=SAMPLED_ALGOS,
+        title_prefix="Sampled Algorithms Performance Across 4 Tasks",
+        metric_key="nn_greedy_performance",
+        ylabel="Greedy Policy Value",
+        log_scale=False,
+        selection_window = 40,
+        legend_loc = 'lower right',
+        use_geom_mean=use_geom_mean_checkbox.value,
+        selection_metric=selection_metric_dropdown.value,
+        save_path="results/comparison_sampled_4tasks_greedy_val.png",
+    )
+
+    plt.close('all')
+
     mo.vstack([
-        mo.md(f"## 📊 2. Sampled Algorithms: 4-Task Performance (`{selection_metric_dropdown.value}`)"),
-        mo.image(src="results/comparison_sampled_ppo.png"),
+        mo.md("## 📊 1. Sampled Algorithms: 4-Task Value Error (`nn_weighted_VE`) & Greedy Accuracy"),
+        mo.image(src="results/comparison_sampled_4tasks_VE.png"), 
+        mo.image(src="results/comparison_sampled_4tasks_greedy_acc.png"), 
+        mo.image(src="results/comparison_sampled_4tasks_greedy_val.png"), 
     ])
     return
 
 
 @app.cell
 def _(email_pdf):
-    email_pdf("results/comparison_sampled_ppo.png")
-    return
 
-
-@app.cell
-def _(email_pdf):
-    email_pdf("../results/ppo/sweeps/ppo_EightRooms_20260914_093440_exact/exact_td_lambda/tuning/20260914_094259/EightRooms/hyperparameter_sweep_V_start.png")
-
+    # email_pdf("results/comparison_sampled_4tasks_VE.png")
+    # email_pdf("results/comparison_sampled_4tasks_greedy_acc.png")
+    email_pdf("results/comparison_sampled_4tasks_greedy_val.png")
     return
 
 
@@ -717,15 +754,15 @@ def _(
     sampled_table = generate_task_summary_table(
         task_data,
         algo_list=SAMPLED_ALGOS,
-        metric_key=selection_metric_dropdown.value,
-        window_size=window_size_slider.value,
+        metric_key="nn_weighted_VE",
+        window_size=20,
         selection_metric=selection_metric_dropdown.value,
         save_path="results/sampled_algorithms_converged_summary.csv",
     )
 
     mo.vstack([
-        mo.md(f"## 📋 Sampled Algorithms: Converged Summary Table (Tail Window: Past {window_size_slider.value} steps)"),
-        mo.ui.table(sampled_table),
+        mo.md(f"## 📋 4. Sampled Algorithms: Converged Summary Table (Tail Window: Past {window_size_slider.value} steps)"),
+        mo.ui.table(sampled_table)
     ])
     return
 

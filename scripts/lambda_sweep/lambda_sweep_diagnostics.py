@@ -71,9 +71,9 @@ def main():
             os.makedirs(comparison_dir, exist_ok=True)
 
             metric_key = "V_start" if policy_type in ["ppo", "hybrid"] else "nn_weighted_VE"
-            rank_by = "auc"
+            rank_by = "final_window"
             rank_order = "higher" if policy_type in ["ppo", "hybrid"] else "lower"
-            window_size = 40
+            window_size = 750
             log_scale = False if metric_key.lower() == "v_start" else True
 
             # 1. Generate Summary Dataframe

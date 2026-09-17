@@ -1,0 +1,249 @@
+======================================================================
+Starting SLURM Lambda Sweep Worker
+Environment: Whirlpool
+Policy:      fixed
+Algorithm:   exact_E_lambda
+Sweep ID:    20260915_230741
+======================================================================
+[Whirlpool] Auto-resolved MODEL_LOAD_DIR to valid checkpoint: 'ground_truth/fixed_policies'
+======================================================================
+Starting Lambda Sweep Worker
+Sweep ID: 20260915_230741 | Env: Whirlpool | Policy: fixed | Algo: exact_E_lambda
+Lambdas: [0.0, 0.5, 0.9, 0.95, 0.99]
+======================================================================
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.0
+ground_truth/fixed_policies
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+ppo/ground_truth/fixed_policies
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: Whirlpool | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.0 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (33.4s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.0 ... done (10.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.0 ... done (10.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.0 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          5.7545e-03
+  Final Window (750 steps): 1.9115e-07
+  Final nn_weighted_VE:         4.2833e-09 (±1.1894e-09)
+  Min nn_weighted_VE:           2.9825e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.0            0.005754                 1.911535e-07               4.283308e-09              1.189396e-09        2.982546e-09            0.148933             0.005754
+    2           1 0.0010           0.0            0.011521                 5.712868e-05               4.282957e-07              5.205595e-07        4.282957e-07            0.148933             0.011521
+    3           2 0.0005           0.0            0.016074                 3.875379e-04               8.854603e-06              2.572490e-06        8.854603e-06            0.148933             0.016074
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/config.json
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.0/tuning/20260915_232337/Whirlpool/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.0
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.5
+ground_truth/fixed_policies
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+ppo/ground_truth/fixed_policies
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: Whirlpool | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.5 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (15.2s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.5 ... done (10.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.5 ... done (10.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.5 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          5.2411e-03
+  Final Window (750 steps): 1.5017e-08
+  Final nn_weighted_VE:         2.1840e-09 (±1.1697e-09)
+  Min nn_weighted_VE:           1.3265e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.5            0.005241                 1.501689e-08               2.184017e-09              1.169670e-09        1.326489e-09            0.148933             0.005241
+    2           1 0.0010           0.5            0.010403                 1.680087e-05               2.944751e-08              4.630289e-08        2.944751e-08            0.148933             0.010403
+    3           2 0.0005           0.5            0.014336                 1.472281e-04               1.337962e-06              7.735405e-07        1.337962e-06            0.148933             0.014336
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/config.json
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.5/tuning/20260915_232446/Whirlpool/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.5
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.9
+ground_truth/fixed_policies
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+ppo/ground_truth/fixed_policies
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: Whirlpool | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.9 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (15.0s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.9 ... done (10.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.9 ... done (10.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.9 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          4.5707e-03
+  Final Window (750 steps): 1.3886e-08
+  Final nn_weighted_VE:         5.5519e-10 (±1.2813e-10)
+  Min nn_weighted_VE:           5.0154e-10
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050           0.9            0.004571                 1.388640e-08               5.551862e-10              1.281345e-10        5.015374e-10            0.148933             0.004571
+    2           1 0.0010           0.9            0.008933                 1.602944e-06               2.633670e-08              4.854715e-08        2.633670e-08            0.148933             0.008933
+    3           2 0.0005           0.9            0.012103                 2.169299e-05               2.274716e-07              3.040585e-07        2.274716e-07            0.148933             0.012103
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/config.json
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.9/tuning/20260915_232532/Whirlpool/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.9
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.95
+ground_truth/fixed_policies
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+ppo/ground_truth/fixed_policies
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: Whirlpool | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.95 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (15.0s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.95 ... done (10.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.95 ... done (10.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.95 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          4.3980e-03
+  Final Window (750 steps): 3.4643e-08
+  Final nn_weighted_VE:         9.4803e-10 (±3.3673e-10)
+  Min nn_weighted_VE:           5.4175e-10
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.95            0.004398                 3.464277e-08               9.480301e-10              3.367321e-10        5.417514e-10            0.148933             0.004398
+    2           1 0.0010          0.95            0.008560                 1.510227e-06               7.719109e-08              1.309414e-07        7.719109e-08            0.148933             0.008560
+    3           2 0.0005          0.95            0.011554                 1.535161e-05               4.358287e-07              4.657705e-07        4.358287e-07            0.148933             0.011554
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/config.json
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.95/tuning/20260915_232618/Whirlpool/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.95
+
+---> Running sweep for pseudo-algorithm: exact_E_lambda_0.99
+ground_truth/fixed_policies
+Env: Whirlpool
+Default Obs Shape: (21, 21, 2)
+Obs Shape: (21, 21, 2)
+Action Shape: ()
+ppo/ground_truth/fixed_policies
+
+============================================================
+RUNNING SWEEP: 3 configs x 5 seeds = 15 runs
+Environment: Whirlpool | Primary Metric: nn_weighted_VE
+Hyperparameters: ['LR', 'VALUE_LAMBDA']
+Ranking By: auc (lower is better)
+============================================================
+
+[1/3] Evaluating: LR=0.005, VALUE_LAMBDA=0.99 ...- obs shape for initialization is  (21, 21, 2)
+number of features is  16
+ done (15.2s)
+[2/3] Evaluating: LR=0.001, VALUE_LAMBDA=0.99 ... done (10.2s)
+[3/3] Evaluating: LR=0.0005, VALUE_LAMBDA=0.99 ... done (10.2s)
+
+Tuning summary saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/tuning_summary.csv
+Best configuration saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/best_config.json
+
+============================================================
+★ TOP CONFIGURATION: LR=0.005, VALUE_LAMBDA=0.99 (Ranked by auc [lower is better])
+  AUC nn_weighted_VE:          4.2231e-03
+  Final Window (750 steps): 1.1537e-07
+  Final nn_weighted_VE:         4.8636e-09 (±7.7597e-09)
+  Min nn_weighted_VE:           4.4294e-09
+============================================================
+
+Top 5 Configurations:
+ rank  config_idx     LR  VALUE_LAMBDA  auc_nn_weighted_VE  final_window_nn_weighted_VE  final_nn_weighted_VE_mean  final_nn_weighted_VE_std  min_nn_weighted_VE  max_nn_weighted_VE  mean_nn_weighted_VE
+    1           0 0.0050          0.99            0.004223                 1.153725e-07               4.863650e-09              7.759724e-09        4.429423e-09            0.148933             0.004223
+    2           1 0.0010          0.99            0.008130                 3.003392e-06               3.085107e-07              3.867748e-07        3.085107e-07            0.148933             0.008130
+    3           2 0.0005          0.99            0.010942                 2.235196e-05               1.241166e-06              8.049926e-07        1.241166e-06            0.148933             0.010942
+============================================================
+
+Results saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/out.pkl
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/config.json
+Config saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/config.json
+Sweep plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/hyperparameter_sweep_nn_weighted_VE.png
+Best config seeds plot saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/best_config_seeds.png
+All configs seed grid saved to results/lambda_sweep/20260915_230741/Whirlpool/fixed/exact_E_lambda_0.99/tuning/20260915_232704/Whirlpool/all_configs_seeds_grid.png
+Successfully completed tuning for exact_E_lambda_0.99
+Sweep pipeline completed successfully for Whirlpool / exact_E_lambda
