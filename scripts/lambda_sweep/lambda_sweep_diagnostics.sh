@@ -45,10 +45,13 @@ if [ $EXIT_CODE -eq 0 ]; then
 
     cd "$REPO_ROOT"
     echo "Sending results and comparison plots to ds541@cs.duke.edu..."
-    # Email the compressed archive
+    # 1. Email the master 12-task vector PDF and PNG summary
+    $PYTHON -c "from core.mail import email_results_file; import os; [email_results_file(f) for f in ['results/lambda_sweep/${SWEEP_ID}/lambda_sweep_master_summary.pdf', 'results/lambda_sweep/${SWEEP_ID}/lambda_sweep_master_summary.png'] if os.path.exists(f)]"
+
+    # 2. Email the compressed full archive
     $PYTHON -c "from core.mail import email_results_file; email_results_file('results/lambda_sweep/lambda_sweep_${SWEEP_ID}.tar.gz')"
 
-    # Email comparison plots individually so they are viewable directly in inbox
+    # 3. Email individual task comparison plots
     $PYTHON -c "from core.mail import email_results_file; import glob; [email_results_file(f) for f in sorted(glob.glob('results/lambda_sweep/${SWEEP_ID}/**/comparison/*plot.png', recursive=True))]"
 else
     echo "Diagnostics FAILED with exit code $EXIT_CODE"
