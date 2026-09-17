@@ -454,32 +454,50 @@ def _(
 
 
 @app.cell
+def _(mo, task_summaries):
+    if not task_summaries:
+        task_selector_ui = None
+        selector_view = mo.md("")
+    else:
+        _options = ["All Tasks"] + list(task_summaries.keys())
+        task_selector_ui = mo.ui.dropdown(
+            options=_options,
+            value=_options[0],
+            label="🎯 Select Task to View Learning Curves:",
+        )
+        selector_view = mo.hstack([task_selector_ui], justify="start", align="center")
+
+    selector_view
+    return selector_view, task_selector_ui
+
+
+@app.cell
 def _(
+    active_sweep_dir,
     mo,
+    os,
     plot_algorithm_comparison,
     plt,
     show_individual_plots_ui,
     show_plots_ui,
+    task_selector_ui,
     task_summaries,
     window_size_ui,
 ):
-    if not task_summaries or not show_plots_ui.value:
+    if not task_summaries or not show_plots_ui.value or task_selector_ui is None:
         plots_view = mo.md("")
     else:
-        import io
-        import base64
+        _selected_task = task_selector_ui.value
+        _tasks_to_render = (
+            list(task_summaries.items())
+            if _selected_task == "All Tasks"
+            else [(_selected_task, task_summaries[_selected_task])]
+            if _selected_task in task_summaries
+            else []
+        )
 
-        def _fig_to_image_element(fig, dpi=120):
-            if fig is None:
-                return None
-            _buf = io.BytesIO()
-            fig.savefig(_buf, format="png", dpi=dpi, bbox_inches="tight")
-            plt.close(fig)
-            _buf.seek(0)
-            _img_b64 = base64.b64encode(_buf.read()).decode("utf-8")
-            return mo.Html(f'<img src="data:image/png;base64,{_img_b64}" style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" />')
-
-        _task_plot_elements = []
+        _plots_dir = os.path.join(active_sweep_dir, "plots")
+        os.makedirs(_plots_dir, exist_ok=True)
 
         _base_colors = plt.cm.tab10.colors
         _lambda_linestyles = {
@@ -491,9 +509,11 @@ def _(
         }
 
         _win_size = int(window_size_ui.value)
+        _task_plot_elements = []
 
-        for _task_name, _summary in task_summaries.items():
+        for _task_name, _summary in _tasks_to_render:
             _t_info = _summary["info"]
+            _task_id = _t_info["task_id"]
             _env = _t_info["env_name"]
             _runs = _t_info["runs"]
             _metric_key = _summary["metric_key"]
@@ -524,7 +544,8 @@ def _(
                 _color_map[_pa] = _base_algo_colors[_base_algo]
                 _linestyle_map[_pa] = _lambda_linestyles.get(_lmbda, "-") if _lmbda else "-"
 
-            # 1. Combined Plot (E vs TD)
+            # 1. Combined Plot (E vs TD) saved directly to disk
+            _combined_png_path = os.path.join(_plots_dir, f"{_task_id}_combined.png")
             _fig_combined = plot_algorithm_comparison(
                 _runs,
                 metric_key=_metric_key,
@@ -537,11 +558,14 @@ def _(
                 title=f"Combined Lambda Comparison: {_task_name}",
                 color_map=_color_map,
                 linestyle_map=_linestyle_map,
+                save_path=_combined_png_path,
             )
+            if _fig_combined is not None:
+                plt.close(_fig_combined)
 
-            # Sub-plots for E only and TD only if requested
-            _fig_e = None
-            _fig_td = None
+            # 2. Sub-plots for E only and TD only if requested
+            _e_png_path = None
+            _td_png_path = None
             if show_individual_plots_ui.value:
                 # E-only
                 _e_runs = {_k: _v for _k, _v in _runs.items() if "exact_e" in _k.lower() or "e_lambda" in _k.lower()}
@@ -556,6 +580,7 @@ def _(
                         _e_color_map[_pa_e] = _base_colors[_color_pos % len(_base_colors)]
                         _e_linestyle_map[_pa_e] = _lambda_linestyles.get(_lmbda_e, "-") if _lmbda_e else "-"
 
+                    _e_png_path = os.path.join(_plots_dir, f"{_task_id}_e_lambda.png")
                     _fig_e = plot_algorithm_comparison(
                         _e_runs,
                         metric_key=_metric_key,
@@ -568,7 +593,10 @@ def _(
                         title=f"Exact E(λ) Progression: {_task_name}",
                         color_map=_e_color_map,
                         linestyle_map=_e_linestyle_map,
+                        save_path=_e_png_path,
                     )
+                    if _fig_e is not None:
+                        plt.close(_fig_e)
 
                 # TD-only
                 _td_runs = {_k: _v for _k, _v in _runs.items() if "exact_td" in _k.lower() or "td_lambda" in _k.lower()}
@@ -583,6 +611,7 @@ def _(
                         _td_color_map[_pa_td] = _base_colors[_color_pos % len(_base_colors)]
                         _td_linestyle_map[_pa_td] = _lambda_linestyles.get(_lmbda_td, "-") if _lmbda_td else "-"
 
+                    _td_png_path = os.path.join(_plots_dir, f"{_task_id}_td_lambda.png")
                     _fig_td = plot_algorithm_comparison(
                         _td_runs,
                         metric_key=_metric_key,
@@ -595,30 +624,35 @@ def _(
                         title=f"Exact TD(λ) Progression: {_task_name}",
                         color_map=_td_color_map,
                         linestyle_map=_td_linestyle_map,
+                        save_path=_td_png_path,
                     )
+                    if _fig_td is not None:
+                        plt.close(_fig_td)
 
-            # Build Per-Task UI Card
+            # Ensure all figures are closed
+            plt.close("all")
+
+            # Build Per-Task UI Card using mo.image with local file path
             _winning_text = f"🏆 **Winning Algorithm:** `{_winning_algo}`" if _winning_algo else ""
             _task_card_content = [
                 mo.md(f"## 🎯 Task: {_task_name}"),
                 mo.md(f"**Metric Evaluated:** `{_summary['metric_label']}` | {_winning_text}"),
             ]
 
-            _img_combined = _fig_to_image_element(_fig_combined, dpi=120)
-            _img_e = _fig_to_image_element(_fig_e, dpi=120)
-            _img_td = _fig_to_image_element(_fig_td, dpi=120)
+            if os.path.exists(_combined_png_path):
+                _task_card_content.append(mo.image(src=_combined_png_path, rounded=True))
 
-            if _img_combined:
-                _task_card_content.append(_img_combined)
-
-            if _img_e and _img_td:
+            if _e_png_path and _td_png_path and os.path.exists(_e_png_path) and os.path.exists(_td_png_path):
                 _task_card_content.append(
-                    mo.hstack([_img_e, _img_td], justify="space-around")
+                    mo.hstack([
+                        mo.image(src=_e_png_path, rounded=True),
+                        mo.image(src=_td_png_path, rounded=True),
+                    ], justify="space-around")
                 )
-            elif _img_e:
-                _task_card_content.append(_img_e)
-            elif _img_td:
-                _task_card_content.append(_img_td)
+            elif _e_png_path and os.path.exists(_e_png_path):
+                _task_card_content.append(mo.image(src=_e_png_path, rounded=True))
+            elif _td_png_path and os.path.exists(_td_png_path):
+                _task_card_content.append(mo.image(src=_td_png_path, rounded=True))
 
             _task_plot_elements.append(mo.vstack(_task_card_content))
 
