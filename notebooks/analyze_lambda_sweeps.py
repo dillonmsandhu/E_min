@@ -466,6 +466,19 @@ def _(
     if not task_summaries or not show_plots_ui.value:
         plots_view = mo.md("")
     else:
+        import io
+        import base64
+
+        def _fig_to_image_element(fig, dpi=120):
+            if fig is None:
+                return None
+            _buf = io.BytesIO()
+            fig.savefig(_buf, format="png", dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            _buf.seek(0)
+            _img_b64 = base64.b64encode(_buf.read()).decode("utf-8")
+            return mo.Html(f'<img src="data:image/png;base64,{_img_b64}" style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" />')
+
         _task_plot_elements = []
 
         _base_colors = plt.cm.tab10.colors
@@ -591,17 +604,21 @@ def _(
                 mo.md(f"**Metric Evaluated:** `{_summary['metric_label']}` | {_winning_text}"),
             ]
 
-            if _fig_combined:
-                _task_card_content.append(mo.as_html(_fig_combined))
+            _img_combined = _fig_to_image_element(_fig_combined, dpi=120)
+            _img_e = _fig_to_image_element(_fig_e, dpi=120)
+            _img_td = _fig_to_image_element(_fig_td, dpi=120)
 
-            if _fig_e and _fig_td:
+            if _img_combined:
+                _task_card_content.append(_img_combined)
+
+            if _img_e and _img_td:
                 _task_card_content.append(
-                    mo.hstack([mo.as_html(_fig_e), mo.as_html(_fig_td)], justify="space-around")
+                    mo.hstack([_img_e, _img_td], justify="space-around")
                 )
-            elif _fig_e:
-                _task_card_content.append(mo.as_html(_fig_e))
-            elif _fig_td:
-                _task_card_content.append(mo.as_html(_fig_td))
+            elif _img_e:
+                _task_card_content.append(_img_e)
+            elif _img_td:
+                _task_card_content.append(_img_td)
 
             _task_plot_elements.append(mo.vstack(_task_card_content))
 
