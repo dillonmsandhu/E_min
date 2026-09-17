@@ -28,8 +28,8 @@ def parse_args():
     parser.add_argument("--algo", type=str, required=True, help="Algorithm base name (e.g., exact_td_lambda)")
     parser.add_argument("--sweep-id", type=str, required=True, help="Sweep batch ID")
     parser.add_argument("--lambdas", type=float, nargs="+", default=[0.0, 0.5, 0.9, 0.95, 0.99], help="List of VALUE_LAMBDA to sweep")
-    parser.add_argument("--lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005], help="Learning rate grid")
-    parser.add_argument("--actor-lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005], help="Actor learning rate grid for PPO")
+    parser.add_argument("--lr-grid", type=float, nargs="+", default=[0.01, 0.005, 0.001, 0.0005, 0.0001], help="Learning rate grid")
+    parser.add_argument("--actor-lr-grid", type=float, nargs="+", default=[0.005, 0.001, 0.0005, 0.0001], help="Actor learning rate grid for PPO")
     return parser.parse_args()
 
 def run_lambda_sweep_worker():

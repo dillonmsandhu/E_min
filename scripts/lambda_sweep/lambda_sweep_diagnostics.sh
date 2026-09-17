@@ -39,11 +39,17 @@ EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
     echo "Diagnostics completed successfully. Now compressing results..."
-    cd results/lambda_sweep
+    cd "$REPO_ROOT/results/lambda_sweep"
     tar -czvf "lambda_sweep_${SWEEP_ID}.tar.gz" "$SWEEP_ID"
     echo "Compression complete: results/lambda_sweep/lambda_sweep_${SWEEP_ID}.tar.gz"
+
+    cd "$REPO_ROOT"
+    echo "Sending results and comparison plots to ds541@cs.duke.edu..."
+    # Email the compressed archive
+    $PYTHON -c "from core.mail import email_results_file; email_results_file('results/lambda_sweep/lambda_sweep_${SWEEP_ID}.tar.gz')"
+
+    # Email comparison plots individually so they are viewable directly in inbox
+    $PYTHON -c "from core.mail import email_results_file; import glob; [email_results_file(f) for f in sorted(glob.glob('results/lambda_sweep/${SWEEP_ID}/**/comparison/*plot.png', recursive=True))]"
 else
     echo "Diagnostics FAILED with exit code $EXIT_CODE"
 fi
-
-exit $EXIT_CODE
