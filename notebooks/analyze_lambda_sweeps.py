@@ -65,7 +65,7 @@ def _():
 
 
 @app.cell
-def _(glob, mo, os, repo_root):
+def _(mo, os, repo_root):
     # Discover available lambda sweep directories
     lambda_sweep_base = os.path.join(repo_root, "results", "lambda_sweep")
     discovered_sweeps = []
@@ -184,45 +184,43 @@ def _(
 
     if os.path.exists(active_sweep_dir):
         env_names = sorted([d for d in os.listdir(active_sweep_dir) if os.path.isdir(os.path.join(active_sweep_dir, d)) and not d.startswith(".")])
-        for env in env_names:
-            env_path = os.path.join(active_sweep_dir, env)
+        for env_name in env_names:
+            env_path = os.path.join(active_sweep_dir, env_name)
             policy_names = sorted([d for d in os.listdir(env_path) if os.path.isdir(os.path.join(env_path, d)) and not d.startswith(".")])
-            for pol in policy_names:
-                pol_path = os.path.join(env_path, pol)
-                task_key = f"{env} ({pol.capitalize()} Policy)"
-                task_id = f"{env}_{pol}"
+            for pol_name in policy_names:
+                pol_path = os.path.join(env_path, pol_name)
+                task_key = f"{env_name} ({pol_name.capitalize()} Policy)"
+                task_id = f"{env_name}_{pol_name}"
                 
                 algo_runs = {}
                 pseudo_algos = sorted([d for d in os.listdir(pol_path) if os.path.isdir(os.path.join(pol_path, d)) and d != "comparison" and not d.startswith(".")])
-                for pa in pseudo_algos:
-                    tuning_dir = os.path.join(pol_path, pa, "tuning")
+                for pa_name in pseudo_algos:
+                    tuning_dir = os.path.join(pol_path, pa_name, "tuning")
                     if os.path.exists(tuning_dir):
                         try:
                             sweep_data = load_sweep_data(tuning_dir)
-                            algo_runs[pa] = sweep_data
+                            algo_runs[pa_name] = sweep_data
                         except Exception as e:
-                            load_errors.append(f"Error loading {task_key} / {pa}: {e}")
+                            load_errors.append(f"Error loading {task_key} / {pa_name}: {e}")
                 
                 if algo_runs:
                     tasks_data[task_key] = {
                         "task_id": task_id,
-                        "env_name": env,
-                        "policy_type": pol,
+                        "env_name": env_name,
+                        "policy_type": pol_name,
                         "pol_path": pol_path,
                         "runs": algo_runs,
                     }
 
-    return active_sweep_dir, load_errors, raw_path, tasks_data
+    return active_sweep_dir, tasks_data
 
 
 @app.cell
 def _(
     active_sweep_dir,
     extract_best_configuration,
-    load_errors,
     metric_override_ui,
     mo,
-    np,
     pd,
     ranking_criterion_ui,
     tasks_data,
@@ -238,7 +236,6 @@ def _(
         )
         master_df = pd.DataFrame()
         task_summaries = {}
-        all_pseudo_algos = []
     else:
         # Collect all unique pseudo-algorithms across all tasks
         all_algo_set = set()
@@ -275,7 +272,6 @@ def _(
         task_summaries = {}
 
         for task_name, t_info in tasks_data.items():
-            env = t_info["env_name"]
             pol = t_info["policy_type"]
             runs = t_info["runs"]
 
@@ -401,7 +397,6 @@ def _(
 
     task_view
     return (
-        all_pseudo_algos,
         master_df,
         task_summaries,
         task_view,
@@ -410,16 +405,12 @@ def _(
 
 @app.cell
 def _(
-    all_pseudo_algos,
-    extract_best_configuration,
     mo,
-    np,
     plot_algorithm_comparison,
     plt,
     show_individual_plots_ui,
     show_plots_ui,
     task_summaries,
-    tasks_data,
     window_size_ui,
 ):
     if not task_summaries or not show_plots_ui.value:
@@ -441,7 +432,6 @@ def _(
         for task_name, summary in task_summaries.items():
             t_info = summary["info"]
             env = t_info["env_name"]
-            pol = t_info["policy_type"]
             runs = t_info["runs"]
             metric_key = summary["metric_key"]
             rank_order = summary["rank_order"]
@@ -495,13 +485,13 @@ def _(
                 if e_runs:
                     e_color_map = {}
                     e_linestyle_map = {}
-                    e_lambdas = sorted(list({pa.rsplit('_', 1)[1] for pa in e_runs.keys() if '_' in pa}))
-                    for pa in e_runs.keys():
-                        parts = pa.rsplit('_', 1)
-                        lmbda = parts[1] if len(parts) == 2 else None
-                        color_pos = e_lambdas.index(lmbda) if lmbda in e_lambdas else 0
-                        e_color_map[pa] = base_colors[color_pos % len(base_colors)]
-                        e_linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+                    e_lambdas = sorted(list({k.rsplit('_', 1)[1] for k in e_runs.keys() if '_' in k}))
+                    for pa_e in e_runs.keys():
+                        parts_e = pa_e.rsplit('_', 1)
+                        lmbda_e = parts_e[1] if len(parts_e) == 2 else None
+                        color_pos = e_lambdas.index(lmbda_e) if lmbda_e in e_lambdas else 0
+                        e_color_map[pa_e] = base_colors[color_pos % len(base_colors)]
+                        e_linestyle_map[pa_e] = lambda_linestyles.get(lmbda_e, "-") if lmbda_e else "-"
 
                     fig_e = plot_algorithm_comparison(
                         e_runs,
@@ -522,13 +512,13 @@ def _(
                 if td_runs:
                     td_color_map = {}
                     td_linestyle_map = {}
-                    td_lambdas = sorted(list({pa.rsplit('_', 1)[1] for pa in td_runs.keys() if '_' in pa}))
-                    for pa in td_runs.keys():
-                        parts = pa.rsplit('_', 1)
-                        lmbda = parts[1] if len(parts) == 2 else None
-                        color_pos = td_lambdas.index(lmbda) if lmbda in td_lambdas else 0
-                        td_color_map[pa] = base_colors[color_pos % len(base_colors)]
-                        td_linestyle_map[pa] = lambda_linestyles.get(lmbda, "-") if lmbda else "-"
+                    td_lambdas = sorted(list({k.rsplit('_', 1)[1] for k in td_runs.keys() if '_' in k}))
+                    for pa_td in td_runs.keys():
+                        parts_td = pa_td.rsplit('_', 1)
+                        lmbda_td = parts_td[1] if len(parts_td) == 2 else None
+                        color_pos = td_lambdas.index(lmbda_td) if lmbda_td in td_lambdas else 0
+                        td_color_map[pa_td] = base_colors[color_pos % len(base_colors)]
+                        td_linestyle_map[pa_td] = lambda_linestyles.get(lmbda_td, "-") if lmbda_td else "-"
 
                     fig_td = plot_algorithm_comparison(
                         td_runs,
@@ -572,42 +562,7 @@ def _(
         ])
 
     plots_view
-    return (
-        base_algo_colors,
-        c_idx,
-        color_map,
-        color_pos,
-        e_color_map,
-        e_lambdas,
-        e_linestyle_map,
-        e_runs,
-        env,
-        fig_combined,
-        fig_e,
-        fig_td,
-        lambda_linestyles,
-        lmbda,
-        log_scale,
-        metric_key,
-        pa,
-        parts,
-        plots_view,
-        pol,
-        rank_order,
-        runs,
-        summary,
-        t_info,
-        task_card_content,
-        task_name,
-        task_plot_elements,
-        td_color_map,
-        td_lambdas,
-        td_linestyle_map,
-        td_runs,
-        win_size,
-        winning_algo,
-        winning_text,
-    )
+    return (plots_view,)
 
 
 if __name__ == "__main__":
