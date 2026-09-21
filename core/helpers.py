@@ -21,7 +21,7 @@ def make_env(config):
     env_name = config["ENV_NAME"]
     env, env_params = gymnax.make(env_name)
 
-    if "MAX_STEPS_IN_EPISODE" in config and hasattr(env_params, "max_steps_in_episode"):
+    if config.get("MAX_STEPS_IN_EPISODE") is not None and hasattr(env_params, "max_steps_in_episode"):
         env_params = env_params.replace(
             max_steps_in_episode=int(config["MAX_STEPS_IN_EPISODE"])
         )
@@ -35,7 +35,8 @@ def make_env(config):
     env = LogWrapper(env, gamma=config.get("GAMMA", 0.99))
 
     if isinstance(env.action_space(env_params), spaces.Box):
-        env = ClipAction(env)
+        action_space = env.action_space(env_params)
+        env = ClipAction(env, low=action_space.low, high=action_space.high)
 
     obs_shape = env.observation_space(env_params).shape
     if len(obs_shape) == 1:
