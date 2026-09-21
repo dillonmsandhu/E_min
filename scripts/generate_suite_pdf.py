@@ -94,8 +94,10 @@ def generate_suite_pdf(
     metric_key: str = "returned_discounted_episode_returns",
     rank_by: str = "final_window",
     window_size: int = 100,
+    email: str = None,
 ):
     """Generates the multi-page PDF for the entire suite."""
+    suite_name = os.path.basename(os.path.normpath(suite_dir))
     env_dirs = find_env_dirs(suite_dir)
     if not env_dirs:
         print(f"No environment directories with sweep data found in {suite_dir}")
