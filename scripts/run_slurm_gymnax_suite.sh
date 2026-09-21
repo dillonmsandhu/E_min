@@ -76,7 +76,16 @@ if [ -z "$ENV_NAME" ]; then
 fi
 
 N_SEEDS=8
-TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-10000000}"
+
+# Environment-specific horizon: 10M for MinAtar games, 2M (2,048,000) for all other environments
+if [ -n "$CUSTOM_TIMESTEPS" ]; then
+    TOTAL_TIMESTEPS="$CUSTOM_TIMESTEPS"
+elif [[ "$ENV_NAME" == *"MinAtar"* ]]; then
+    TOTAL_TIMESTEPS=10000000
+else
+    TOTAL_TIMESTEPS=2048000
+fi
+
 RANK_BY="final_window"
 WINDOW_SIZE=100
 METRIC="returned_discounted_episode_returns"
