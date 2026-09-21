@@ -89,13 +89,17 @@ FIXED_GAE_LAMBDA=0.9
 # High lambda spectrum for comparing high return anchors
 HIGH_LAMBDA_GRID="0.9 0.95 0.99 1.0"
 
-# Rollout batch configuration
-CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA}"
+# Rollout batch configuration with Slurm tracking
+CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
 
 mkdir -p slurm
 
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-SWEEP_ROOT_DIR="results/ppo/sweeps/ppo_${ENV_NAME}_${TIMESTAMP}_spectrum_vs_E"
+# Unified suite directory:
+# When running as an sbatch array, all 19 tasks share $SLURM_ARRAY_JOB_ID.
+# If running single job, use $SLURM_JOB_ID. If local, use SUITE_TAG or timestamp.
+SUITE_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-${SUITE_TAG:-suite_$(date +"%Y%m%d_%H%M%S")}}}"
+SWEEP_SUITE_DIR="results/ppo/sweeps/suite_${SUITE_ID}"
+SWEEP_ROOT_DIR="${SWEEP_SUITE_DIR}/${ENV_NAME}"
 mkdir -p "$SWEEP_ROOT_DIR"
 
 echo "======================================================================"

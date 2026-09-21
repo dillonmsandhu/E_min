@@ -261,6 +261,11 @@ def run_sweep_pipeline(
     if config_overrides:
         base_config.update(config_overrides)
 
+    # Automatically capture Slurm metadata if available
+    for slurm_var in ["SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID"]:
+        if slurm_var in os.environ and base_config.get(slurm_var) is None:
+            base_config[slurm_var] = os.environ[slurm_var]
+
     total_timesteps = base_config.get("TOTAL_TIMESTEPS", 1000)
     num_envs = base_config.get("NUM_ENVS", 1)
     num_steps = base_config.get("NUM_STEPS", 1)

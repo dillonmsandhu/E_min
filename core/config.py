@@ -34,4 +34,9 @@ config = {
     "ENT_COEF": 0.01,
     "ADV_STD_FLOOR": 0.1,
     "ADV_CLIP": 3.0,
+
+    # Slurm & Metadata
+    "SLURM_JOB_ID": None,
+    "SLURM_ARRAY_JOB_ID": None,
+    "SLURM_ARRAY_TASK_ID": None,
 }
