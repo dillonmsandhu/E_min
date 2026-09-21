@@ -171,7 +171,16 @@ def extract_best_configuration(
                 row = match.iloc[0]
                 def is_metric_col(col):
                     c = col.lower()
-                    if c in ["rank", "config_idx", "timestamp", "env_name", "env"]:
+                    if c in [
+                        "rank",
+                        "config_idx",
+                        "timestamp",
+                        "env_name",
+                        "env",
+                        "slurm_job_id",
+                        "slurm_array_job_id",
+                        "slurm_array_task_id",
+                    ]:
                         return True
                     for prefix in ["auc", "final", "final_window", "mean", "min", "max", "std"]:
                         if c.startswith(prefix + "_") or c == prefix:
@@ -361,6 +370,26 @@ def plot_lambda_spectrum_vs_E(
         unique_lambdas = sorted(summary_df[lambda_param].unique())
         colors = plt.cm.coolwarm(np.linspace(0, 1, len(unique_lambdas)))
 
+        def is_hparam_ignored(col):
+            c = col.lower()
+            if c in [
+                "rank",
+                "config_idx",
+                "timestamp",
+                "env_name",
+                "env",
+                "slurm_job_id",
+                "slurm_array_job_id",
+                "slurm_array_task_id",
+            ]:
+                return True
+            for prefix in ["auc", "final", "final_window", "mean", "min", "max", "std"]:
+                if c.startswith(prefix + "_") or c == prefix:
+                    return True
+            return False
+
+        hparam_cols = [c for c in summary_df.columns if not is_hparam_ignored(c) and c != lambda_param]
+
         for idx, lam in enumerate(unique_lambdas):
             lam_df = summary_df[summary_df[lambda_param] == lam]
             best_row = lam_df.iloc[0]
@@ -369,7 +398,13 @@ def plot_lambda_spectrum_vs_E(
             c_traj = np.asarray(td_metrics[best_c_idx])
             c_mean = c_traj.mean(axis=0)
 
-            lam_label = f"TD(λ={lam})" if lam < 1.0 else "MC (λ=1.0)"
+            hparam_str = ", ".join([f"{c}={best_row[c]}" for c in hparam_cols])
+            prefix_name = f"TD(λ={lam})" if lam < 1.0 else "MC (λ=1.0)"
+            if hparam_str:
+                lam_label = f"{prefix_name} ({hparam_str})"
+            else:
+                lam_label = prefix_name
+
             ax_curves.plot(x, c_mean, label=lam_label, color=colors[idx], linewidth=1.8, linestyle="--", alpha=0.85)
 
             lambda_vals.append(float(lam))
