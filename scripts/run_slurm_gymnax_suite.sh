@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sweep_gymnax_suite
 #SBATCH --output=slurm/%A_%a.out
-#SBATCH --time=16:00:00
+#SBATCH --time=24:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --array=0-18
@@ -76,7 +76,7 @@ if [ -z "$ENV_NAME" ]; then
 fi
 
 N_SEEDS=8
-TOTAL_TIMESTEPS=2048000
+TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-10000000}"
 RANK_BY="final_window"
 WINDOW_SIZE=100
 METRIC="returned_discounted_episode_returns"
