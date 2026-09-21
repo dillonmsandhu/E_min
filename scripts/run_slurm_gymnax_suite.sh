@@ -4,7 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
-#SBATCH --array=0-18
+#SBATCH --array=0-17
 
 # ==============================================================================
 # Comprehensive Gymnax Suite Sweep: E-Minimization vs. Spectrum of TD(lambda)
@@ -54,7 +54,6 @@ ALL_ENVS=(
 
     # Misc / Navigation / Continuous
     "FourRooms-misc"
-    "MetaMaze-misc"
     "PointRobot-misc"
     "Reacher-misc"
     "Swimmer-misc"
