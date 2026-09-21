@@ -32,7 +32,11 @@ import matplotlib.pyplot as plt
 
 import core.config as default_cfg
 from core.sweep import tune
-from notebooks.analyze_sweeps import plot_algorithm_comparison, summarize_algorithm_comparison
+from notebooks.analyze_sweeps import (
+    plot_algorithm_comparison,
+    summarize_algorithm_comparison,
+    plot_lambda_spectrum_vs_E,
+)
 
 
 # Map algorithm shorthand names to module paths
@@ -74,51 +78,28 @@ ALGO_REGISTRY = {
         "unbiased_sampled_E": "random_policy.unbiased_sampled_E",
     },
     "ppo": {
-        "exact_td": "ppo.exact_td",
-        "exact_mc": "ppo.exact_mc",
-        "exact_E": "ppo.exact_E",
-        "exact_E_gd": "ppo.exact_E",
-        "exact_E_sampling_form": "ppo.exact_E_sampling_form",
-        "exact_dirichlet_E": "ppo.exact_E_sampling_form",
-        "exact_E_dirichlet": "ppo.exact_E_sampling_form",
-        "exact_td_lambda": "ppo.exact_td_lambda",
-        "exact_E_lambda": "ppo.exact_E_lambda",
-        "hybrid_exact_E": "ppo.hybrid_exact_E",
-        "hybrid_exact_E_gd": "ppo.hybrid_exact_E",
-        "hybrid_E": "ppo.hybrid_exact_E",
-        "hybrid_exact_td_lambda": "ppo.hybrid_exact_td_lambda",
-        "hybrid_td_lambda": "ppo.hybrid_exact_td_lambda",
-        "hybrid_exact_mc": "ppo.hybrid_exact_mc",
-        "hybrid_mc": "ppo.hybrid_exact_mc",
-        "sampled_E": "ppo.sampled_E",
-        "sampled_E_gd": "ppo.sampled_E",
-        "E_min": "ppo.sampled_E",
-        "td_lambda": "ppo.sampled_td_lambda",
-        "td": "ppo.sampled_td_lambda",
-        "sampled_td_lambda": "ppo.sampled_td_lambda",
-        "mc": "ppo.sampled_mc",
-        "monte_carlo": "ppo.sampled_mc",
-        "sampled_mc": "ppo.sampled_mc",
-        "exact_E_lambda": "ppo.exact_E_lambda",
+        "sampled_E": "algos.E",
+        "sampled_E_gd": "algos.E",
+        "E": "algos.E",
+        "E_min": "algos.E",
+        "sampled_td_lambda": "algos.ppo",
+        "td_lambda": "algos.ppo",
+        "td": "algos.ppo",
+        "ppo": "algos.ppo",
+        "sampled_mc": "algos.mc",
+        "mc": "algos.mc",
+        "monte_carlo": "algos.mc",
     },
     "hybrid": {
-        "hybrid_exact_E": "ppo.hybrid_exact_E",
-        "hybrid_exact_E_gd": "ppo.hybrid_exact_E",
-        "hybrid_E": "ppo.hybrid_exact_E",
-        "exact_E": "ppo.hybrid_exact_E",
-        "exact_E_gd": "ppo.hybrid_exact_E",
-        "hybrid_exact_td_lambda": "ppo.hybrid_exact_td_lambda",
-        "hybrid_td_lambda": "ppo.hybrid_exact_td_lambda",
-        "exact_td_lambda": "ppo.hybrid_exact_td_lambda",
-        "hybrid_exact_mc": "ppo.hybrid_exact_mc",
-        "hybrid_mc": "ppo.hybrid_exact_mc",
-        "exact_mc": "ppo.hybrid_exact_mc",
+        "sampled_E": "algos.E",
+        "sampled_td_lambda": "algos.ppo",
+        "sampled_mc": "algos.mc",
     },
 }
 
-DEFAULT_ALGOS = ["exact_td", "exact_mc", "exact_E_gd", "exact_td_lambda"]
-DEFAULT_SAMPLED_ALGOS = ["td", "td0", "sampled_E", "monte_carlo", "unbiased_sampled_E"]
-DEFAULT_HYBRID_ALGOS = ["hybrid_exact_E", "hybrid_exact_td_lambda", "hybrid_exact_mc"]
+DEFAULT_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
+DEFAULT_SAMPLED_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
+DEFAULT_HYBRID_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
 
 
 def get_default_param_grid(
@@ -135,30 +116,18 @@ def get_default_param_grid(
 
     mc_algos = ["mc", "monte_carlo", "exact_mc", "sampled_mc", "hybrid_mc", "hybrid_exact_mc"]
 
-    # 1. GAE lambda grid (for policy advantages)
+    # 1. GAE lambda grid (strictly for policy advantages)
     if gae_lambda_list is not None and algo_name not in mc_algos:
         grid["GAE_LAMBDA"] = gae_lambda_list
-    elif lambda_list is not None and algo_name in [
-        "td", "td_lambda", "sampled_td_lambda", "sampled_E", "sampled_E_gd", "E_min"
-    ]:
-        grid["GAE_LAMBDA"] = lambda_list
 
-    # 2. Value lambda grid (for critic returns)
+    # 2. Value lambda grid (strictly for critic returns)
     if value_lambda_list is not None and algo_name not in mc_algos:
         grid["VALUE_LAMBDA"] = value_lambda_list
-    elif lambda_list is not None and "td_lambda" in algo_name and "GAE_LAMBDA" not in grid:
-        reduced_lrs = [5e-3, 1e-3, 5e-4] if lr_list is None else lr_list
-        grid["LR"] = reduced_lrs
+    elif lambda_list is not None and algo_name not in mc_algos:
+        # Default lambda_list maps directly to VALUE_LAMBDA for critic return target
         grid["VALUE_LAMBDA"] = lambda_list
 
-    # 3. Defaults if neither was specified
-    if "GAE_LAMBDA" not in grid and "VALUE_LAMBDA" not in grid:
-        if algo_name in ["td", "sampled_td_lambda"]:
-            grid["GAE_LAMBDA"] = [0.1, 0.5, 0.9]
-        elif "td_lambda" in algo_name and algo_name not in ["mc", "monte_carlo"]:
-            grid["LR"] = [5e-3, 1e-3, 5e-4] if lr_list is None else lr_list
-            grid["VALUE_LAMBDA"] = [0.1, 0.5, 0.9]
-
+    # 3. Actor LR grid (for policy net)
     if actor_lr_list is not None:
         grid["ACTOR_LR"] = actor_lr_list
 
@@ -214,8 +183,9 @@ def run_sweep_pipeline(
     total_timesteps=1000,
     num_envs=None,
     num_steps=None,
+    minibatch_size=None,
     model_load_dir="short_run",
-    metric_key="nn_greedy_performance",
+    metric_key="returned_episode_returns",
     rank_by="auc",
     rank_order="higher",
     window_size=40,
@@ -227,7 +197,7 @@ def run_sweep_pipeline(
     custom_grids=None,
     config_overrides=None,
     base_save_dir="results",
-    log_scale=True,
+    log_scale=False,
     use_geom_mean=False,
     sweep_suffix="",
     sweep_root_dir_arg=None,
@@ -282,6 +252,8 @@ def run_sweep_pipeline(
         base_config["NUM_ENVS"] = num_envs
     if num_steps is not None:
         base_config["NUM_STEPS"] = num_steps
+    if minibatch_size is not None:
+        base_config["MINIBATCH_SIZE"] = minibatch_size
     if lr_end is not None:
         base_config["LR_END"] = lr_end
     if actor_lr_end is not None:
@@ -293,6 +265,7 @@ def run_sweep_pipeline(
     num_envs = base_config.get("NUM_ENVS", 1)
     num_steps = base_config.get("NUM_STEPS", 1)
     minibatch_size = base_config.get("MINIBATCH_SIZE", 1)
+    base_config["NUM_MINIBATCHES"] = max(1, (num_envs * num_steps) // minibatch_size)
     num_epochs = base_config.get("NUM_EPOCHS", 1)
 
     print("\n" + "=" * 70)
@@ -426,9 +399,26 @@ def run_sweep_pipeline(
         rank_by=rank_by,
         rank_order=rank_order,
         window_size=window_size,
-        save_path=plot_path,
         title=f"PPO Policy Improvement ({env_name}) - Algorithm Comparison" if policy_type in ["ppo", "hybrid"] else f"{policy_type.capitalize()} Policy Evaluation ({env_name}) - Algorithm Comparison",
     )
+
+    # Generate Lambda Spectrum vs E comparison if both algorithms are present
+    td_key = next((k for k in ["sampled_td_lambda", "td_lambda", "td"] if k in completed_runs_for_comparison), None)
+    e_key = next((k for k in ["sampled_E", "E", "E_min"] if k in completed_runs_for_comparison), None)
+    if td_key and e_key:
+        try:
+            spectrum_plot_path = os.path.join(comparison_dir, "comparison_lambda_spectrum_vs_E.png")
+            plot_lambda_spectrum_vs_E(
+                td_sweep_data=completed_runs_for_comparison[td_key],
+                e_sweep_data=completed_runs_for_comparison[e_key],
+                metric_key=metric_key,
+                title=f"E-Minimization vs. TD(λ) Spectrum ({env_name})",
+                save_path=spectrum_plot_path,
+                log_scale=log_scale,
+            )
+            print(f"Lambda spectrum comparison plot saved to: {spectrum_plot_path}")
+        except Exception as e:
+            print(f"Note: Could not generate lambda spectrum plot: {e}")
 
     print("\n" + "=" * 70)
     print(f"SWEEP PIPELINE COMPLETED SUCCESSFULLY!")
@@ -444,12 +434,45 @@ def run_sweep_pipeline(
     }
 
 
+ALL_GYMNAX_ENVS_NO_CATCH = [
+    # Classic Control
+    "CartPole-v1",
+    "Pendulum-v1",
+    "Acrobot-v1",
+    "MountainCar-v0",
+    "MountainCarContinuous-v0",
+    # MinAtar
+    "Asterix-MinAtar",
+    "Breakout-MinAtar",
+    "Freeway-MinAtar",
+    "SpaceInvaders-MinAtar",
+    # BSuite (excluding Catch-bsuite)
+    "DeepSea-bsuite",
+    "MemoryChain-bsuite",
+    "UmbrellaChain-bsuite",
+    "DiscountingChain-bsuite",
+    "MNISTBandit-bsuite",
+    "SimpleBandit-bsuite",
+    # Misc / Navigation / Continuous
+    "FourRooms-misc",
+    "MetaMaze-misc",
+    "PointRobot-misc",
+    "BernoulliBandit-misc",
+    "GaussianBandit-misc",
+    "Reacher-misc",
+    "Swimmer-misc",
+    "Pong-misc",
+]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Modular Hyperparameter Sweep Pipeline")
     parser.add_argument("--policy", type=str, default="fixed", choices=["fixed", "random", "ppo", "hybrid"],
                         help="Policy type to evaluate (fixed, random, ppo, hybrid)")
     parser.add_argument("--env-name", type=str, default="FourRooms-misc",
-                        help="Environment name (e.g. FourRooms-misc, MountainCar-v0)")
+                        help="Environment name (e.g. FourRooms-misc, MountainCar-v0, or 'all_gymnax')")
+    parser.add_argument("--env-names", nargs="+", default=None,
+                        help="List of environments to sweep, or 'all_gymnax' for all 23 Gymnax envs (excluding Catch)")
     parser.add_argument("--algos", nargs="+", default=None,
                         help="List of algorithms to sweep (e.g. exact_td exact_mc exact_E_gd exact_td_lambda, or group keywords: exact, sampled, hybrid, all)")
     parser.add_argument("--n-seeds", type=int, default=3,
@@ -460,14 +483,16 @@ def parse_args():
                         help="Number of parallel environments (NUM_ENVS)")
     parser.add_argument("--num-steps", type=int, default=None,
                         help="Number of rollout steps per env (NUM_STEPS)")
+    parser.add_argument("--minibatch-size", type=int, default=None,
+                        help="Minibatch size (MINIBATCH_SIZE)")
     parser.add_argument("--model-dir", type=str, default="short_run",
                         help="Model load directory for fixed/ppo evaluation policy")
-    parser.add_argument("--metric", type=str, default="nn_weighted_VE",
-                        help="Primary metric to optimize and rank by")
+    parser.add_argument("--metric", type=str, default=None,
+                        help="Primary metric to optimize and rank by (default: returned_episode_returns for PPO)")
     parser.add_argument("--rank-by", type=str, default="auc", choices=["auc", "final_window", "final_step", "min", "max"],
                         help="Criterion to rank and select best config (default: auc)")
-    parser.add_argument("--rank-order", type=str, default="lower", choices=["lower", "higher"],
-                        help="Optimization goal: lower (default) or higher")
+    parser.add_argument("--rank-order", type=str, default=None, choices=["lower", "higher"],
+                        help="Optimization goal: lower or higher (defaults to higher for return/reward)")
     parser.add_argument("--higher-is-better", action="store_true",
                         help="Shortcut for --rank-order higher (e.g. for nn_greedy_accuracy or reward)")
     parser.add_argument("--window-size", type=int, default=20,
@@ -531,46 +556,74 @@ def main():
         config_overrides["USE_GREEDY_POLICY"] = True
         config_overrides["POLICY_EPSILON"] = args.policy_epsilon
 
-    rank_order = "higher" if args.higher_is_better else args.rank_order
+    # Default metric based on policy type
+    if args.metric is not None:
+        metric = args.metric
+    elif args.policy in ["ppo", "hybrid"]:
+        metric = "returned_episode_returns"
+    else:
+        metric = "nn_weighted_VE"
+
+    if args.rank_order is not None:
+        rank_order = args.rank_order
+    elif args.higher_is_better or metric in ["returned_episode_returns", "returned_discounted_episode_returns", "V_start", "v_pred_start", "reward", "return", "nn_greedy_correct", "nn_greedy_accuracy"]:
+        rank_order = "higher"
+    else:
+        rank_order = "lower"
 
     # Automatically choose sensible default for log_scale based on metric:
-    # Error metrics (VE, MSE) default to log scale; performance metrics (V_start, reward) default to linear.
     if args.log_scale is None:
-        if args.metric in ["V_start", "reward", "return", "nn_greedy_correct", "nn_greedy_accuracy"] or args.higher_is_better:
+        if metric in ["V_start", "reward", "return", "returned_episode_returns", "nn_greedy_correct", "nn_greedy_accuracy"] or rank_order == "higher":
             log_scale = False
         else:
             log_scale = True
     else:
         log_scale = args.log_scale
 
-    run_sweep_pipeline(
-        policy_type=args.policy,
-        env_name=args.env_name,
-        algos=args.algos,
-        n_seeds=args.n_seeds,
-        total_timesteps=args.total_timesteps,
-        num_envs=args.num_envs,
-        num_steps=args.num_steps,
-        model_load_dir=args.model_dir,
-        metric_key=args.metric,
-        rank_by=args.rank_by,
-        rank_order=rank_order,
-        window_size=args.window_size,
-        lr_grid=args.lr_grid,
-        actor_lr_grid=args.actor_lr_grid,
-        lr_end=args.lr_end,
-        actor_lr_end=args.actor_lr_end,
-        light_metrics=args.light_metrics,
-        lambda_grid=args.lambda_grid,
-        gae_lambda_grid=args.gae_lambda_grid,
-        value_lambda_grid=args.value_lambda_grid,
-        custom_grids=custom_grids,
-        config_overrides=config_overrides,
-        log_scale=log_scale,
-        use_geom_mean=args.use_geom_mean,
-        sweep_suffix=args.sweep_suffix,
-        sweep_root_dir_arg=args.sweep_root_dir,
-    )
+    # Resolve environment list:
+    if args.env_names:
+        if "all_gymnax" in args.env_names:
+            env_list = ALL_GYMNAX_ENVS_NO_CATCH
+        else:
+            env_list = args.env_names
+    elif args.env_name == "all_gymnax":
+        env_list = ALL_GYMNAX_ENVS_NO_CATCH
+    else:
+        env_list = [args.env_name]
+
+    for env_idx, target_env in enumerate(env_list):
+        print(f"\n=======================================================")
+        print(f"[{env_idx + 1}/{len(env_list)}] RUNNING SWEEP PIPELINE FOR ENV: {target_env}")
+        print(f"=======================================================")
+        run_sweep_pipeline(
+            policy_type=args.policy,
+            env_name=target_env,
+            algos=args.algos,
+            n_seeds=args.n_seeds,
+            total_timesteps=args.total_timesteps,
+            num_envs=args.num_envs,
+            num_steps=args.num_steps,
+            minibatch_size=args.minibatch_size,
+            model_load_dir=args.model_dir,
+            metric_key=metric,
+            rank_by=args.rank_by,
+            rank_order=rank_order,
+            window_size=args.window_size,
+            lr_grid=args.lr_grid,
+            actor_lr_grid=args.actor_lr_grid,
+            lr_end=args.lr_end,
+            actor_lr_end=args.actor_lr_end,
+            light_metrics=args.light_metrics,
+            lambda_grid=args.lambda_grid,
+            gae_lambda_grid=args.gae_lambda_grid,
+            value_lambda_grid=args.value_lambda_grid,
+            custom_grids=custom_grids,
+            config_overrides=config_overrides,
+            log_scale=log_scale,
+            use_geom_mean=args.use_geom_mean,
+            sweep_suffix=args.sweep_suffix,
+            sweep_root_dir_arg=args.sweep_root_dir,
+        )
 
 
 if __name__ == "__main__":

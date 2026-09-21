@@ -19,21 +19,22 @@ def plot_sweep_curves(
     env_name,
     out_dir,
     best_label=None,
-    log_scale=True,
+    rank_order="higher",
+    log_scale=False,
     title=None,
 ):
     """Plots mean learning curves for all hyperparameter configurations with clean styling."""
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Sort curves by final value (lowest first for error metrics)
-    sorted_items = sorted(curves.items(), key=lambda item: float(item[1][-1]))
+    is_ascending = rank_order.lower() in ["lower", "min", "asc", "ascending"]
+    sorted_items = sorted(curves.items(), key=lambda item: float(item[1][-1]), reverse=not is_ascending)
     
     colormap = plt.cm.turbo(np.linspace(0.05, 0.95, len(sorted_items)))
     
     for idx, (label, curve) in enumerate(sorted_items):
         y = np.asarray(curve)
         x = list(range(len(y)))
-        is_best = (label == best_label) or (idx == 0)
+        is_best = (label == best_label) if best_label is not None else (idx == 0)
         
         final_val = float(y[-1])
         display_label = f"{label} (final={final_val:.2e})"
@@ -88,7 +89,7 @@ def plot_best_seeds(
     metric_key,
     env_name,
     out_dir,
-    log_scale=True,
+    log_scale=False,
 ):
     """Plots individual seed trajectories for the best hyperparameter configuration."""
     arr = np.asarray(seed_trajectories)
@@ -146,7 +147,7 @@ def plot_seeds_grid(
     metric_key,
     env_name,
     out_dir,
-    log_scale=True,
+    log_scale=False,
 ):
     """Plots a multi-panel subplot grid showing individual seeds for each configuration."""
     arr = np.asarray(metric_tensor)  # (n_combos, n_seeds, time_steps)
@@ -199,13 +200,13 @@ def tune(
     make_train,
     base_config,
     param_grid,
-    metric_key="nn_weighted_VE",
+    metric_key="returned_episode_returns",
     rank_by="auc",
-    rank_order="lower",
+    rank_order="higher",
     window_size=20,
     save_dir="results/tuning",
     rng_seed=42,
-    log_scale=True,
+    log_scale=False,
     save_checkpoint=False,
     save_metrics=True,
 ):
@@ -216,9 +217,9 @@ def tune(
         make_train: Factory function returning train(rng, hparams).
         base_config: Dictionary containing experiment configuration.
         param_grid: Dictionary mapping hyperparameter names to lists/tuples of values.
-        metric_key: The metric to optimize / rank by (default: "nn_weighted_VE").
+        metric_key: The metric to optimize / rank by (default: "returned_episode_returns").
         rank_by: Metric ranking criterion: "auc" (default), "final_window", "final_step", "min", "max".
-        rank_order: "lower" (lower is better, default) or "higher" (higher is better).
+        rank_order: "higher" (higher is better, default) or "lower" (lower is better).
         window_size: Number of final steps to average when using "final_window" (default: 20).
         save_dir: Base directory to save tuning outputs.
         rng_seed: Base seed for PRNG.
@@ -440,6 +441,7 @@ def tune(
         env_name=env_name,
         out_dir=out_dir,
         best_label=best_label,
+        rank_order=rank_order,
         log_scale=log_scale,
     )
 

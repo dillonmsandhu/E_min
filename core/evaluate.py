@@ -1,5 +1,5 @@
 # This file is responsible for running a single training run, called by runner.py
-from core.utils import save_results, save_plot, save_multi_plot, save_feature_spectra, save_heatmap, save_heatmap_stack
+from core.utils import save_results, save_plot, save_multi_plot
 import os
 import jax
 import jax.numpy as jnp
@@ -15,7 +15,7 @@ def evaluate(run_config, make_train, run_dir, args, rng):
     rngs = jax.random.split(rng, run_config["N_SEEDS"])
     out = run_fn(rngs)
     metrics = out["metrics"]
-    ret = metrics.get("returned_discounted_episode_returns", 0.0)
+    ret = metrics.get("returned_episode_returns", metrics.get("returned_discounted_episode_returns", 0.0))
     print(f"[{run_config['ENV_NAME']}] Mean return: {jnp.mean(ret):.4f}")
     print(f"[{run_config['ENV_NAME']}] Max return:  {jnp.max(ret):.4f}")
 
@@ -52,6 +52,7 @@ def evaluate(run_config, make_train, run_dir, args, rng):
             return arr[None]
         if arr.ndim == 1:
             return arr
+        return arr.mean(axis=tuple(range(1, arr.ndim)))
 
     def get_metric(name, slice_idx=0):
         if name not in metrics:
@@ -60,191 +61,103 @@ def evaluate(run_config, make_train, run_dir, args, rng):
         return series[slice_idx:]
 
     standard_plots = {
-        "v_pred": "v_pred",
-        "mean_rew": "mean_rew",
         "returned_episode_returns": "returned_episode_returns",
         "returned_discounted_episode_returns": "returned_discounted_episode_returns",
-        "effective_rank": "effective_rank",
-        "nn_lstd_diff": "nn_lstd_diff",
-        "forward_loss": "forward_loss",
-        "done_loss": "done_loss",
-        "reward_loss": "reward_loss",
-        "vic_loss_cov": "vic_loss_cov",
-        "vic_loss_var": "vic_loss_var",
-        "v_loss": "v_loss",
-        "NTK_rank": "NTK_rank",
-        "Direlechet_energy": "Direlechet_energy",
-        "V_start": "V_start",
-        "v_pred_start": "v_pred_start",
-        "Mean_A": "Mean_A",
+        "returned_episode_lengths": "returned_episode_lengths",
+        "value_loss": "value_loss",
+        "actor_loss": "actor_loss",
         "entropy": "entropy",
-        "V_mean": "V_mean",
-        "SA_min_eigenvalue": "SA_min_eigenvalue",
-        "non_reversible_coeff": "non_reversible_coeff",
-        "nn_greedy_performance": "nn_greedy_performance",
-        "nn_advantage_cossim_uniform": "nn_advantage_cossim_uniform",
-        "nn_advantage_cossim": "nn_advantage_cossim",
-        "policy_tv": "policy_tv",
-        "policy_tv_on_policy": "policy_tv_on_policy",
-        "policy_tv_max": "policy_tv_max",
-        "mu_tv": "mu_tv",
-        "state_coverage": "state_coverage",
-        "state_entropy_coverage": "state_entropy_coverage",
+        "approx_kl": "approx_kl",
+        "clip_fraction": "clip_fraction",
     }
 
-    data = get_metric("E", 1)
-    E_local = get_metric("E_local", 1)
-    # a few log plots:
-    save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, data, "E", True)
-    save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, E_local, "E_local", True)
-    try:
-        data = get_metric("alignment_condition", 1)
-        save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, E_local, "E_local", True)
-        save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, data, "E", True)
-    except:
-        data = get_metric("alignment_condition", 1)
-        save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, E_local, "E_local", False)
-        save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, data, "E", False)
-
-    try:
-        save_heatmap(env_dir, run_config["ENV_NAME"], metrics["eNTK"][0, -1], "ntk")
-    except Exception as e:
-        print("failed to save ntk", e)
-
-    try:
-        save_heatmap(
-            env_dir, run_config["ENV_NAME"], metrics["gradient_covariance_matrix"][0, -1], "gradient_covariance_matrix"
-        )
-    except Exception as e:
-        print("failed to save gradient_covariance_matrix", e)
-
-    try:
-        grid_data = metrics.get("V_grid", metrics.get("value_grid"))
-        if grid_data is not None:
-            save_heatmap(env_dir, run_config["ENV_NAME"], grid_data[0, -1], "V_grid")
-    except Exception as e:
-        print("failed to save value grid", e)
-
-    try:
-        if "nn_grid" in metrics:
-            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["nn_grid"][0, -1], "nn_grid")
-    except Exception as e:
-        print("failed to save nn grid", e)
-
-    try:
-        if "state_dist_grid" in metrics:
-            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["state_dist_grid"][0, -1], "state_dist_grid")
-    except Exception as e:
-        pass
-
-    try:
-        if "min_eigenvector_grid" in metrics:
-            save_heatmap(env_dir, run_config["ENV_NAME"], metrics["min_eigenvector_grid"][0, -1], "min_eigenvector_grid")
-    except Exception as e:
-        pass
-
-    try:
-        save_heatmap_stack(
-            env_dir, run_config["ENV_NAME"], metrics["Jacobian_top_singular_vectors"][0][-1], "J Top Singular Vs"
-        )
-        save_heatmap_stack(
-            env_dir, run_config["ENV_NAME"], metrics["feature_top_singular_vectors"][0][-1], "Feature Top Singular Vs"
-        )
-
-    except Exception as e:
-        print("failed to save top five jacovian left singular vectors", e)
-
-    try:
-        save_feature_spectra(
-            env_dir,
-            run_config["ENV_NAME"],
-            metrics["feature_singular_values"][0][0],
-            metrics["feature_singular_values"][0][-1],
-            "Feature Singuar Vals",
-        )
-
-        save_feature_spectra(
-            env_dir,
-            run_config["ENV_NAME"],
-            metrics["jacobian_singular_values"][0][0],
-            metrics["jacobian_singular_values"][0][-1],
-            "J Singular Vals",
-        )
-    except Exception as e:
-        print("failed to plot singular value spectrum", e)
-
     for m_key, save_name in standard_plots.items():
-        data = get_metric(m_key, 1)
+        data = get_metric(m_key, 0)
         if data is not None:
             try:
-                save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, data, save_name)
-            except:
-                print("failed to save plot for", m_key)
+                save_plot(env_dir, run_config["ENV_NAME"], steps_per_pi, data, save_name, logscale=False)
+            except Exception as e:
+                print(f"Failed to save plot for {m_key}: {e}")
 
-    # 1. Add the ylabel string to each configuration tuple
-    plot_configs = [
-        (
-            "Weighted Value Errors",
-            "MSVE (mu-weighted)",  # <--- New Y-Label
-            {
-                "LSTD_weighted_VE": "LSTD (on-policy) VE",
-                "VR_weighted_VE": "VR (on-policy) VE",
-                "nn_weighted_VE": "NN (on-policy) VE",
-                "BR_VE": "BR (on-policy) VE",
-            },
-            True,
-        ),
-        (
-            "Value Learning Greedy Accuracy",
-            "Greedy Accuracy",  # <--- New Y-Label
-            {
-                "LSTD_greedy_correct": "LSTD Greedy Acc.",
-                "VR_greedy_correct": "VR Greedy Acc.",
-                "nn_greedy_correct": "Network Greedy Acc.",
-                "BR_greedy_correct": "BR Greedy Acc.",
-            },
-            False,
-        ),
-    ]
-
-    # 2. Unpack title, ylabel, and metric_keys'
-    if metrics.get("nn_weighted_VE", None) is not None:
-        for title, ylabel, metric_keys, logscale in plot_configs:
-
-            plot_data = {legend: get_metric(m_key, 1) for m_key, legend in metric_keys.items()}
-
-            save_multi_plot(
-                env_dir=env_dir,
-                env_name=run_config["ENV_NAME"],
-                steps_per_pi=steps_per_pi,
-                metrics_dict=plot_data,
-                title=title,
-                ylabel=ylabel,
-                log_scale=logscale,
+    # Plot: Episode Returns (undiscounted return only)
+    undisc_returns = get_metric("returned_episode_returns", 0)
+    if undisc_returns is not None:
+        try:
+            save_plot(
+                env_dir,
+                run_config["ENV_NAME"],
+                steps_per_pi,
+                undisc_returns,
+                "Episode_Returns",
+                logscale=False,
             )
+        except Exception as e:
+            print(f"Failed to save Episode_Returns plot: {e}")
 
-    if "policy_tv" in metrics:
-        policy_tv_dict = {
-            "Uniform Mean": get_metric("policy_tv", 1),
-            "On-Policy Mean": get_metric("policy_tv_on_policy", 1),
-            "Max State": get_metric("policy_tv_max", 1),
-        }
-        # Filter out None values if any
-        policy_tv_dict = {k: v for k, v in policy_tv_dict.items() if v is not None}
-        if len(policy_tv_dict) > 0:
+    # Multi-plot: v_pred_start with discounted returns in v_start / V_start
+    v_start_dict = {}
+    if "v_pred_start" in metrics:
+        v_start_dict["v_pred_start"] = get_metric("v_pred_start", 0)
+    elif "V_start" in metrics:
+        v_start_dict["v_pred_start"] = get_metric("V_start", 0)
+    if "returned_discounted_episode_returns" in metrics:
+        v_start_dict["discounted_return"] = get_metric("returned_discounted_episode_returns", 0)
+
+    if len(v_start_dict) > 0:
+        for v_name in ["V_start", "v_start"]:
+            try:
+                save_multi_plot(
+                    env_dir=env_dir,
+                    env_name=run_config["ENV_NAME"],
+                    steps_per_pi=steps_per_pi,
+                    metrics_dict=v_start_dict,
+                    title=v_name,
+                    ylabel="Value / Return",
+                    log_scale=False,
+                )
+            except Exception as e:
+                print(f"Failed to save {v_name} multiplot: {e}")
+
+    # Multi-plot: Training Losses
+    loss_dict = {}
+    for k, name in [("total_loss", "Total Loss"), ("value_loss", "Value Loss"), ("actor_loss", "Actor Loss")]:
+        if k in metrics:
+            loss_dict[name] = get_metric(k, 0)
+    if len(loss_dict) > 1:
+        try:
             save_multi_plot(
                 env_dir=env_dir,
                 env_name=run_config["ENV_NAME"],
                 steps_per_pi=steps_per_pi,
-                metrics_dict=policy_tv_dict,
-                title="Policy Total Variation",
-                ylabel="Total Variation Distance",
+                metrics_dict=loss_dict,
+                title="Training Losses",
+                ylabel="Loss",
                 log_scale=False,
             )
+        except Exception as e:
+            print(f"Failed to save losses multiplot: {e}")
+
+    # Multi-plot: Policy Diagnostics
+    diag_dict = {}
+    for k, name in [("entropy", "Entropy"), ("approx_kl", "Approx KL"), ("clip_fraction", "Clip Fraction")]:
+        if k in metrics:
+            diag_dict[name] = get_metric(k, 0)
+    if len(diag_dict) > 1:
+        try:
+            save_multi_plot(
+                env_dir=env_dir,
+                env_name=run_config["ENV_NAME"],
+                steps_per_pi=steps_per_pi,
+                metrics_dict=diag_dict,
+                title="Policy Diagnostics",
+                ylabel="Value",
+                log_scale=False,
+            )
+        except Exception as e:
+            print(f"Failed to save policy diagnostics multiplot: {e}")
 
     if hasattr(args, "save_video") and args.save_video:
         try:
-            # Extract the single-seed train state (seed 0)
             train_state_seed0 = jax.tree_util.tree_map(lambda x: x[0], out["runner_state"][0])
             from core.video import generate_policy_video
             generate_policy_video(
