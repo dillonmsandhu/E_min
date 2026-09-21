@@ -626,6 +626,22 @@ def main():
             sweep_root_dir_arg=args.sweep_root_dir,
         )
 
+    if len(env_list) > 1 and args.sweep_root_dir:
+        print("\n" + "=" * 70)
+        print("ALL ENVIRONMENT SWEEPS COMPLETED SUCCESSFULLY!")
+        print(f"Total Environments Processed: {len(env_list)}")
+        print("=" * 70 + "\n")
+        try:
+            from scripts.generate_suite_pdf import generate_suite_pdf
+            generate_suite_pdf(
+                suite_dir=args.sweep_root_dir,
+                metric_key=metric,
+                rank_by=args.rank_by,
+                window_size=args.window_size,
+            )
+        except Exception as ex:
+            print(f"Note: Could not automatically compile suite PDF: {ex}")
+
 
 if __name__ == "__main__":
     main()

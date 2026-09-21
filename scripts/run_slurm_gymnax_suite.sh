@@ -161,6 +161,15 @@ $PYTHON notebooks/plot_lambda_spectrum_vs_E.py \
     --sweep-dir "$SWEEP_ROOT_DIR" \
     --metric "$METRIC"
 
+# 4. Compile Suite PDF across all environments completed so far
+echo ""
+echo "--> Compiling unified Suite PDF for all environments..."
+$PYTHON scripts/generate_suite_pdf.py \
+    --suite-dir "$SWEEP_SUITE_DIR" \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE
+
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 DURATION=$SECONDS
 echo ""
