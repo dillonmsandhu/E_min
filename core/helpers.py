@@ -21,11 +21,6 @@ def make_env(config):
     env_name = config["ENV_NAME"]
     env, env_params = gymnax.make(env_name)
 
-    if "MAX_STEPS_IN_EPISODE" in config and hasattr(env_params, "max_steps_in_episode"):
-        env_params = env_params.replace(
-            max_steps_in_episode=int(config["MAX_STEPS_IN_EPISODE"])
-        )
-
     if env_name == "MountainCar-v0":
         env = MountainCarNormalizeWrapper(env)
         env = MountainCarSparseRewardWrapper(env)

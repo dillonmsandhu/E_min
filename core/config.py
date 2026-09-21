@@ -3,7 +3,6 @@ config = {
     "ENV_NAME": "CartPole-v1",
     "N_SEEDS": 1,
     "GAMMA": 0.99,
-    "MAX_STEPS_IN_EPISODE": 1e6,
     "NORMALIZE_OBS": False,
 
     # Network Architecture
