@@ -157,23 +157,42 @@ $PYTHON scripts/sweep_pipeline.py \
 # Email recipient for completion notifications and PDF attachments
 EMAIL_RECIPIENT="${EMAIL_RECIPIENT:-ds541@cs.duke.edu}"
 
-# 3. Dedicated Lambda Spectrum vs E Plot
+# 3. Dedicated Lambda Spectrum vs E Plot (saves local PNG and PDF)
 echo ""
 echo "--> Generating Lambda Spectrum vs. E Comparison Figure..."
 $PYTHON notebooks/plot_lambda_spectrum_vs_E.py \
     --sweep-dir "$SWEEP_ROOT_DIR" \
-    --metric "$METRIC" \
-    --email "$EMAIL_RECIPIENT"
+    --metric "$METRIC"
 
-# 4. Compile Suite PDF across all environments completed so far
+# 4. Check suite completion: only email the complete sweep once ALL environments finish
+COMPLETED_COUNT=0
+for E in "${ALL_ENVS[@]}"; do
+    if [ -f "${SWEEP_SUITE_DIR}/${E}/comparison/comparison_summary.csv" ]; then
+        COMPLETED_COUNT=$((COMPLETED_COUNT + 1))
+    fi
+done
+
 echo ""
-echo "--> Compiling unified Suite PDF for all environments..."
-$PYTHON scripts/generate_suite_pdf.py \
-    --suite-dir "$SWEEP_SUITE_DIR" \
-    --metric "$METRIC" \
-    --rank-by "$RANK_BY" \
-    --window-size $WINDOW_SIZE \
-    --email "$EMAIL_RECIPIENT"
+echo "Suite Progress: $COMPLETED_COUNT / ${#ALL_ENVS[@]} environments completed."
+
+if [ -z "$SLURM_ARRAY_TASK_ID" ] || [ "$COMPLETED_COUNT" -eq "${#ALL_ENVS[@]}" ]; then
+    echo "======================================================================"
+    echo "ALL ENVIRONMENTS COMPLETE! Compiling and emailing complete suite PDF..."
+    echo "======================================================================"
+    $PYTHON scripts/generate_suite_pdf.py \
+        --suite-dir "$SWEEP_SUITE_DIR" \
+        --metric "$METRIC" \
+        --rank-by "$RANK_BY" \
+        --window-size $WINDOW_SIZE \
+        --email "$EMAIL_RECIPIENT"
+else
+    # Update local PDF without sending email
+    $PYTHON scripts/generate_suite_pdf.py \
+        --suite-dir "$SWEEP_SUITE_DIR" \
+        --metric "$METRIC" \
+        --rank-by "$RANK_BY" \
+        --window-size $WINDOW_SIZE
+fi
 
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 DURATION=$SECONDS
