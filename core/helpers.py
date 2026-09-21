@@ -2,7 +2,6 @@
 # Technical helpers for RL training loops, GAE computation, PPO losses, and environment setup.
 import gymnax
 from gymnax.environments import spaces
-from gymnax.wrappers.purerl import FlattenObservationWrapper
 import jax
 import jax.numpy as jnp
 
@@ -10,6 +9,7 @@ from envs.log_wrapper import LogWrapper
 from envs.wrappers import (
     NormalizeObservationWrapper,
     AddChannelWrapper,
+    FlattenObservationWrapper,
     ClipAction,
     TerminalInfoWrapper,
     MountainCarNormalizeWrapper,

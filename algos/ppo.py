@@ -54,7 +54,7 @@ def make_train(base_config):
                 obsv, env_state, reward, done, info = jax.vmap(env.step, in_axes=(0, 0, 0, None))(
                     rng_step, env_state, action, env_params
                 )
-                true_next_obs = info['real_next_obs']
+                true_next_obs = info['real_next_obs'].reshape(last_obs.shape)
                 next_val = network.apply(train_state.params, true_next_obs, method=network.value)
 
                 clean_info = {k: v for k, v in info.items() if k not in ["real_next_obs", "real_next_state"]}

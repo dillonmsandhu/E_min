@@ -4,7 +4,7 @@
 #SBATCH --time=16:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
-#SBATCH --array=0-22
+#SBATCH --array=0-18
 
 # ==============================================================================
 # Comprehensive Gymnax Suite Sweep: E-Minimization vs. Spectrum of TD(lambda)
@@ -14,14 +14,7 @@
 #   - Critic learning rate swept: [0.003, 0.001, 0.0003, 0.0001] to test over-smoothing
 #   - Actor training kept strictly constant: ACTOR_LR=0.0003, GAE_LAMBDA=0.9
 #
-# Environments (All 23 Gymnax environments, excluding Catch-bsuite):
-#   Classic Control: CartPole-v1, Pendulum-v1, Acrobot-v1, MountainCar-v0, MountainCarContinuous-v0
-#   MinAtar: Asterix-MinAtar, Breakout-MinAtar, Freeway-MinAtar, SpaceInvaders-MinAtar
-#   BSuite: DeepSea-bsuite, MemoryChain-bsuite, UmbrellaChain-bsuite, DiscountingChain-bsuite,
-#           MNISTBandit-bsuite, SimpleBandit-bsuite
-#   Misc / Navigation / Continuous: FourRooms-misc, MetaMaze-misc, PointRobot-misc,
-#                                   BernoulliBandit-misc, GaussianBandit-misc,
-#                                   Reacher-misc, Swimmer-misc, Pong-misc
+# Environments: 19 Non-Bandit Gymnax Environments (Excluding Catch-bsuite & Bandits)
 #
 # Usage:
 #   sbatch scripts/run_slurm_gymnax_suite.sh
@@ -38,7 +31,7 @@ else
     PYTHON="python"
 fi
 
-# Environment Array: All 23 Gymnax environments except Catch-bsuite
+# Environment Array: 19 Non-Bandit Gymnax environments (indices 0 to 18)
 ALL_ENVS=(
     # Classic Control
     "CartPole-v1"
@@ -75,6 +68,11 @@ elif [ -n "$SLURM_ARRAY_TASK_ID" ]; then
     ENV_NAME="${ALL_ENVS[$SLURM_ARRAY_TASK_ID]}"
 else
     ENV_NAME="CartPole-v1"
+fi
+
+if [ -z "$ENV_NAME" ]; then
+    echo "ERROR: ENV_NAME is empty. SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) is out of bounds for ALL_ENVS (size ${#ALL_ENVS[@]})."
+    exit 1
 fi
 
 N_SEEDS=8

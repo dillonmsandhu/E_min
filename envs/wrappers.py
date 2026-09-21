@@ -109,6 +109,29 @@ class NormalizeObsEnvState:
     env_state: Any
 
 
+class FlattenObservationWrapper(UniversalObservationWrapper):
+    """Flatten observations and synchronize with ghost observations."""
+    def observation_space(self, params: EnvParams) -> spaces.Box:
+        orig = self._env.observation_space(params)
+        num_elements = int(jnp.prod(jnp.array(orig.shape)))
+        low = jnp.reshape(orig.low, -1) if hasattr(orig.low, "shape") and orig.low.shape != () else orig.low
+        high = jnp.reshape(orig.high, -1) if hasattr(orig.high, "shape") and orig.high.shape != () else orig.high
+        return spaces.Box(
+            low=low,
+            high=high,
+            shape=(num_elements,),
+            dtype=orig.dtype,
+        )
+
+    def observation(self, obs: jax.Array, env_state: EnvState, params: EnvParams) -> jax.Array:
+        obs_shape = self._env.observation_space(params).shape
+        num_trailing = len(obs_shape)
+        if obs.ndim > num_trailing:
+            batch_shape = obs.shape[:-num_trailing]
+            return obs.reshape(batch_shape + (-1,))
+        return obs.reshape(-1)
+
+
 class AddChannelWrapper(UniversalObservationWrapper):
     def observation_space(self, params):
         orig = self._env.observation_space(params)
