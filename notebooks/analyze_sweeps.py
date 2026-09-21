@@ -399,7 +399,7 @@ def plot_lambda_spectrum_vs_E(
             c_mean = c_traj.mean(axis=0)
 
             hparam_str = ", ".join([f"{c}={best_row[c]}" for c in hparam_cols])
-            prefix_name = f"TD(λ={lam})" if lam < 1.0 else "MC (λ=1.0)"
+            prefix_name = f"TD($\\lambda$={lam})" if lam < 1.0 else "MC ($\\lambda$=1.0)"
             if hparam_str:
                 lam_label = f"{prefix_name} ({hparam_str})"
             else:
@@ -415,13 +415,13 @@ def plot_lambda_spectrum_vs_E(
         ax_curves.set_yscale("log")
     ax_curves.set_xlabel("Update Steps", fontsize=12)
     ax_curves.set_ylabel(ylabel or metric_key, fontsize=12)
-    ax_curves.set_title("Learning Curves: E vs. TD(λ) Spectrum", fontsize=13, fontweight="bold")
+    ax_curves.set_title("Learning Curves: E vs. TD($\\lambda$) Spectrum", fontsize=13, fontweight="bold")
     ax_curves.grid(True, linestyle="--", alpha=0.5)
     ax_curves.legend(loc="best", fontsize=9, frameon=True)
 
     # Right panel: Sensitivity plot (Final Performance vs Lambda)
     if lambda_vals:
-        ax_sensitivity.plot(lambda_vals, lambda_final_scores, marker="o", color="#1f77b4", linewidth=2.0, label="TD(λ) Best-LR")
+        ax_sensitivity.plot(lambda_vals, lambda_final_scores, marker="o", color="#1f77b4", linewidth=2.0, label="TD($\\lambda$) Best-LR")
         e_summary_df = e_sweep_data.get("summary_df")
         if e_summary_df is not None and lambda_param in e_summary_df.columns and len(e_summary_df[lambda_param].unique()) > 1:
             e_lambda_vals = []
@@ -433,17 +433,17 @@ def plot_lambda_spectrum_vs_E(
                 c_mean = np.asarray(e_metrics[best_c_idx]).mean(axis=0)
                 e_lambda_vals.append(float(lam))
                 e_lambda_scores.append(float(c_mean[-20:].mean()))
-            ax_sensitivity.plot(e_lambda_vals, e_lambda_scores, marker="s", color="#2ca02c", linewidth=2.2, linestyle="-", label="E(λ) Best-LR")
+            ax_sensitivity.plot(e_lambda_vals, e_lambda_scores, marker="s", color="#2ca02c", linewidth=2.2, linestyle="-", label="E($\\lambda$) Best-LR")
         else:
             e_final = float(e_mean[-20:].mean())
             ax_sensitivity.axhline(e_final, color="#2ca02c", linestyle="-", linewidth=2.5, label=f"E-Min (Score={e_final:.2f})")
-        ax_sensitivity.set_xlabel("Lambda (λ)", fontsize=12)
+        ax_sensitivity.set_xlabel("Lambda ($\\lambda$)", fontsize=12)
         ax_sensitivity.set_ylabel(f"Final Window ({metric_key})", fontsize=12)
-        ax_sensitivity.set_title("Performance vs. λ", fontsize=13, fontweight="bold")
+        ax_sensitivity.set_title("Performance vs. $\\lambda$", fontsize=13, fontweight="bold")
         ax_sensitivity.grid(True, linestyle="--", alpha=0.5)
         ax_sensitivity.legend(loc="best", fontsize=9, frameon=True)
 
-    fig.suptitle(title or "E-Minimization vs. TD(λ) Spectrum Analysis", fontsize=14, fontweight="bold")
+    fig.suptitle(title or "E-Minimization vs. TD($\\lambda$) Spectrum Analysis", fontsize=14, fontweight="bold")
     fig.tight_layout()
 
     if save_path:

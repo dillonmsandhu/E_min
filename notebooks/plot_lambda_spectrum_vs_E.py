@@ -57,7 +57,7 @@ def main():
         e_sweep_data=e_sweep_data,
         metric_key=args.metric,
         lambda_param=args.lambda_param,
-        title=f"E-Minimization vs. TD(λ) Spectrum ({env_name})",
+        title=f"E-Minimization vs. TD($\\lambda$) Spectrum ({env_name})",
         save_path=png_save_path,
         log_scale=args.log_scale,
     )

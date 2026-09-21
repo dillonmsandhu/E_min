@@ -136,7 +136,7 @@ def generate_suite_pdf(
 
         suite_name = os.path.basename(os.path.normpath(suite_dir))
         fig_grid.suptitle(
-            f"Gymnax Benchmark Suite: E-Minimization vs. TD(λ)\nSuite: {suite_name} | Metric: {metric_key}",
+            f"Gymnax Benchmark Suite: E-Minimization vs. TD($\\lambda$)\nSuite: {suite_name} | Metric: {metric_key}",
             fontsize=18,
             fontweight="bold",
             y=0.995,
@@ -174,7 +174,7 @@ def generate_suite_pdf(
                     x = np.arange(td_traj.shape[-1])
                     mean_td = td_traj.mean(axis=0)
                     std_td = td_traj.std(axis=0)
-                    ax.plot(x, mean_td, label="Best TD(λ)", color="#1f77b4", linewidth=2.0, linestyle="--")
+                    ax.plot(x, mean_td, label="Best TD($\\lambda$)", color="#1f77b4", linewidth=2.0, linestyle="--")
                     if td_traj.shape[0] > 1:
                         ax.fill_between(x, mean_td - std_td, mean_td + std_td, color="#1f77b4", alpha=0.18)
                     has_plotted = True
@@ -183,16 +183,17 @@ def generate_suite_pdf(
 
             ax.set_title(env_name, fontsize=12, fontweight="bold")
             ax.set_xlabel("Update Steps", fontsize=10)
-            ax.set_ylabel(metric_key if c == 0 else "", fontsize=10)
+            if c == 0:
+                ax.set_ylabel(metric_key, fontsize=10)
             ax.grid(True, linestyle="--", alpha=0.5)
             if has_plotted:
-                ax.legend(loc="best", fontsize=8, framealpha=0.75)
+                ax.legend(loc="best", fontsize=8, framealpha=0.8)
 
-        # Hide empty remaining grid subplots
-        for idx in range(n_envs, n_rows * n_cols):
-            r = idx // n_cols
-            c = idx % n_cols
-            axes[r][c].axis("off")
+        # Hide any unused subplots
+        for extra_idx in range(n_envs, n_rows * n_cols):
+            r = extra_idx // n_cols
+            c = extra_idx % n_cols
+            fig_grid.delaxes(axes[r][c])
 
         fig_grid.tight_layout(rect=[0, 0, 1, 0.97])
         pdf.savefig(fig_grid, dpi=200)
@@ -209,7 +210,7 @@ def generate_suite_pdf(
                         e_sweep_data=e_data,
                         metric_key=metric_key,
                         lambda_param="VALUE_LAMBDA",
-                        title=f"{env_name}: E-Minimization vs. TD(λ) Spectrum",
+                        title=f"{env_name}: E-Minimization vs. TD($\\lambda$) Spectrum",
                     )
                     pdf.savefig(fig, dpi=200)
                     plt.close(fig)
