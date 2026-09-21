@@ -58,15 +58,11 @@ ALL_ENVS=(
     "MemoryChain-bsuite"
     "UmbrellaChain-bsuite"
     "DiscountingChain-bsuite"
-    "MNISTBandit-bsuite"
-    "SimpleBandit-bsuite"
 
     # Misc / Navigation / Continuous
     "FourRooms-misc"
     "MetaMaze-misc"
     "PointRobot-misc"
-    "BernoulliBandit-misc"
-    "GaussianBandit-misc"
     "Reacher-misc"
     "Swimmer-misc"
     "Pong-misc"
