@@ -92,8 +92,8 @@ CRITIC_LR_GRID="0.003 0.001 0.0003 0.0001"
 FIXED_ACTOR_LR=0.0003
 FIXED_GAE_LAMBDA=0.9
 
-# Spectrum of lambda for TD(lambda)
-TD_LAMBDA_GRID="0.0 0.5 0.8 0.9 0.95 0.99 1.0"
+# High lambda spectrum for comparing high return anchors
+HIGH_LAMBDA_GRID="0.9 0.95 0.99 1.0"
 
 # Rollout batch configuration
 CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA}"
@@ -111,19 +111,21 @@ echo "Environment: $ENV_NAME"
 echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS"
 echo "Critic LR Grid: $CRITIC_LR_GRID"
 echo "Fixed Actor LR: $FIXED_ACTOR_LR | Fixed GAE Lambda: $FIXED_GAE_LAMBDA"
-echo "TD Lambda Grid: $TD_LAMBDA_GRID"
+echo "High Lambda Grid: $HIGH_LAMBDA_GRID"
+echo "Ranking Metric: $METRIC ($RANK_BY)"
 echo "Output Directory: $SWEEP_ROOT_DIR"
 echo "======================================================================"
 
-# 1. Sweep Sampled E Minimization
+# 1. Sweep Sampled E Minimization across critic LR x high lambda
 echo ""
-echo "--> [1/2] Sweeping sampled_E..."
+echo "--> [1/2] Sweeping sampled_E across high lambda spectrum: $HIGH_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
     --algos sampled_E \
     --lr-grid $CRITIC_LR_GRID \
     --actor-lr-grid $FIXED_ACTOR_LR \
+    --value-lambda-grid $HIGH_LAMBDA_GRID \
     --config "$CONFIG" \
     --n-seeds $N_SEEDS \
     --total-timesteps $TOTAL_TIMESTEPS \
@@ -134,16 +136,16 @@ $PYTHON scripts/sweep_pipeline.py \
     --sweep-root-dir "$SWEEP_ROOT_DIR" \
     --no-log-scale
 
-# 2. Sweep TD(lambda) across full lambda spectrum
+# 2. Sweep TD(lambda) across high lambda spectrum
 echo ""
-echo "--> [2/2] Sweeping sampled_td_lambda across lambda spectrum: $TD_LAMBDA_GRID..."
+echo "--> [2/2] Sweeping sampled_td_lambda across high lambda spectrum: $HIGH_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
     --algos sampled_td_lambda \
     --lr-grid $CRITIC_LR_GRID \
     --actor-lr-grid $FIXED_ACTOR_LR \
-    --value-lambda-grid $TD_LAMBDA_GRID \
+    --value-lambda-grid $HIGH_LAMBDA_GRID \
     --config "$CONFIG" \
     --n-seeds $N_SEEDS \
     --total-timesteps $TOTAL_TIMESTEPS \

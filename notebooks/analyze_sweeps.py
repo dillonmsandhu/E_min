@@ -387,8 +387,21 @@ def plot_lambda_spectrum_vs_E(
     # Right panel: Sensitivity plot (Final Performance vs Lambda)
     if lambda_vals:
         ax_sensitivity.plot(lambda_vals, lambda_final_scores, marker="o", color="#1f77b4", linewidth=2.0, label="TD(λ) Best-LR")
-        e_final = float(e_mean[-20:].mean())
-        ax_sensitivity.axhline(e_final, color="#2ca02c", linestyle="-", linewidth=2.5, label=f"E-Min (Score={e_final:.2f})")
+        e_summary_df = e_sweep_data.get("summary_df")
+        if e_summary_df is not None and lambda_param in e_summary_df.columns and len(e_summary_df[lambda_param].unique()) > 1:
+            e_lambda_vals = []
+            e_lambda_scores = []
+            e_metrics = e_sweep_data["metrics"][metric_key]
+            for lam in sorted(e_summary_df[lambda_param].unique()):
+                lam_df = e_summary_df[e_summary_df[lambda_param] == lam]
+                best_c_idx = int(lam_df.iloc[0]["config_idx"])
+                c_mean = np.asarray(e_metrics[best_c_idx]).mean(axis=0)
+                e_lambda_vals.append(float(lam))
+                e_lambda_scores.append(float(c_mean[-20:].mean()))
+            ax_sensitivity.plot(e_lambda_vals, e_lambda_scores, marker="s", color="#2ca02c", linewidth=2.2, linestyle="-", label="E(λ) Best-LR")
+        else:
+            e_final = float(e_mean[-20:].mean())
+            ax_sensitivity.axhline(e_final, color="#2ca02c", linestyle="-", linewidth=2.5, label=f"E-Min (Score={e_final:.2f})")
         ax_sensitivity.set_xlabel("Lambda (λ)", fontsize=12)
         ax_sensitivity.set_ylabel(f"Final Window ({metric_key})", fontsize=12)
         ax_sensitivity.set_title("Performance vs. λ", fontsize=13, fontweight="bold")
