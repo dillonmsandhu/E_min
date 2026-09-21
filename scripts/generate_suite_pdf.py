@@ -215,6 +215,17 @@ def generate_suite_pdf(
                     print(f"Warning: Failed to render detailed page for {env_name}: {ex}")
 
     print(f"Successfully generated full suite PDF: {output_pdf}")
+
+    recipient = email or os.environ.get("EMAIL_RECIPIENT")
+    if recipient and os.path.exists(output_pdf):
+        from core.mail import email_pdf
+        email_pdf(
+            output_pdf,
+            recipient=recipient,
+            subject=f"Gymnax Suite Results: {suite_name}",
+            body=f"Sweep suite completed!\nDirectory: {suite_dir}\nEnvironments: {len(loaded_envs)}\nMetric: {metric_key}",
+        )
+
     return output_pdf
 
 
@@ -225,6 +236,7 @@ def main():
     parser.add_argument("--metric", type=str, default="returned_discounted_episode_returns", help="Metric to plot")
     parser.add_argument("--rank-by", type=str, default="final_window", help="Ranking method")
     parser.add_argument("--window-size", type=int, default=100, help="Window size for final window ranking")
+    parser.add_argument("--email", type=str, default=None, help="Email address to send PDF upon generation")
 
     args = parser.parse_args()
 
@@ -243,6 +255,7 @@ def main():
         metric_key=args.metric,
         rank_by=args.rank_by,
         window_size=args.window_size,
+        email=args.email,
     )
 
 

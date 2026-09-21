@@ -154,12 +154,16 @@ $PYTHON scripts/sweep_pipeline.py \
     --sweep-root-dir "$SWEEP_ROOT_DIR" \
     --no-log-scale
 
+# Email recipient for completion notifications and PDF attachments
+EMAIL_RECIPIENT="${EMAIL_RECIPIENT:-ds541@cs.duke.edu}"
+
 # 3. Dedicated Lambda Spectrum vs E Plot
 echo ""
 echo "--> Generating Lambda Spectrum vs. E Comparison Figure..."
 $PYTHON notebooks/plot_lambda_spectrum_vs_E.py \
     --sweep-dir "$SWEEP_ROOT_DIR" \
-    --metric "$METRIC"
+    --metric "$METRIC" \
+    --email "$EMAIL_RECIPIENT"
 
 # 4. Compile Suite PDF across all environments completed so far
 echo ""
@@ -168,7 +172,8 @@ $PYTHON scripts/generate_suite_pdf.py \
     --suite-dir "$SWEEP_SUITE_DIR" \
     --metric "$METRIC" \
     --rank-by "$RANK_BY" \
-    --window-size $WINDOW_SIZE
+    --window-size $WINDOW_SIZE \
+    --email "$EMAIL_RECIPIENT"
 
 END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 DURATION=$SECONDS

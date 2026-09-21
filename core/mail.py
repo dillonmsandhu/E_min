@@ -1,39 +1,63 @@
-# emails a pdf
+# core/mail.py
+# Technical helper to email plots, PDFs, and results files from cluster runs.
 import subprocess
 import os
+import sys
 import base64
+import shutil
 
-import subprocess
-import os
-import base64
 
-def email_results_file(filename, recipient='ds541@cs.duke.edu'):
+def get_sendmail_bin():
+    """Finds the sendmail executable across standard system locations."""
+    candidates = [
+        shutil.which("sendmail"),
+        "/usr/sbin/sendmail",
+        "/sbin/sendmail",
+        "/usr/bin/sendmail",
+    ]
+    for c in candidates:
+        if c and os.path.exists(c) and os.access(c, os.X_OK):
+            return c
+    return "/sbin/sendmail"
+
+
+def email_results_file(filename, recipient="ds541@cs.duke.edu", subject=None, body=None):
+    """
+    Emails a file (PDF, PNG, CSV, etc.) with proper MIME multipart encoding via sendmail.
+    """
     if not os.path.exists(filename):
         print(f"❌ File {filename} not found!")
         return False
-    
-    file_size = os.path.getsize(filename) / 1024
+
+    file_size = os.path.getsize(filename) / 1024  # KB
     base_name = os.path.basename(filename)
-    
+
+    if file_size > 20000:  # 20 MB warning
+        print(f"⚠️ Warning: File {base_name} is {file_size:.1f} KB, which may exceed server attachment limits.")
+
     try:
-        with open(filename, 'rb') as f:
+        with open(filename, "rb") as f:
             data = f.read()
         b64_data = base64.b64encode(data).decode()
-        b64_formatted = '\n'.join([b64_data[i:i+76] for i in range(0, len(b64_data), 76)])
-        
-        boundary = "batch_results_boundary"
-        subject = f"Experiment Results: {base_name}"
-        
+        b64_formatted = "\n".join([b64_data[i : i + 76] for i in range(0, len(b64_data), 76)])
+
+        boundary = "results_attachment_boundary_42"
+        if subject is None:
+            subject = f"Experiment Results: {base_name}"
+
         # Determine Content-Type dynamically based on extension
         filename_lower = filename.lower()
-        if filename_lower.endswith('.csv'):
+        if filename_lower.endswith(".csv"):
             content_type = "text/csv"
-        elif filename_lower.endswith('.gif'):
+        elif filename_lower.endswith(".gif"):
             content_type = "image/gif"
-        elif filename_lower.endswith(('.png', '.jpg', '.jpeg')):
-            content_type = f"image/{'jpeg' if filename_lower.endswith('jpg') else filename_lower.split('.')[-1]}"
+        elif filename_lower.endswith((".png", ".jpg", ".jpeg")):
+            ext = "jpeg" if filename_lower.endswith("jpg") else filename_lower.split(".")[-1]
+            content_type = f"image/{ext}"
         else:
             content_type = "application/pdf"
+
+        body_text = body or f"Your experiment run has finished.\nAttached file: {base_name} ({file_size:.1f} KB)"
 
         email_content = f"""To: {recipient}
 From: {recipient}
@@ -44,9 +68,7 @@ Content-Type: multipart/mixed; boundary="{boundary}"
 --{boundary}
 Content-Type: text/plain; charset=UTF-8
 
-Your batch run is complete.
-File: {base_name}
-Size: {file_size:.1f} KB
+{body_text}
 
 --{boundary}
 Content-Type: {content_type}
@@ -56,134 +78,50 @@ Content-Disposition: attachment; filename="{base_name}"
 {b64_formatted}
 --{boundary}--
 """
-        cmd = ['/sbin/sendmail', recipient]
-        subprocess.run(cmd, input=email_content, text=True, capture_output=True)
-        print(f"📧 Results emailed to {recipient}")
-        return True
+        sendmail_cmd = get_sendmail_bin()
+        cmd = [sendmail_cmd, recipient]
+        res = subprocess.run(cmd, input=email_content, text=True, capture_output=True)
+        if res.returncode == 0:
+            print(f"📧 Sent {base_name} to {recipient}")
+            return True
+        else:
+            print(f"❌ sendmail failed ({res.returncode}): {res.stderr}")
+            return False
     except Exception as e:
         print(f"❌ Email failed: {e}")
         return False
 
-def email_pdf(pdf_filename='figures/is-ppo-training.pdf', recipient='ds541@cs.duke.edu'):
-    """
-    Simple function to email PDF using sendmail with proper MIME encoding
-    This method will definitely work since you have sendmail available.
-    
-    Args:
-        pdf_filename: Path to the PDF file
-        recipient: Email address (defaults to your Duke email)
-    """
-    
-    # Check if file exists
-    if not os.path.exists(pdf_filename):
-        print(f"❌ File {pdf_filename} not found!")
-        print("💡 Make sure to save your plot first:")
-        print(f"   fig.savefig('{pdf_filename}', bbox_inches='tight', pad_inches=0.02)")
-        return False
-    
-    file_size = os.path.getsize(pdf_filename) / 1024  # KB
-    print(f"📁 Found {pdf_filename} ({file_size:.1f} KB)")
-    
-    if file_size > 10000:  # 10MB limit
-        print("⚠️ File is quite large, might be rejected by email server")
-    
-    try:
-        # Read and encode PDF
-        with open(pdf_filename, 'rb') as f:
-            pdf_data = f.read()
-        pdf_b64 = base64.b64encode(pdf_data).decode()
-        
-        # Split base64 into 76-character lines (RFC requirement)
-        pdf_b64_lines = [pdf_b64[i:i+76] for i in range(0, len(pdf_b64), 76)]
-        pdf_b64_formatted = '\n'.join(pdf_b64_lines)
-        
-        # Create proper MIME email
-        boundary = "boundary_123_pdf_attachment"
-        subject = f"Jupyter Plot: {os.path.basename(pdf_filename)}"
-        
-        email_content = f"""To: {recipient}
-From: {recipient}
-Subject: {subject}
-MIME-Version: 1.0
-Content-Type: multipart/mixed; boundary="{boundary}"
 
-This is a multi-part message in MIME format.
+def email_pdf(pdf_filename, recipient="ds541@cs.duke.edu", subject=None, body=None):
+    """Convenience wrapper for email_results_file specifically for PDFs."""
+    return email_results_file(pdf_filename, recipient=recipient, subject=subject, body=body)
 
---{boundary}
-Content-Type: text/plain; charset=UTF-8
 
-Hi!
-
-Your plot from the Jupyter notebook is attached.
-
-File: {os.path.basename(pdf_filename)}
-Size: {file_size:.1f} KB
-
-Generated from your notebook.
-
-Best regards,
-Your Jupyter Notebook 🐍
-
---{boundary}
-Content-Type: application/pdf
-Content-Transfer-Encoding: base64
-Content-Disposition: attachment; filename="{os.path.basename(pdf_filename)}"
-
-{pdf_b64_formatted}
---{boundary}--
-"""
-        
-        print(f"📤 Sending to {recipient} using sendmail...")
-        
-        # Send via sendmail
-        cmd = ['/sbin/sendmail', recipient]
-        result = subprocess.run(cmd, input=email_content, text=True, capture_output=True)
-        
-        if result.returncode == 0:
-            print("✅ Email sent successfully with attachment!")
-            print(f"📧 Check your inbox at {recipient}")
-            return True
-        else:
-            print(f"❌ sendmail failed: {result.stderr}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return False
-
-def test_email(recipient='ds541@cs.duke.edu'):
-    """Send a simple test email without attachment"""
+def test_email(recipient="ds541@cs.duke.edu"):
+    """Send a simple test email without attachment."""
     try:
         email_content = f"""To: {recipient}
 From: {recipient}
-Subject: Test from Jupyter Notebook
+Subject: Test Email from Cluster
 
-This is a test email from your Jupyter notebook to verify mail is working.
-
-If you receive this, the mail system is functional!
+This is a test email to verify that the cluster mail system is functional!
 """
-        
-        print(f"📤 Sending test email to {recipient}...")
-        cmd = ['/sbin/sendmail', recipient]
-        result = subprocess.run(cmd, input=email_content, text=True, capture_output=True)
-        
-        if result.returncode == 0:
-            print("✅ Test email sent! Check your inbox.")
+        sendmail_cmd = get_sendmail_bin()
+        print(f"📤 Sending test email to {recipient} via {sendmail_cmd}...")
+        res = subprocess.run([sendmail_cmd, recipient], input=email_content, text=True, capture_output=True)
+        if res.returncode == 0:
+            print(f"✅ Test email sent to {recipient}!")
             return True
         else:
-            print(f"❌ Test failed: {result.stderr}")
+            print(f"❌ sendmail failed: {res.stderr}")
             return False
     except Exception as e:
         print(f"❌ Test error: {e}")
         return False
 
-# Quick usage:
-# 1. Test basic email first:
-# test_email()
 
-# 2. Save your plot and email it:
-# fig.savefig('figures/is-ppo-training.pdf', bbox_inches="tight", pad_inches=0.02)
-# email_pdf()
-
-print("📧 Email functions ready!")
-print("Try: test_email() first, then email_pdf_simple()")
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        email_results_file(sys.argv[1])
+    else:
+        test_email()

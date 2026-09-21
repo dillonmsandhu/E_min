@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--lambda-param", type=str, default="VALUE_LAMBDA", help="Hyperparameter name for lambda")
     parser.add_argument("--out-dir", type=str, default=None, help="Output directory for saved plot")
     parser.add_argument("--log-scale", action="store_true", help="Plot on log scale")
+    parser.add_argument("--email", type=str, default=None, help="Email recipient to send PDF results")
 
     args = parser.parse_args()
 
@@ -48,18 +49,32 @@ def main():
 
     out_dir = args.out_dir or os.path.join(args.sweep_dir, "comparison")
     os.makedirs(out_dir, exist_ok=True)
-    save_path = os.path.join(out_dir, "comparison_lambda_spectrum_vs_E.png")
+    png_save_path = os.path.join(out_dir, "comparison_lambda_spectrum_vs_E.png")
+    pdf_save_path = os.path.join(out_dir, "comparison_lambda_spectrum_vs_E.pdf")
 
     env_name = td_sweep_data.get("env_name", "")
-    plot_lambda_spectrum_vs_E(
+    fig = plot_lambda_spectrum_vs_E(
         td_sweep_data=td_sweep_data,
         e_sweep_data=e_sweep_data,
         metric_key=args.metric,
         lambda_param=args.lambda_param,
         title=f"E-Minimization vs. TD(λ) Spectrum ({env_name})",
-        save_path=save_path,
+        save_path=png_save_path,
         log_scale=args.log_scale,
     )
+    if fig is not None:
+        fig.savefig(pdf_save_path, bbox_inches="tight")
+        print(f"Lambda spectrum comparison PDF saved to: {pdf_save_path}")
+
+    recipient = args.email or os.environ.get("EMAIL_RECIPIENT")
+    if recipient and os.path.exists(pdf_save_path):
+        from core.mail import email_pdf
+        email_pdf(
+            pdf_save_path,
+            recipient=recipient,
+            subject=f"[{env_name}] E-Minimization vs. TD(λ) Spectrum Plot",
+            body=f"Environment: {env_name}\nMetric: {args.metric}\nResults Directory: {args.sweep_dir}",
+        )
 
 
 if __name__ == "__main__":
