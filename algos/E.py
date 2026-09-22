@@ -5,7 +5,7 @@ import core.networks as networks
 import core.utils as utils
 import core.runtime_metrics as runtime_metrics
 
-SAVE_DIR = "sampled_E"
+SAVE_DIR = "E"
 
 class Transition(NamedTuple):
     done: jnp.ndarray

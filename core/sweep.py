@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from core.utils import save_results, merge_hparams
+from core.utils import save_results, merge_hparams, json_default
 
 
 
@@ -407,7 +407,7 @@ def tune(
     }
     best_config_path = os.path.join(out_dir, "best_config.json")
     with open(best_config_path, "w") as f:
-        json.dump(best_config_meta, f, indent=4)
+        json.dump(best_config_meta, f, indent=4, default=json_default)
     print(f"Best configuration saved to {best_config_path}")
 
     # Print summary

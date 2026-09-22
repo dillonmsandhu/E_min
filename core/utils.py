@@ -48,10 +48,22 @@ def parse_config_override(config_str):
                     cfg[k] = True
     return cfg
 
+def json_default(o):
+    if isinstance(o, (np.bool_, bool)):
+        return bool(o)
+    if isinstance(o, (np.integer, int)):
+        return int(o)
+    if isinstance(o, (np.floating, float)):
+        return float(o)
+    if hasattr(o, "tolist"):
+        return o.tolist()
+    return str(o)
+
+
 def save_config(config, env_dir):
     config_path = os.path.join(env_dir, f"config.json")
     with open(config_path, 'w') as f:
-        json.dump(config, f, indent=4)
+        json.dump(config, f, indent=4, default=json_default)
     print(f"Config saved to {config_path}")
 
 def save_results(data, config, env_name, env_dir):

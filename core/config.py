@@ -28,6 +28,9 @@ config = {
     # PPO Hyperparameters
     "GAE_LAMBDA": 0.8,
     "VALUE_LAMBDA": 0.9,
+    "E_LAMBDA": 0.8,
+    "RETURN_LAMBDA": 0.99,
+    "RECOMPUTE_TARGETS_EACH_EPOCH": False,
     "CLIP_EPS": 0.1,
     "VF_CLIP": 0.5,
     "VF_COEF": 0.5,

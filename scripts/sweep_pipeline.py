@@ -39,67 +39,19 @@ from notebooks.analyze_sweeps import (
 )
 
 
-# Map algorithm shorthand names to module paths
+# Map algorithm names directly to module paths (exact filenames in algos/)
 ALGO_REGISTRY = {
-    "fixed": {
-        "exact_td": "fixed_policy.exact_td",
-        "exact_mc": "fixed_policy.exact_mc",
-        "exact_E_gd": "fixed_policy.exact_E_gd",
-        "exact_E": "fixed_policy.exact_E_gd",
-        "exact_E_lambda": "fixed_policy.exact_E_lambda",
-        "exact_E_td": "fixed_policy.exact_E_td",
-        "exact_Etd": "fixed_policy.exact_E_td",
-        "exact_td_lambda": "fixed_policy.exact_td_lambda",
-        "exact_td_symmetric": "fixed_policy.exact_td_symmetric",
-        "td": "fixed_policy.td",
-        "td0": "fixed_policy.td0",
-        "mc": "fixed_policy.mc",
-        "monte_carlo": "fixed_policy.mc",
-        "sampled_E": "fixed_policy.sampled_E",
-        "unbiased_sampled_E": "fixed_policy.unbiased_sampled_E",
-    },
-    "random": {
-        "exact_td": "random_policy.exact_td",
-        "exact_mc": "random_policy.exact_mc",
-        "exact_E_gd": "random_policy.exact_E_gd",
-        "exact_E": "random_policy.exact_E_gd",
-        "exact_E_lambda": "random_policy.exact_E_lambda",
-        "exact_td_lambda": "random_policy.exact_td_lambda",
-        "exact_E_td": "random_policy.exact_E_td",
-        "exact_Etd": "random_policy.exact_E_td",
-        "exact_E_sampling_form": "random_policy.exact_E_sampling_form",
-        "exact_td_lambda": "random_policy.exact_td_lambda",
-        "exact_td_symmetric": "random_policy.exact_td_symmetric",
-        "td": "random_policy.td",
-        "td0": "random_policy.td0",
-        "mc": "random_policy.mc",
-        "monte_carlo": "random_policy.mc",
-        "sampled_E": "random_policy.sampled_E",
-        "unbiased_sampled_E": "random_policy.unbiased_sampled_E",
-    },
     "ppo": {
-        "sampled_E": "algos.E",
-        "sampled_E_gd": "algos.E",
         "E": "algos.E",
-        "E_min": "algos.E",
-        "sampled_td_lambda": "algos.ppo",
-        "td_lambda": "algos.ppo",
-        "td": "algos.ppo",
+        "E_lambda_fixed": "algos.E_lambda_fixed",
+        "E_lambda_differentiable": "algos.E_lambda_differentiable",
+        "E_lambda_geometric": "algos.E_lambda_geometric",
         "ppo": "algos.ppo",
-        "sampled_mc": "algos.mc",
         "mc": "algos.mc",
-        "monte_carlo": "algos.mc",
-    },
-    "hybrid": {
-        "sampled_E": "algos.E",
-        "sampled_td_lambda": "algos.ppo",
-        "sampled_mc": "algos.mc",
     },
 }
 
-DEFAULT_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
-DEFAULT_SAMPLED_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
-DEFAULT_HYBRID_ALGOS = ["sampled_E", "sampled_td_lambda", "sampled_mc"]
+DEFAULT_ALGOS = ["E", "ppo", "mc"]
 
 
 def get_default_param_grid(
@@ -109,12 +61,14 @@ def get_default_param_grid(
     actor_lr_list=None,
     gae_lambda_list=None,
     value_lambda_list=None,
+    e_lambda_list=None,
+    recompute_targets_list=None,
 ):
     """Returns sensible default parameter grids for standard and multi-param algorithms."""
     standard_lrs = lr_list if lr_list is not None else [1e-2, 5e-3, 1e-3, 5e-4, 1e-4]
     grid = {"LR": standard_lrs}
 
-    mc_algos = ["mc", "monte_carlo", "exact_mc", "sampled_mc", "hybrid_mc", "hybrid_exact_mc"]
+    mc_algos = ["mc"]
 
     # 1. GAE lambda grid (strictly for policy advantages)
     if gae_lambda_list is not None and algo_name not in mc_algos:
@@ -130,6 +84,19 @@ def get_default_param_grid(
     # 3. Actor LR grid (for policy net)
     if actor_lr_list is not None:
         grid["ACTOR_LR"] = actor_lr_list
+
+    # 4. E_LAMBDA grid (for multi-step Dirichlet E(lambda) algorithms)
+    e_lambda_algos = [
+        "E_lambda_fixed",
+        "E_lambda_differentiable",
+        "E_lambda_geometric",
+    ]
+    if e_lambda_list is not None and algo_name in e_lambda_algos:
+        grid["E_LAMBDA"] = e_lambda_list
+
+    # 5. RECOMPUTE_TARGETS_EACH_EPOCH grid (for E_lambda_fixed FVI stop-grad only)
+    if recompute_targets_list is not None and algo_name == "E_lambda_fixed":
+        grid["RECOMPUTE_TARGETS_EACH_EPOCH"] = recompute_targets_list
 
     return grid
 
@@ -194,6 +161,8 @@ def run_sweep_pipeline(
     lambda_grid=None,
     gae_lambda_grid=None,
     value_lambda_grid=None,
+    e_lambda_grid=None,
+    recompute_targets_grid=None,
     custom_grids=None,
     config_overrides=None,
     base_save_dir="results",
@@ -330,6 +299,8 @@ def run_sweep_pipeline(
                 actor_lr_list=actor_lr_grid,
                 gae_lambda_list=gae_lambda_grid,
                 value_lambda_list=value_lambda_grid,
+                e_lambda_list=e_lambda_grid,
+                recompute_targets_list=recompute_targets_grid,
             )
 
         # Output folder for this specific algorithm inside the sweep root
@@ -408,8 +379,8 @@ def run_sweep_pipeline(
     )
 
     # Generate Lambda Spectrum vs E comparison if both algorithms are present
-    td_key = next((k for k in ["sampled_td_lambda", "td_lambda", "td"] if k in completed_runs_for_comparison), None)
-    e_key = next((k for k in ["sampled_E", "E", "E_min"] if k in completed_runs_for_comparison), None)
+    td_key = "ppo" if "ppo" in completed_runs_for_comparison else None
+    e_key = "E" if "E" in completed_runs_for_comparison else None
     if td_key and e_key:
         try:
             spectrum_plot_path = os.path.join(comparison_dir, "comparison_lambda_spectrum_vs_E.png")
@@ -512,8 +483,12 @@ def parse_args():
                         help="Custom GAE lambda grid for policy advantages (e.g. --gae-lambda-grid 0.9 0.99 1.0)")
     parser.add_argument("--value-lambda-grid", nargs="+", type=float, default=None,
                         help="Custom value lambda grid for critic returns (e.g. --value-lambda-grid 0.9 0.99 1.0)")
+    parser.add_argument("--e-lambda-grid", nargs="+", type=float, default=None,
+                        help="Custom E_LAMBDA grid for E(lambda) algorithms (e.g. --e-lambda-grid 0.0 0.5 0.9)")
+    parser.add_argument("--recompute-targets-grid", nargs="+", type=lambda x: (str(x).lower() in ['true', '1', 'yes']), default=None,
+                        help="Grid of booleans for RECOMPUTE_TARGETS_EACH_EPOCH in E_lambda (e.g. --recompute-targets-grid false true)")
     parser.add_argument("--custom-grids-json", type=str, default=None,
-                        help="Path to JSON file specifying custom grids per algorithm")
+                        help="Path to JSON file or inline JSON string specifying custom grids per algorithm")
     parser.add_argument("--config", type=str, default=None,
                         help="JSON string or path to JSON file with additional config overrides")
     parser.add_argument("--use-geom-mean", action="store_true",
@@ -539,9 +514,15 @@ def main():
     args = parse_args()
     
     custom_grids = None
-    if args.custom_grids_json and os.path.exists(args.custom_grids_json):
-        with open(args.custom_grids_json, "r") as f:
-            custom_grids = json.load(f)
+    if args.custom_grids_json:
+        if os.path.exists(args.custom_grids_json):
+            with open(args.custom_grids_json, "r") as f:
+                custom_grids = json.load(f)
+        else:
+            try:
+                custom_grids = json.loads(args.custom_grids_json)
+            except Exception as e:
+                print(f"Warning: Could not parse --custom-grids-json as JSON: {e}")
 
     config_overrides = None
     if args.config:
@@ -618,6 +599,8 @@ def main():
             lambda_grid=args.lambda_grid,
             gae_lambda_grid=args.gae_lambda_grid,
             value_lambda_grid=args.value_lambda_grid,
+            e_lambda_grid=args.e_lambda_grid,
+            recompute_targets_grid=args.recompute_targets_grid,
             custom_grids=custom_grids,
             config_overrides=config_overrides,
             log_scale=log_scale,
