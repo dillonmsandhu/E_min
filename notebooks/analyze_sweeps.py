@@ -220,13 +220,12 @@ def plot_algorithm_comparison(
     colors = plt.cm.tab10(np.linspace(0, 1, max(len(algorithms_dict), 10)))
 
     color_map = {
-        "sampled_E": "#2ca02c",  # Vibrant green
-        "E": "#2ca02c",
-        "E_min": "#2ca02c",
-        "sampled_td_lambda": "#1f77b4",  # Blue
-        "td_lambda": "#1f77b4",
-        "sampled_mc": "#ff7f0e",  # Orange
-        "mc": "#ff7f0e",
+        "E": "#2ca02c",  # Vibrant green
+        "E_lambda_fixed": "#ff7f0e",  # Orange
+        "E_lambda_differentiable": "#1f77b4",  # Blue
+        "E_lambda_geometric": "#9467bd",  # Purple
+        "ppo": "#17becf",  # Cyan
+        "mc": "#d62728",  # Red
     }
 
     for idx, (algo_name, sweep_data) in enumerate(algorithms_dict.items()):
