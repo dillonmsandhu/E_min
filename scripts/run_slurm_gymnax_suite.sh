@@ -4,7 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
-#SBATCH --array=0-17
+#SBATCH --array=0-15
 
 # ==============================================================================
 # Comprehensive Gymnax Suite Sweep: E-Minimization vs. Spectrum of TD(lambda)
@@ -48,8 +48,6 @@ ALL_ENVS=(
 
     # BSuite (excluding Catch-bsuite)
     "DeepSea-bsuite"
-    "MemoryChain-bsuite"
-    "UmbrellaChain-bsuite"
     "DiscountingChain-bsuite"
 
     # Misc / Navigation / Continuous
