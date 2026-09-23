@@ -88,11 +88,18 @@ def __(np, pd, re):
 
     def load_single_run(pkl_path, cloudpickle_mod, json_mod, os_mod):
         """Loads out.pkl and adjacent config.json, returning metrics and config."""
+        data = None
         try:
             with open(pkl_path, "rb") as f:
                 data = cloudpickle_mod.load(f)
-        except Exception:
-            return None, None
+        except Exception as e1:
+            try:
+                import pickle
+                with open(pkl_path, "rb") as f:
+                    data = pickle.load(f)
+            except Exception as e2:
+                print(f"Error unpickling {pkl_path}: {e1} / {e2}")
+                return None, None
 
         cfg = {}
         cfg_path = os_mod.path.join(os_mod.path.dirname(pkl_path), "config.json")
@@ -104,13 +111,22 @@ def __(np, pd, re):
                 pass
 
         metrics = {}
-        if isinstance(data, dict):
-            if "metrics" in data and isinstance(data["metrics"], dict):
-                metrics = data["metrics"]
-            elif "returned_episode_returns" in data:
+        if hasattr(data, "get"):
+            if "metrics" in data:
+                m = data["metrics"]
+                metrics = m if hasattr(m, "get") else getattr(m, "__dict__", {})
+            elif "returned_episode_returns" in data or "returned_discounted_episode_returns" in data:
                 metrics = data
             elif not cfg and "ENV_NAME" in data:
                 cfg = data
+                metrics = data
+        elif hasattr(data, "metrics"):
+            m = getattr(data, "metrics")
+            metrics = m if hasattr(m, "get") else getattr(m, "__dict__", {})
+        elif hasattr(data, "__dict__"):
+            metrics = data.__dict__
+        elif data is not None:
+            metrics = {"raw_data": data}
 
         return metrics, cfg
 
@@ -271,9 +287,22 @@ def __(
             else:
                 _lam = parse_lambda(_suffix, _cfg)
 
-            _ret_series = _metrics.get("returned_episode_returns")
-            if _ret_series is None:
-                _ret_series = _metrics.get("returned_discounted_episode_returns")
+            # Search across common return metric keys
+            _ret_series = None
+            for _k in [
+                "returned_episode_returns",
+                "returned_discounted_episode_returns",
+                "episode_returns",
+                "mean_episode_returns",
+                "returns",
+                "eval_returns",
+            ]:
+                if hasattr(_metrics, "get") and _metrics.get(_k) is not None:
+                    _ret_series = _metrics.get(_k)
+                    break
+                elif hasattr(_metrics, _k):
+                    _ret_series = getattr(_metrics, _k)
+                    break
 
             if _ret_series is not None:
                 _arr = _ret_series
@@ -291,6 +320,9 @@ def __(
                     "config": _cfg,
                     "path": _pkl,
                 })
+            else:
+                _avail = list(_metrics.keys()) if hasattr(_metrics, "keys") else dir(_metrics)
+                print(f"[Warning] No returns metric in {_pkl}. Available keys: {_avail}")
 
     available_envs = sorted(list(set(r["env"] for r in runs_catalog))) if runs_catalog else []
     available_lambdas = sorted(list(set(r["lambda"] for r in runs_catalog if r["lambda"] >= 0))) if runs_catalog else []
