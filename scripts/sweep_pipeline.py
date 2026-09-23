@@ -43,11 +43,16 @@ from notebooks.analyze_sweeps import (
 ALGO_REGISTRY = {
     "ppo": {
         "E": "algos.E",
+        "sampled_E": "algos.E",
         "E_lambda_fixed": "algos.E_lambda_fixed",
         "E_lambda_differentiable": "algos.E_lambda_differentiable",
         "E_lambda_geometric": "algos.E_lambda_geometric",
         "ppo": "algos.ppo",
+        "td": "algos.ppo",
+        "td_lambda": "algos.ppo",
+        "sampled_td_lambda": "algos.ppo",
         "mc": "algos.mc",
+        "sampled_mc": "algos.mc",
     },
 }
 
@@ -68,13 +73,13 @@ def get_default_param_grid(
     standard_lrs = lr_list if lr_list is not None else [1e-2, 5e-3, 1e-3, 5e-4, 1e-4]
     grid = {"LR": standard_lrs}
 
-    mc_algos = ["mc"]
+    mc_algos = ["mc", "sampled_mc"]
 
     # 1. GAE lambda grid (strictly for policy advantages)
     if gae_lambda_list is not None and algo_name not in mc_algos:
         grid["GAE_LAMBDA"] = gae_lambda_list
 
-    e_algos = ["E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
+    e_algos = ["E", "sampled_E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
 
     # 2. Value / Return lambda grid (strictly for critic returns)
     if value_lambda_list is not None and algo_name not in mc_algos:
@@ -491,6 +496,8 @@ def parse_args():
                         help="Custom GAE lambda grid for policy advantages (e.g. --gae-lambda-grid 0.9 0.99 1.0)")
     parser.add_argument("--value-lambda-grid", nargs="+", type=float, default=None,
                         help="Custom value lambda grid for critic returns (e.g. --value-lambda-grid 0.9 0.99 1.0)")
+    parser.add_argument("--return-lambda-grid", nargs="+", type=float, default=None,
+                        help="Custom return lambda grid for E critic return targets (e.g. --return-lambda-grid 0.9 0.95 0.99 1.0)")
     parser.add_argument("--e-lambda-grid", nargs="+", type=float, default=None,
                         help="Custom E_LAMBDA grid for E(lambda) algorithms (e.g. --e-lambda-grid 0.0 0.5 0.9)")
     parser.add_argument("--recompute-targets-grid", nargs="+", type=lambda x: (str(x).lower() in ['true', '1', 'yes']), default=None,
@@ -606,7 +613,7 @@ def main():
             light_metrics=args.light_metrics,
             lambda_grid=args.lambda_grid,
             gae_lambda_grid=args.gae_lambda_grid,
-            value_lambda_grid=args.value_lambda_grid,
+            value_lambda_grid=args.return_lambda_grid if args.return_lambda_grid is not None else args.value_lambda_grid,
             e_lambda_grid=args.e_lambda_grid,
             recompute_targets_grid=args.recompute_targets_grid,
             custom_grids=custom_grids,

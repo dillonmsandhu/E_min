@@ -10,7 +10,8 @@
 # Comprehensive Gymnax Suite Sweep: E-Minimization vs. Spectrum of TD(lambda)
 #
 # Compares Sampled E Minimization against the full spectrum of TD(lambda):
-#   - TD(lambda) swept over VALUE_LAMBDA: [0.0, 0.5, 0.8, 0.9, 0.95, 0.99, 1.0]
+#   - TD(lambda) swept over VALUE_LAMBDA: [0.8, 0.85, 0.9, 0.95, 0.98, 0.99, 1.0]
+#   - Sampled E swept over RETURN_LAMBDA: [0.9, 0.95, 0.98, 0.99, 1.0]
 #   - Critic learning rate swept: [0.003, 0.001, 0.0003, 0.0001] to test over-smoothing
 #   - Actor training kept strictly constant: ACTOR_LR=0.0003, GAE_LAMBDA=0.9
 #
@@ -92,11 +93,14 @@ CRITIC_LR_GRID="0.003 0.001 0.0003 0.0001"
 FIXED_ACTOR_LR=0.0003
 FIXED_GAE_LAMBDA=0.9
 
-# High lambda spectrum for comparing high return anchors
-HIGH_LAMBDA_GRID="0.9 0.95 0.99 1.0"
+# High return lambda spectrum for sampled E return anchor G_t
+HIGH_RETURN_LAMBDA_GRID="0.9 0.95 0.98 0.99 1.0"
 
-# Rollout batch configuration with Slurm tracking
-CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
+# Full lambda spectrum for TD(lambda) starting at 0.8
+TD_LAMBDA_GRID="0.8 0.85 0.9 0.95 0.98 0.99 1.0"
+
+# Rollout batch configuration with Slurm tracking and unclipped value loss
+CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"VF_CLIP\": 1000000.0, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
 
 mkdir -p slurm
 
@@ -115,21 +119,22 @@ echo "Environment: $ENV_NAME"
 echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS"
 echo "Critic LR Grid: $CRITIC_LR_GRID"
 echo "Fixed Actor LR: $FIXED_ACTOR_LR | Fixed GAE Lambda: $FIXED_GAE_LAMBDA"
-echo "High Lambda Grid: $HIGH_LAMBDA_GRID"
+echo "High Return Lambda Grid (E): $HIGH_RETURN_LAMBDA_GRID"
+echo "Full TD Lambda Grid: $TD_LAMBDA_GRID"
 echo "Ranking Metric: $METRIC ($RANK_BY)"
 echo "Output Directory: $SWEEP_ROOT_DIR"
 echo "======================================================================"
 
-# 1. Sweep Sampled E Minimization across critic LR x high lambda
+# 1. Sweep Sampled E Minimization across critic LR x high return lambda
 echo ""
-echo "--> [1/2] Sweeping sampled_E across high lambda spectrum: $HIGH_LAMBDA_GRID..."
+echo "--> [1/2] Sweeping sampled_E across high return lambda spectrum: $HIGH_RETURN_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
     --algos sampled_E \
     --lr-grid $CRITIC_LR_GRID \
     --actor-lr-grid $FIXED_ACTOR_LR \
-    --value-lambda-grid $HIGH_LAMBDA_GRID \
+    --return-lambda-grid $HIGH_RETURN_LAMBDA_GRID \
     --config "$CONFIG" \
     --n-seeds $N_SEEDS \
     --total-timesteps $TOTAL_TIMESTEPS \
@@ -140,16 +145,16 @@ $PYTHON scripts/sweep_pipeline.py \
     --sweep-root-dir "$SWEEP_ROOT_DIR" \
     --no-log-scale
 
-# 2. Sweep TD(lambda) across high lambda spectrum
+# 2. Sweep TD(lambda) across full lambda spectrum (starting at 0.8)
 echo ""
-echo "--> [2/2] Sweeping sampled_td_lambda across high lambda spectrum: $HIGH_LAMBDA_GRID..."
+echo "--> [2/2] Sweeping sampled_td_lambda across full TD lambda spectrum: $TD_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
     --algos sampled_td_lambda \
     --lr-grid $CRITIC_LR_GRID \
     --actor-lr-grid $FIXED_ACTOR_LR \
-    --value-lambda-grid $HIGH_LAMBDA_GRID \
+    --value-lambda-grid $TD_LAMBDA_GRID \
     --config "$CONFIG" \
     --n-seeds $N_SEEDS \
     --total-timesteps $TOTAL_TIMESTEPS \
