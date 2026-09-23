@@ -14,10 +14,11 @@ SECONDS=0
 FILE=$1
 SUFFIX=$2
 ENV=$3
+E_LAMBDA="${4:-0.0}"
 
-CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": 1000000, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": 0.8, \"RETURN_LAMBDA\": 0.99, \"VF_CLIP\": 1000000.0, \"k\": 64, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001, \"ACTOR_LR\": 0.003, \"CRITIC_LR\": 0.003,  \"CRITIC_LR_END\": 0.0001 }"
+CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": 1000000, \"NUM_EPOCHS\": 4, \"E_LAMBDA\": $E_LAMBDA, \"GAE_LAMBDA\": 0.8, \"RETURN_LAMBDA\": 0.99, \"VF_CLIP\": 1000000.0, \"k\": 64, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001, \"ACTOR_LR\": 0.003, \"CRITIC_LR\": 0.003,  \"CRITIC_LR_END\": 0.0001 }"
 
-CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python ${FILE} --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics --env-ids ${ENV} --save-video --save-checkpoint"
+CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python algos/${FILE}.py --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics --env-ids ${ENV} --save-video --save-checkpoint"
 echo $CMD
 eval $CMD
 
