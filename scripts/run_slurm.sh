@@ -16,13 +16,11 @@ START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 SECONDS=0  # start timer
 FILE=$1
 SUFFIX=$2
-# CONFIG=$3
+ENV=$3
 
-CONFIG='{"TOTAL_TIMESTEPS": 2000, "NUM_ENVS": 1, "NUM_STEPS": 1, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 1, "ENV_NAME": "MountainCar-v0", "MODEL_LOAD_DIR": "250_steps_layer_norm", "LOG_FEATURE_METRICS": "False", "LIGHT_METRICS": true, "ACTOR_LR": 0.0001}'
+CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": 1000000, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": 0.8, \"RETURN_LAMBDA\": 0.99, \"VALUE_LAMBDA\": 0.8, \"k\": 64, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001, \"ACTOR_LR\": 0.003, \"CRITIC_LR\": 0.003,  \"CRITIC_LR_END\": 0.0001 }"
 
-# CONFIG='{"TOTAL_TIMESTEPS": 262144000, "NUM_ENVS": 512, "NUM_STEPS": 512, "NUM_EPOCHS": 1, "MINIBATCH_SIZE": 8192, "ENV_NAME": "FourRooms-misc", "FAIL_PROB": 0.01, "GAE_LAMBDA": 0.0, "VALUE_LAMBDA": 0.0, "MODEL_LOAD_DIR": "250_steps_layer_norm", "LAPLACE_SMOOTHING_COEFF": 10.0}'
-
-CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python -m ${FILE} --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics --env-ids --save-video --save-checkpoint"
+CMD="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python ${FILE} --run-suffix ${SUFFIX} --config '${CONFIG}' --save-metrics --env-id ${ENV} --save-video --save-checkpoint --save-metrics"
 echo $CMD
 eval $CMD
 
