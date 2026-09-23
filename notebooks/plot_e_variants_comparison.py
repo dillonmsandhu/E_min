@@ -71,6 +71,13 @@ VARIANTS_CONFIG = {
         "marker": "o",
         "zorder": 9,
     },
+    "ppo": {
+        "display_name": "TD(λ) (PPO)",
+        "color": "#9467bd",
+        "linestyle": "-.",
+        "marker": "v",
+        "zorder": 4,
+    },
 }
 
 
@@ -98,12 +105,12 @@ def plot_e_variants_comparison(
     title: str = None,
 ):
     """
-    Plots learning curves for all 4 variants alongside their scaling with E_LAMBDA.
+    Plots learning curves for all variants alongside their scaling with E_LAMBDA / VALUE_LAMBDA.
     """
     env_name = os.path.basename(os.path.normpath(sweep_dir))
     data_dict = {}
 
-    target_algos = ["E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
+    target_algos = ["E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric", "ppo"]
     for algo_name in target_algos:
         d = load_variant_data(sweep_dir, algo_name)
         if d is not None:
@@ -187,6 +194,18 @@ def plot_e_variants_comparison(
                 max_steps = max(max_steps, traj.shape[-1])
         except Exception as ex:
             print(f"Warning: Could not extract E_lambda_geometric: {ex}")
+
+    # Baseline: TD(lambda) / PPO
+    if "ppo" in data_dict and metric_key in data_dict["ppo"].get("metrics", {}):
+        try:
+            traj, label, _, _ = extract_best_configuration(
+                data_dict["ppo"], metric_key=metric_key, rank_by=rank_by, window_size=window_size
+            )
+            if traj is not None:
+                all_trajs["ppo"] = (traj, label)
+                max_steps = max(max_steps, traj.shape[-1])
+        except Exception as ex:
+            print(f"Warning: Could not extract ppo: {ex}")
 
     x = np.arange(max_steps)
 
@@ -327,6 +346,19 @@ def plot_e_variants_comparison(
             linewidth=2.0,
             label=f"{cfg['display_name']} Baseline",
             zorder=4,
+        )
+
+    # Baseline: TD(lambda) / PPO
+    if "ppo" in all_trajs:
+        ppo_baseline_val = float(all_trajs["ppo"][0].mean(axis=0)[-window_size:].mean())
+        cfg = VARIANTS_CONFIG["ppo"]
+        ax_scaling.axhline(
+            y=ppo_baseline_val,
+            color=cfg["color"],
+            linestyle=cfg["linestyle"],
+            linewidth=2.0,
+            label=f"{cfg['display_name']} Baseline",
+            zorder=3,
         )
 
     ax_scaling.set_xlabel("Dirichlet Parameter $E(\\lambda)$", fontsize=12)

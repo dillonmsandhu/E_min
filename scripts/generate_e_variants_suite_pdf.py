@@ -44,6 +44,7 @@ TARGET_ALGOS = [
     "E_lambda_fixed",
     "E_lambda_differentiable",
     "E_lambda_geometric",
+    "ppo",
 ]
 
 
