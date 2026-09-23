@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.10.0"
-app = marimo.App(width="wide")
+app = marimo.App(width="normal")
 
 
 @app.cell
@@ -21,6 +21,14 @@ def __():
 
 @app.cell
 def __(np, pd, re):
+    TARGET_ALGS = [
+        "E_lambda_diff",
+        "E_lambda_fixed",
+        "E_lambda_geometric",
+        "E0",
+        "ppo",
+    ]
+
     ALGO_STYLE = {
         "E": {"label": "E(0) (1-step baseline)", "color": "#2ca02c", "linestyle": "-"},
         "E0": {"label": "E(0) (1-step baseline)", "color": "#2ca02c", "linestyle": "-"},
@@ -106,15 +114,20 @@ def __(np, pd, re):
 
         return metrics, cfg
 
-    return ALGO_STYLE, load_single_run, parse_lambda, smooth_series
+    return ALGO_STYLE, TARGET_ALGS, load_single_run, parse_lambda, smooth_series
 
 
 @app.cell
-def __(mo):
+def __(TARGET_ALGS, mo):
     results_dir_input = mo.ui.text(
         value="results",
         label="Results Base Directory",
         placeholder="e.g. results or /path/to/cluster/results",
+    )
+    alg_selector = mo.ui.multiselect(
+        options=TARGET_ALGS,
+        value=TARGET_ALGS,
+        label="Target Algorithms",
     )
     smoothing_type = mo.ui.dropdown(
         options=["Exponential Moving Average", "Rolling Mean", "None"],
@@ -132,7 +145,13 @@ def __(mo):
         value=True,
         label="Show unsmoothed raw curves in background (semi-transparent)",
     )
+    include_e0_baseline_checkbox = mo.ui.checkbox(
+        value=True,
+        label="Show E0 baseline on all λ panels",
+    )
     return (
+        alg_selector,
+        include_e0_baseline_checkbox,
         results_dir_input,
         show_raw_checkbox,
         smoothing_slider,
@@ -142,6 +161,8 @@ def __(mo):
 
 @app.cell
 def __(
+    alg_selector,
+    include_e0_baseline_checkbox,
     mo,
     results_dir_input,
     show_raw_checkbox,
@@ -151,9 +172,12 @@ def __(
     control_panel = mo.md(
         f"""
         # Cluster Runs Comparison Dashboard
-        Compare `returned_episode_returns` across algorithms grouped by $\\lambda$.
+        Compare `returned_episode_returns` across target algorithms for each value of $\\lambda$.
 
-        {mo.hstack([results_dir_input, smoothing_type, smoothing_slider, show_raw_checkbox], justify="start", gap=2)}
+        {mo.vstack([
+            mo.hstack([results_dir_input, alg_selector], justify="start", gap=2),
+            mo.hstack([smoothing_type, smoothing_slider, show_raw_checkbox, include_e0_baseline_checkbox], justify="start", gap=2),
+        ])}
         """
     )
     return (control_panel,)
@@ -167,6 +191,7 @@ def __(control_panel):
 
 @app.cell
 def __(
+    alg_selector,
     cloudpickle,
     glob,
     json,
@@ -177,17 +202,34 @@ def __(
     results_dir_input,
 ):
     _base_dir = results_dir_input.value
+    _selected_algs = set(alg_selector.value or [])
     runs_catalog = []
 
-    if os.path.exists(_base_dir):
-        # Scan for out.pkl files recursively
-        _pkl_files = glob.glob(os.path.join(_base_dir, "**", "out.pkl"), recursive=True)
+    if os.path.exists(_base_dir) and _selected_algs:
+        _candidate_pkls = []
+        for _alg in _selected_algs:
+            # 4-level pattern: results/{alg}/lambda_{lambda}/{env}/out.pkl
+            _candidate_pkls.extend(glob.glob(os.path.join(_base_dir, _alg, "lambda_*", "*", "out.pkl")))
+            # 3-level pattern: results/{alg}/lambda_{lambda}/out.pkl
+            _candidate_pkls.extend(glob.glob(os.path.join(_base_dir, _alg, "lambda_*", "out.pkl")))
+
+            # Check directory 'E' if 'E0' is selected
+            if _alg == "E0":
+                _candidate_pkls.extend(glob.glob(os.path.join(_base_dir, "E", "lambda_*", "*", "out.pkl")))
+                _candidate_pkls.extend(glob.glob(os.path.join(_base_dir, "E", "lambda_*", "out.pkl")))
+                # Also allow results/E0/{env}/out.pkl if saved without lambda suffix
+                for _e_pkl in glob.glob(os.path.join(_base_dir, "E0", "*", "out.pkl")) + glob.glob(os.path.join(_base_dir, "E", "*", "out.pkl")):
+                    _parent_name = os.path.basename(os.path.dirname(_e_pkl))
+                    if _parent_name not in ("sweeps", "tuning", "checkpoints"):
+                        _candidate_pkls.append(_e_pkl)
+
+        _pkl_files = sorted(list(set(_candidate_pkls)))
 
         for _pkl in _pkl_files:
             _rel_path = os.path.relpath(_pkl, _base_dir)
             _parts = _rel_path.split(os.sep)
 
-            # Find if any directory part matches lambda_
+            # Find directory part matching lambda_
             _lambda_idx = -1
             for _i, _p in enumerate(_parts):
                 if re.search(r"lambda_([0-9.]+)", _p):
@@ -200,43 +242,55 @@ def __(
                 _env_candidate = _parts[_lambda_idx + 1] if _lambda_idx + 1 < len(_parts) - 1 else "Unknown"
             elif len(_parts) >= 2:
                 _algo_name = _parts[0]
-                _suffix = _parts[1]
-                _env_candidate = _parts[2] if len(_parts) >= 4 else "Unknown"
+                _suffix = "lambda_0" if _algo_name in ("E", "E0") else _parts[1]
+                _env_candidate = _parts[1] if len(_parts) == 3 else (_parts[2] if len(_parts) >= 4 else "Unknown")
             else:
                 _algo_name = "Unknown"
                 _suffix = ""
                 _env_candidate = "Unknown"
+
+            # Normalize E -> E0
+            if _algo_name == "E":
+                _algo_name = "E0"
+
+            # Extra guard: ensure algo is in selected algs
+            if _algo_name not in _selected_algs:
+                continue
+
+            # Extra guard: ensure suffix starts with lambda_
+            if not _suffix.startswith("lambda_"):
+                continue
 
             _metrics, _cfg = load_single_run(_pkl, cloudpickle, json, os)
             if not _metrics:
                 continue
 
             _env_name = _cfg.get("ENV_NAME", _env_candidate) if _cfg else _env_candidate
-            if _algo_name in ("E", "E0", "sampled_E"):
+            if _algo_name == "E0":
                 _lam = 0.0
             else:
                 _lam = parse_lambda(_suffix, _cfg)
 
-                _ret_series = _metrics.get("returned_episode_returns")
-                if _ret_series is None:
-                    _ret_series = _metrics.get("returned_discounted_episode_returns")
+            _ret_series = _metrics.get("returned_episode_returns")
+            if _ret_series is None:
+                _ret_series = _metrics.get("returned_discounted_episode_returns")
 
-                if _ret_series is not None:
-                    _arr = _ret_series
-                    # Squeeze out potential seed or dummy axes
-                    while getattr(_arr, "ndim", 0) > 1:
-                        _arr = _arr.mean(axis=0)
+            if _ret_series is not None:
+                _arr = _ret_series
+                # Squeeze out potential seed or dummy axes
+                while getattr(_arr, "ndim", 0) > 1:
+                    _arr = _arr.mean(axis=0)
 
-                    runs_catalog.append({
-                        "algo": _algo_name,
-                        "suffix": _suffix,
-                        "env": _env_name,
-                        "lambda": _lam if _lam is not None else -1.0,
-                        "lambda_str": f"λ = {_lam:.2f}" if _lam is not None else "Unknown λ",
-                        "returns": _arr,
-                        "config": _cfg,
-                        "path": _pkl,
-                    })
+                runs_catalog.append({
+                    "algo": _algo_name,
+                    "suffix": _suffix,
+                    "env": _env_name,
+                    "lambda": _lam if _lam is not None else -1.0,
+                    "lambda_str": f"λ = {_lam:.2f}" if _lam is not None else "Unknown λ",
+                    "returns": _arr,
+                    "config": _cfg,
+                    "path": _pkl,
+                })
 
     available_envs = sorted(list(set(r["env"] for r in runs_catalog))) if runs_catalog else []
     available_lambdas = sorted(list(set(r["lambda"] for r in runs_catalog if r["lambda"] >= 0))) if runs_catalog else []
@@ -276,6 +330,7 @@ def __(
     ALGO_STYLE,
     available_lambdas,
     env_selector,
+    include_e0_baseline_checkbox,
     np,
     plt,
     runs_catalog,
@@ -307,11 +362,14 @@ def __(
                 if r["env"] == _selected_env and np.isclose(r["lambda"], _lam, atol=1e-3)
             ]
 
-            # Also allow 1-step E baseline (lambda=0 or constant) to appear on all panels if available
-            _e0_runs = [
-                r for r in runs_catalog
-                if r["env"] == _selected_env and r["algo"] in ("E", "E0", "sampled_E")
-            ]
+            # Also allow 1-step E baseline (lambda=0 or constant) to appear on all panels if enabled
+            if include_e0_baseline_checkbox.value:
+                _e0_runs = [
+                    r for r in runs_catalog
+                    if r["env"] == _selected_env and r["algo"] in ("E", "E0", "sampled_E")
+                ]
+            else:
+                _e0_runs = []
             _seen_algos = set()
             _plotted_runs = []
 
@@ -402,6 +460,7 @@ def __(available_lambdas, mo):
 def __(
     ALGO_STYLE,
     env_selector,
+    include_e0_baseline_checkbox,
     lambda_focus_selector,
     np,
     plt,
@@ -423,10 +482,13 @@ def __(
             r for r in runs_catalog
             if r["env"] == _selected_env and np.isclose(r["lambda"], _target_lam, atol=1e-3)
         ]
-        _e0_runs = [
-            r for r in runs_catalog
-            if r["env"] == _selected_env and r["algo"] in ("E", "E0", "sampled_E")
-        ]
+        if include_e0_baseline_checkbox.value:
+            _e0_runs = [
+                r for r in runs_catalog
+                if r["env"] == _selected_env and r["algo"] in ("E", "E0", "sampled_E")
+            ]
+        else:
+            _e0_runs = []
         _seen = set()
         _runs = []
         for _r in _lam_runs + _e0_runs:
