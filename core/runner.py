@@ -19,7 +19,7 @@ def run_experiment_main(make_train, SAVE_DIR):
     parser.add_argument('--save-checkpoint', action='store_true')
     parser.add_argument('--save-metrics', action='store_true')
     parser.add_argument('--save-video', action='store_true', help='Save a video gif of the trained policy')
-    parser.add_argument('--env-ids', nargs='+', default=[])
+    parser.add_argument('--env-ids', '--env-id', dest='env_ids', nargs='+', default=[])
     parser.add_argument('--sweep', nargs='?', const='default', default=None, help='Path to sweep config JSON or "default" for LR sweep')
 
     args = parser.parse_args()
