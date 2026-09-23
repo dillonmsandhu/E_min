@@ -32,7 +32,7 @@ config = {
     "RETURN_LAMBDA": 0.99,
     "RECOMPUTE_TARGETS_EACH_EPOCH": False,
     "CLIP_EPS": 0.1,
-    "VF_CLIP": 0.5,
+    "VF_CLIP": 1e6,
     "VF_COEF": 0.5,
     "ENT_COEF": 0.01,
     "ADV_STD_FLOOR": 0.1,

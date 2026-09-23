@@ -16,8 +16,7 @@
 #   4. E_lambda_geom (Method 3: Geometric Jump Sampling)
 #
 # Fixed Parameters:
-#   - RETURN_LAMBDA: 0.99 (fixed baseline Monte Carlo return anchor for all variants)
-#   - VALUE_LAMBDA: 0.99 (used by E to compute G_t)
+#   - RETURN_LAMBDA: 0.99 (fixed baseline return anchor for all variants)
 #   - ACTOR_LR: 0.0003 (policy learning rate held strictly constant)
 #   - GAE_LAMBDA: 0.9 (policy advantage estimation held constant)
 #
@@ -109,7 +108,7 @@ CRITIC_LR_GRID="0.003 0.001 0.0003 0.0001"
 E_LAMBDA_GRID="0.0 0.5 0.9"
 
 # Base configuration with Slurm tracking
-CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VALUE_LAMBDA\": $FIXED_RETURN_LAMBDA, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
+CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VF_CLIP\": 1000000.0, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
 
 mkdir -p slurm
 

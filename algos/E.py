@@ -81,9 +81,9 @@ def make_train(base_config):
             gae_lambda = config.get("GAE_LAMBDA", 0.95)
             advantages, _ = helpers.calculate_gae(traj_batch, config["GAMMA"], gae_lambda)
 
-            # VALUE_LAMBDA is strictly for critic targets
-            value_lambda = config.get("VALUE_LAMBDA", 1.0)
-            _, targets = helpers.calculate_gae(traj_batch, config["GAMMA"], value_lambda)
+            # RETURN_LAMBDA is strictly for critic targets
+            return_lambda = config.get("RETURN_LAMBDA", 1.0)
+            _, targets = helpers.calculate_gae(traj_batch, config["GAMMA"], return_lambda)
 
             # Align next targets G_{t+1} for adjacent state error calculation
             rolled_targets = jnp.roll(targets, shift=-1, axis=0)

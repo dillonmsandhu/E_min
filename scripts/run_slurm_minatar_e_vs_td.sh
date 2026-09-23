@@ -22,7 +22,7 @@
 #
 # Fixed Parameters:
 #   - RETURN_LAMBDA: 0.99 (fixed baseline Monte Carlo return anchor for E variants)
-#   - VALUE_LAMBDA: 0.99 (used by E to compute return anchor G_t)
+#   - RETURN_LAMBDA: 0.99 (used by E to compute return anchor G_t)
 #   - ACTOR_LR: 0.0003 (policy learning rate held strictly constant)
 #   - GAE_LAMBDA: 0.9 (policy advantage estimation held constant)
 #   - Horizon: 10,000,000 timesteps (610 update steps of 64 envs x 256 steps)
@@ -95,7 +95,7 @@ E_LAMBDA_GRID="0.0 0.8 0.95 0.99"
 TD_LAMBDA_GRID="0.0 0.8 0.95 0.99"
 
 # Base configuration with k=32 and Slurm tracking
-CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VALUE_LAMBDA\": $FIXED_RETURN_LAMBDA, \"k\": $K_DIM, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001}"
+CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VF_CLIP\": 1000000.0, \"k\": $K_DIM, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001}"
 
 mkdir -p slurm
 

@@ -77,7 +77,7 @@ def make_train(base_config):
             advantages, _ = helpers.calculate_gae(traj_batch, config["GAMMA"], gae_lambda)
 
             # E(lambda) targets computed via forward and backward error traces
-            e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.9))
+            e_lambda = config.get("E_LAMBDA", 0.8)
             return_lambda = config.get("RETURN_LAMBDA", 1.0)
             targets, e_diag = helpers.calculate_e_lambda_targets(
                 traj_batch, config["GAMMA"], e_lambda, return_lambda
@@ -111,12 +111,12 @@ def make_train(base_config):
 
                 def _update_minbatch(train_state, batch_info):
                     traj_batch_mb, advantages_mb, targets_mb = batch_info
-                    grad_fn = jax.value_and_grad(helpers._loss_fn, has_aux=True)
-                    (total_loss, (value_loss, loss_actor, entropy)), grads = grad_fn(
+                    grad_fn = jax.value_and_grad(helpers.e_lambda_fixed_loss_fn, has_aux=True)
+                    (total_loss, losses), grads = grad_fn(
                         train_state.params, network, traj_batch_mb, advantages_mb, targets_mb, config
                     )
                     train_state = train_state.apply_gradients(grads=grads)
-                    return train_state, (total_loss, value_loss, loss_actor, entropy)
+                    return train_state, losses
 
                 rng, _rng = jax.random.split(rng)
                 batch = (traj_batch_fresh, advantages, targets)

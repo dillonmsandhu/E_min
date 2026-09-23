@@ -74,12 +74,20 @@ def get_default_param_grid(
     if gae_lambda_list is not None and algo_name not in mc_algos:
         grid["GAE_LAMBDA"] = gae_lambda_list
 
-    # 2. Value lambda grid (strictly for critic returns)
+    e_algos = ["E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
+
+    # 2. Value / Return lambda grid (strictly for critic returns)
     if value_lambda_list is not None and algo_name not in mc_algos:
-        grid["VALUE_LAMBDA"] = value_lambda_list
+        if algo_name in e_algos:
+            grid["RETURN_LAMBDA"] = value_lambda_list
+        else:
+            grid["VALUE_LAMBDA"] = value_lambda_list
     elif lambda_list is not None and algo_name not in mc_algos:
-        # Default lambda_list maps directly to VALUE_LAMBDA for critic return target
-        grid["VALUE_LAMBDA"] = lambda_list
+        # Default lambda_list maps to RETURN_LAMBDA for E algos and VALUE_LAMBDA for TD/PPO
+        if algo_name in e_algos:
+            grid["RETURN_LAMBDA"] = lambda_list
+        else:
+            grid["VALUE_LAMBDA"] = lambda_list
 
     # 3. Actor LR grid (for policy net)
     if actor_lr_list is not None:

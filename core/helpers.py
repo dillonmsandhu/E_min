@@ -103,7 +103,9 @@ def pi_loss_fn(params, network, traj_batch, gae, config):
 
 
 def ppo_clipped_v_loss(traj_batch, value_pred, targets, config):
-    e = config["VF_CLIP"]
+    e = config.get("VF_CLIP", None)
+    if e is None or e is False or (isinstance(e, (int, float)) and e <= 0):
+        return 0.5 * jnp.mean(jnp.square(value_pred - targets))
     value_pred_clipped = traj_batch.value + (
         value_pred - traj_batch.value
     ).clip(-e, e)
@@ -127,6 +129,29 @@ def _loss_fn(params, network, traj_batch, gae, targets, config):
         - config.get("ENT_COEF", 0.01) * entropy
     )
     return total_loss, (value_loss, loss_actor, entropy)
+
+
+def e_lambda_fixed_loss_fn(params, network, traj_batch, gae, targets, config):
+    """
+    Unclipped critic MSE loss + clipped PPO actor loss for E_lambda_fixed.
+    Targets are precomputed symmetrized E(lambda) targets.
+    """
+    value_pred = network.apply(params, traj_batch.obs, method=network.value)
+    value_loss = 0.5 * jnp.mean(jnp.square(value_pred - targets))
+    loss_actor, entropy = pi_loss_fn(params, network, traj_batch, gae, config)
+
+    total_loss = (
+        config.get("POLICY_COEFF", 1.0) * loss_actor
+        + config.get("VF_COEF", 0.5) * value_loss
+        - config.get("ENT_COEF", 0.01) * entropy
+    )
+    losses = {
+        "total_loss": total_loss,
+        "value_loss": value_loss,
+        "actor_loss": loss_actor,
+        "entropy": entropy,
+    }
+    return total_loss, losses
 
 
 def e_critic_loss(v_i, targets_i, v_j, targets_j, done, gamma):
@@ -484,7 +509,7 @@ def e_lambda_differentiable_loss_fn(
 
     values = network.apply(params, traj_batch.obs, method=network.value)
     gamma = config.get("GAMMA", 0.99)
-    e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
+    e_lambda = config.get("E_LAMBDA", 0.8)
 
     # Boundary continuation at step T
     next_value_T = network.apply(params, traj_batch.next_obs[-1], method=network.value)
@@ -658,7 +683,7 @@ def e_lambda_geometric_loss_fn(
 
     values = network.apply(params, traj_batch.obs, method=network.value)
     gamma = config.get("GAMMA", 0.99)
-    e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
+    e_lambda = config.get("E_LAMBDA", 0.8)
 
     # Boundary continuation at step T
     next_value_T = network.apply(params, traj_batch.next_obs[-1], method=network.value)
