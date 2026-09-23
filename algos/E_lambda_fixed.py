@@ -15,6 +15,7 @@ class Transition(NamedTuple):
     reward: jnp.ndarray
     log_prob: jnp.ndarray
     obs: jnp.ndarray
+    next_obs: jnp.ndarray
     info: jnp.ndarray
 
 
@@ -61,7 +62,7 @@ def make_train(base_config):
 
                 clean_info = {k: v for k, v in info.items() if k not in ["real_next_obs", "real_next_state"]}
                 transition = Transition(
-                    done, action, value, next_val, reward, log_prob, last_obs, clean_info
+                    done, action, value, next_val, reward, log_prob, last_obs, true_next_obs, clean_info
                 )
                 return (train_state, env_state, obsv, rng), transition
 
@@ -91,9 +92,10 @@ def make_train(base_config):
                 # Optionally recompute targets each epoch with the latest value estimates
                 def _do_recompute(_):
                     fresh_values = network.apply(train_state.params, traj_batch.obs, method=network.value)
+                    fresh_v_T = network.apply(train_state.params, traj_batch.next_obs[-1], method=network.value)
                     traj_fresh = traj_batch._replace(value=fresh_values)
                     fresh_targets, _ = helpers.calculate_e_lambda_targets(
-                        traj_fresh, config["GAMMA"], e_lambda, return_lambda
+                        traj_fresh, config["GAMMA"], e_lambda, return_lambda, next_value_T=fresh_v_T
                     )
                     return traj_fresh, fresh_targets
 

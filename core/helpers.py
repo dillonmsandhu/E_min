@@ -251,6 +251,7 @@ def calculate_e_lambda_targets(
     gamma: float,
     lmbda: float,
     return_lambda: float = 1.0,
+    next_value_T: jnp.ndarray = None,
 ):
     """
     Computes scalar value regression targets for the symmetrized E(lambda) objective
@@ -259,7 +260,11 @@ def calculate_e_lambda_targets(
 
     Boundary and truncation handling:
     - Forward trace (downstream errors): accumulates future errors backwards in time.
-      Zeroed on episode boundaries (both true terminals and timeouts/truncations).
+      - True terminal: absorbing state error is 0, so forward trace from terminal is 0.
+      - Timeout: 1-step continuation error e_{t+1} is included, but future accumulation across
+        the reset is cleanly severed.
+      - Rollout boundary (t = T-1): continuation state s_T error e_T is evaluated via next_value_T
+        and bootstrapped return target G_T.
     - Backward trace (upstream errors): accumulates past errors forwards in time.
       Wiped to zero at episode starts (when the preceding transition was done).
 
@@ -268,6 +273,7 @@ def calculate_e_lambda_targets(
         gamma: discount factor (e.g. 0.99)
         lmbda: E(lambda) decay parameter in [0, 1]
         return_lambda: lambda for computing baseline return G_t (defaults to 1.0 for Monte Carlo)
+        next_value_T: optional (B,) predicted value at s_T (defaults to traj_batch.next_value[-1])
 
     Returns:
         targets: (T, B) scalar value regression targets
@@ -278,22 +284,34 @@ def calculate_e_lambda_targets(
     errors = returns - traj_batch.value
     gl = gamma * lmbda
 
+    is_timeout = traj_batch.info.get("is_timeout", jnp.zeros_like(traj_batch.done, dtype=bool))
+    true_terminal = traj_batch.done & ~is_timeout
     done_f = traj_batch.done.astype(jnp.float32)
+    true_term_f = true_terminal.astype(jnp.float32)
+
+    # Continuation error at rollout buffer boundary step T
+    if next_value_T is None:
+        next_value_T = traj_batch.next_value[-1]
+    e_T = jnp.where(true_terminal[-1], 0.0, traj_batch.next_value[-1] - next_value_T)
+    errors_ext = jnp.concatenate([errors, e_T[None]], axis=0)
+    e_next = errors_ext[1:]
 
     # 2. Forward Trace: Accumulate future errors backwards in time
-    # e_next: step t receives e_{t+1} as immediate lookahead
-    e_next = jnp.roll(errors, shift=-1, axis=0).at[-1].set(0.0)
-
     def _backward_pass(forward_trace, transition):
-        done_t, e_nxt = transition
-        trace_t = (1.0 - done_t) * (e_nxt + gl * forward_trace)
+        done_t, true_term_t, e_nxt = transition
+        valid_future = 1.0 - done_t
+        trace_t = jnp.where(
+            true_term_t > 0.5,
+            0.0,
+            e_nxt + gl * valid_future * forward_trace,
+        )
         return trace_t, trace_t
 
     init_forward = jnp.zeros_like(errors[0])
     _, forward_traces = jax.lax.scan(
         _backward_pass,
         init_forward,
-        (done_f, e_next),
+        (done_f, true_term_f, e_next),
         reverse=True,
     )
 
@@ -337,16 +355,22 @@ def e_lambda_differentiable_critic_loss(
     dones,
     gamma: float,
     lmbda: float,
+    true_terminals=None,
+    next_value_T=None,
+    next_target_T=None,
 ):
     """
     Computes differentiable E(lambda) loss using backward moment traces (Method 2).
     Backpropagates through both values v(s_t) and future values v(s_{t+k+1}).
 
-    Terminal boundary handling:
-    - For ongoing transitions (done_t = 0): accumulates lookahead e_{t+1} and discounted future moments.
-    - For terminal transitions (done_t = 1): transitions to absorbing state with error e_infty = 0,
-      yielding dirichlet_t = (e_t - 0)^2 = e_t^2, exactly matching e_loss_fn.
-    - Future accumulation beyond terminal transitions is cleanly severed (w_to_prev = (1 - done_t) * w_t).
+    Boundary, Terminal, and Timeout handling:
+    - Ongoing transitions (done_t = 0): accumulates lookahead e_{t+1} and discounted future moments.
+    - Rollout chunk boundary (t = T-1): continuation state s_T is evaluated via next_value_T
+      and bootstrapped target next_target_T (matching E.py), evaluating (e_{T-1} - e_T)^2.
+    - True terminal transitions (true_terminals_t = 1): transitions to absorbing ground state
+      with error e_infty = 0, evaluating dirichlet_t = (e_t - 0)^2 = e_t^2.
+    - Timeout transitions (is_timeout_t = 1): evaluates 1-step lookahead (e_t - e_{t+1})^2
+      without artificial absorbing state penalty, and cleanly severs multi-step future accumulation.
 
     Args:
         values: (T, B) predicted values v(s_t) from network.apply(params, obs)
@@ -354,37 +378,51 @@ def e_lambda_differentiable_critic_loss(
         dones: (T, B) bool array of episode termination/truncation
         gamma: discount factor
         lmbda: E(lambda) decay parameter in [0, 1]
+        true_terminals: (T, B) bool array of true task terminations (done & ~is_timeout)
+        next_value_T: (B,) predicted value v_theta(s_T) at chunk boundary
+        next_target_T: (B,) bootstrapped return target G_T at chunk boundary
 
     Returns:
         value_loss, magnitude_loss, dirichlet_loss
     """
+    if true_terminals is None:
+        true_terminals = dones
+    if next_value_T is None:
+        next_value_T = jnp.zeros_like(values[0])
+    if next_target_T is None:
+        next_target_T = jnp.zeros_like(targets[0])
+
     errors = targets - values
     gl = gamma * lmbda
     done_f = dones.astype(jnp.float32)
+    true_term_f = true_terminals.astype(jnp.float32)
 
-    # e_next is the error at s_{t+1}. For the last step T-1, e_T = 0.
-    e_next = jnp.roll(errors, shift=-1, axis=0).at[-1].set(0.0)
+    # Continuation error at rollout buffer boundary step T
+    e_T = jnp.where(true_terminals[-1], 0.0, next_target_T - next_value_T)
+    errors_ext = jnp.concatenate([errors, e_T[None]], axis=0)
+    e_next = errors_ext[1:]
 
     def _moment_step(traces, transition):
         w0_future, w1_future, w2_future = traces
-        done_t, e_curr, e_nxt = transition
+        done_t, true_term_t, e_curr, e_nxt = transition
 
-        valid_next = 1.0 - done_t
+        # If true terminal: absorbs to e=0, w0=1, w1=0, w2=0
+        # If timeout: 1-step lookahead to e_nxt, no future accumulation (w_future zeroed)
+        # If ongoing: 1-step lookahead to e_nxt + discounted future moments
+        valid_future = 1.0 - done_t
 
-        # 1. Moments at step t (lookahead e_{t+1} and discounted future)
-        # If done_t = 1: transitions to absorbing state e=0; w0=1, w1=0, w2=0
-        w0_t = 1.0 + gl * valid_next * w0_future
-        w1_t = valid_next * (e_nxt + gl * w1_future)
-        w2_t = valid_next * (e_nxt ** 2 + gl * w2_future)
+        w0_t = jnp.where(true_term_t > 0.5, 1.0, 1.0 + gl * valid_future * w0_future)
+        w1_t = jnp.where(true_term_t > 0.5, 0.0, e_nxt + gl * valid_future * w1_future)
+        w2_t = jnp.where(true_term_t > 0.5, 0.0, (e_nxt ** 2) + gl * valid_future * w2_future)
 
-        # 2. Dirichlet quadratic expansion: w0 * e_t^2 - 2 * w1 * e_t + w2
-        # For done_t = 1: dirichlet_t = 1.0 * e_curr^2 = (e_curr - 0)^2, matching e_loss_fn!
+        # Dirichlet quadratic expansion: w0 * e_t^2 - 2 * w1 * e_t + w2
         dirichlet_t = w0_t * (e_curr ** 2) - 2.0 * w1_t * e_curr + w2_t
 
-        # 3. Pass traces backward to step t-1 (severed if done_t == 1)
-        w0_to_prev = valid_next * w0_t
-        w1_to_prev = valid_next * w1_t
-        w2_to_prev = valid_next * w2_t
+        # Traces passed backward to step t-1 are severed if episode ended (done_t == 1)
+        valid_to_prev = 1.0 - done_t
+        w0_to_prev = valid_to_prev * w0_t
+        w1_to_prev = valid_to_prev * w1_t
+        w2_to_prev = valid_to_prev * w2_t
 
         return (w0_to_prev, w1_to_prev, w2_to_prev), dirichlet_t
 
@@ -396,7 +434,7 @@ def e_lambda_differentiable_critic_loss(
     _, dirichlet_terms = jax.lax.scan(
         _moment_step,
         init_traces,
-        (done_f, errors, e_next),
+        (done_f, true_term_f, errors, e_next),
         reverse=True,
     )
 
@@ -448,12 +486,23 @@ def e_lambda_differentiable_loss_fn(
     gamma = config.get("GAMMA", 0.99)
     e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
 
+    # Boundary continuation at step T
+    next_value_T = network.apply(params, traj_batch.next_obs[-1], method=network.value)
+    next_target_T = traj_batch.next_value[-1]
+
+    # Terminals vs Timeouts
+    is_timeout = traj_batch.info.get("is_timeout", jnp.zeros_like(traj_batch.done, dtype=bool))
+    true_terminal = traj_batch.done & ~is_timeout
+
     value_loss, magnitude_loss, dirichlet_loss = e_lambda_differentiable_critic_loss(
         values=values,
         targets=returns,
         dones=traj_batch.done,
         gamma=gamma,
         lmbda=e_lambda,
+        true_terminals=true_terminal,
+        next_value_T=next_value_T,
+        next_target_T=next_target_T,
     )
 
     total_loss = (
@@ -480,6 +529,9 @@ def e_lambda_geometric_critic_loss(
     gamma: float,
     lmbda: float,
     rng: jax.Array,
+    true_terminals=None,
+    next_value_T=None,
+    next_target_T=None,
 ):
     """
     Computes sampled E(lambda) critic loss by sampling lookahead horizon skips
@@ -487,15 +539,19 @@ def e_lambda_geometric_critic_loss(
     P_lambda = (1 - gamma * lambda) * sum_{k=0}^infty (gamma * lambda)^k P^{k+1} (Method 3).
 
     Terminal and episode boundary handling:
-    - For ongoing transitions (done_t = 0):
+    - Ongoing transitions (done_t = 0):
       Samples random lookahead jump K >= 0 from Geometric(1 - gamma * lambda).
-      Target index is t' = t + K + 1.
-      If jump remains within the rollout chunk (t' < T) and within the same episode
+      Target index is t' = t + K + 1 <= T.
+      If jump remains within the rollout chunk (t' <= T) and within the same episode
       (no intermediate done between t and t'-1), the Dirichlet term is (e_t - e_{t'})^2.
       Otherwise, the jump is masked out (diff = 0.0).
-    - For terminal transitions (done_t = 1):
-      Absorbing terminal state error is e_infty = 0, so (e_t - 0)^2 = e_t^2,
-      exactly matching e_critic_loss and e_lambda_differentiable_critic_loss.
+    - Rollout chunk boundary (t = T-1):
+      Index T represents the continuation state s_T with error e_T = next_target_T - next_value_T.
+      1-step jump K=0 lands on t'=T, evaluating (e_{T-1} - e_T)^2 instead of dropping step T-1.
+    - True terminal transitions (true_terminals_t = 1):
+      Absorbing terminal state error is e_infty = 0, so (e_t - 0)^2 = e_t^2.
+    - Timeout transitions (is_timeout_t = 1):
+      Evaluates 1-step lookahead (e_t - e_{t+1})^2 for K=0, while jumps crossing the reset are masked.
     - Weighting:
       tilde_gamma = gamma * (1 - lambda) / (1 - gamma * lambda)
       magnitude_loss = (1 - tilde_gamma) * mean(e_t^2)
@@ -508,13 +564,27 @@ def e_lambda_geometric_critic_loss(
         gamma: discount factor
         lmbda: E(lambda) decay parameter in [0, 1]
         rng: PRNG key for sampling geometric lookahead jumps
+        true_terminals: (T, B) bool array of true task terminations (done & ~is_timeout)
+        next_value_T: (B,) predicted value v_theta(s_T) at chunk boundary
+        next_target_T: (B,) bootstrapped return target G_T at chunk boundary
 
     Returns:
         value_loss, magnitude_loss, dirichlet_loss
     """
+    if true_terminals is None:
+        true_terminals = dones
+    if next_value_T is None:
+        next_value_T = jnp.zeros_like(values[0])
+    if next_target_T is None:
+        next_target_T = jnp.zeros_like(targets[0])
+
     T, B = targets.shape[:2]
     errors = targets - values
     gl = gamma * lmbda
+
+    # Continuation error at rollout buffer boundary step T
+    e_T = jnp.where(true_terminals[-1], 0.0, next_target_T - next_value_T)
+    errors_ext = jnp.concatenate([errors, e_T[None]], axis=0)
 
     # 1. Sample jump lengths K ~ Geometric(1 - gl) with K >= 0
     # For gl < 1e-6 (e.g. lambda = 0), K = 0 deterministically
@@ -528,10 +598,11 @@ def e_lambda_geometric_critic_loss(
     jumps = jnp.maximum(jumps, 0)
 
     # 2. Target lookahead index and episode boundary masking
+    # target_idx can reach index T (the boundary continuation state)
     t_arr = jnp.arange(T)[:, None]
     target_idx = t_arr + jumps + 1
-    within_chunk = target_idx < T
-    t_clamped = jnp.minimum(target_idx, T - 1)
+    within_chunk = target_idx <= T
+    t_clamped = jnp.minimum(target_idx, T)
 
     # Predecessor index of target_idx is t_arr + jumps.
     # An episode reset occurred between t and target_idx iff dones occurred in [t+1, target_idx-1]
@@ -542,15 +613,21 @@ def e_lambda_geometric_critic_loss(
     ) > 0
 
     valid_jump = within_chunk & (~has_reset_between)
-    e_jump = jnp.take_along_axis(errors, t_clamped, axis=0)
+    e_jump = jnp.take_along_axis(errors_ext, t_clamped, axis=0)
 
     # 3. Dirichlet term:
-    # - Terminal states (done == True): absorbs to e=0, so (e_t - 0)^2 = e_t^2 (always valid)
-    # - Ongoing states (done == False): valid jumps evaluate (e_t - e_{t'})^2, invalid jumps 0.0
+    # - True terminal states: absorbs to e=0, so (e_t - 0)^2 = e_t^2
+    # - Timeout states: 1-step lookahead (errors - e_jump)^2 if K == 0, else 0.0
+    # - Ongoing states: valid jumps evaluate (errors - e_jump)^2, invalid jumps 0.0
+    is_timeout = dones & (~true_terminals)
     diff_sq = jnp.where(
-        dones,
+        true_terminals,
         errors ** 2,
-        jnp.where(valid_jump, (errors - e_jump) ** 2, 0.0),
+        jnp.where(
+            is_timeout,
+            jnp.where(jumps == 0, (errors - e_jump) ** 2, 0.0),
+            jnp.where(valid_jump, (errors - e_jump) ** 2, 0.0),
+        ),
     )
 
     # 4. Weighting
@@ -583,6 +660,14 @@ def e_lambda_geometric_loss_fn(
     gamma = config.get("GAMMA", 0.99)
     e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
 
+    # Boundary continuation at step T
+    next_value_T = network.apply(params, traj_batch.next_obs[-1], method=network.value)
+    next_target_T = traj_batch.next_value[-1]
+
+    # Terminals vs Timeouts
+    is_timeout = traj_batch.info.get("is_timeout", jnp.zeros_like(traj_batch.done, dtype=bool))
+    true_terminal = traj_batch.done & ~is_timeout
+
     value_loss, magnitude_loss, dirichlet_loss = e_lambda_geometric_critic_loss(
         values=values,
         targets=returns,
@@ -590,6 +675,9 @@ def e_lambda_geometric_loss_fn(
         gamma=gamma,
         lmbda=e_lambda,
         rng=rng,
+        true_terminals=true_terminal,
+        next_value_T=next_value_T,
+        next_target_T=next_target_T,
     )
 
     total_loss = (

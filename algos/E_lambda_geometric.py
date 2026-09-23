@@ -16,6 +16,7 @@ class Transition(NamedTuple):
     reward: jnp.ndarray
     log_prob: jnp.ndarray
     obs: jnp.ndarray
+    next_obs: jnp.ndarray
     info: jnp.ndarray
 
 
@@ -62,7 +63,7 @@ def make_train(base_config):
 
                 clean_info = {k: v for k, v in info.items() if k not in ["real_next_obs", "real_next_state"]}
                 transition = Transition(
-                    done, action, value, next_val, reward, log_prob, last_obs, clean_info
+                    done, action, value, next_val, reward, log_prob, last_obs, true_next_obs, clean_info
                 )
                 return (train_state, env_state, obsv, rng), transition
 
