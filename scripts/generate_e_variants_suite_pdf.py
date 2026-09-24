@@ -25,6 +25,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import zipfile
 
 # Ensure repository root is on sys.path
 _current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -79,7 +80,7 @@ def generate_e_variants_suite_pdf(
     output_pdf: str = None,
     metric_key: str = "returned_discounted_episode_returns",
     rank_by: str = "final_window",
-    window_size: int = 100,
+    window_size: int = 500,
     email: str = None,
 ):
     """Generates the multi-page PDF for the entire 4 E-variants suite."""
@@ -191,14 +192,32 @@ def generate_e_variants_suite_pdf(
                 print(f"Warning: Failed to render detailed profile for {env_name}: {ex}")
 
     print(f"Successfully generated E variants suite PDF: {output_pdf}")
+    zip_path = output_pdf + ".zip"
 
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(output_pdf, arcname=os.path.basename(output_pdf))
+
+    print(f"Compressed PDF: {zip_path}")
     # Optional email notification
     if email:
         try:
             import subprocess
-            cmd = f'echo "Sweep suite completed for {suite_name}. See attached comparison PDF." | mail -s "E-Variants Sweep Complete: {suite_name}" -a "{output_pdf}" "{email}"'
+
+            zip_path = output_pdf + ".zip"
+
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.write(output_pdf, arcname=os.path.basename(output_pdf))
+
+            cmd = (
+                f'echo "Sweep suite completed for {suite_name}. '
+                f'See attached comparison PDF." | '
+                f'mail -s "E-Variants Sweep Complete: {suite_name}" '
+                f'-a "{zip_path}" "{email}"'
+            )
+
             subprocess.run(cmd, shell=True, check=True)
-            print(f"Sent completion email with PDF attachment to: {email}")
+            print(f"Sent completion email with compressed PDF to: {email}")
+
         except Exception as e:
             print(f"Notice: Mail command could not be sent: {e}")
 

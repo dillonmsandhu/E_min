@@ -93,7 +93,7 @@ def generate_suite_pdf(
     output_pdf: str = None,
     metric_key: str = "returned_discounted_episode_returns",
     rank_by: str = "final_window",
-    window_size: int = 100,
+    window_size: int = 500,
     email: str = None,
 ):
     """Generates the multi-page PDF for the entire suite."""

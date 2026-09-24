@@ -1,35 +1,47 @@
 #!/bin/bash
-#SBATCH --job-name=sweep_e_variants
+#SBATCH --job-name=sweep_minatar_e_vs_td
 #SBATCH --output=slurm/%A_%a.out
 #SBATCH --time=24:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
-#SBATCH --array=0-15
+#SBATCH --array=0-3
 
 # ==============================================================================
-# Comprehensive Gymnax Suite Sweep: Comparison of Four Variants of E
+# MinAtar Suite Sweep (10M Timesteps, k=32):
+# Comparison of E-Variants vs. TD(lambda)
 #
-# Compares the four variants of the Symmetrized Value Objective E:
+# Compares the four variants of E with TD(lambda) (PPO baseline):
 #   1. E (1-step E(0), Tang & Munos baseline)
-#   2. E_lambda (Method 1: FVI Stop-Gradient Form with forward/backward traces)
-#   3. E_lambda_diff (Method 2: Full Autodiff Moment Scan)
-#   4. E_lambda_geom (Method 3: Geometric Jump Sampling)
+#   2. E_lambda_fixed (Method 1: FVI Stop-Gradient Form with forward/backward traces)
+#   3. E_lambda_differentiable (Method 2: Full Autodiff Moment Scan)
+#   4. E_lambda_geometric (Method 3: Geometric Jump Sampling)
+#   5. ppo (TD(lambda) baseline)
+#
+# Representation Dimensionality:
+#   - k: 32 (final hidden representation dimension, doubled from default 16)
 #
 # Fixed Parameters:
-#   - RETURN_LAMBDA: 0.99 (fixed baseline return anchor for all variants)
+#   - RETURN_LAMBDA: 0.99 (fixed baseline Monte Carlo return anchor for E variants)
+#   - VALUE_LAMBDA: 0.99 (used by E to compute return anchor G_t)
 #   - ACTOR_LR: 0.0003 (policy learning rate held strictly constant)
 #   - GAE_LAMBDA: 0.9 (policy advantage estimation held constant)
+#   - Horizon: 10,000,000 timesteps (610 update steps of 64 envs x 256 steps)
 #
 # Swept Parameters:
 #   - Critic learning rate (LR): [0.003, 0.001, 0.0003, 0.0001]
-#   - E_LAMBDA: [0.0, 0.5, 0.9] (swept for all three multi-step E(lambda) variants)
-#   - RECOMPUTE_TARGETS_EACH_EPOCH: [false, true] (swept for E_lambda only)
+#   - E_LAMBDA: [0.0, 0.5, 0.9] (swept for multi-step E(lambda) variants)
+#   - RECOMPUTE_TARGETS_EACH_EPOCH: [false, true] (swept for E_lambda_fixed only)
+#   - TD(lambda) VALUE_LAMBDA: [0.9, 0.95, 0.99, 1.0] (swept for ppo baseline)
 #
-# Environments: 19 Non-Bandit Gymnax Environments (Excluding Catch-bsuite & Bandits)
+# Environments: 4 MinAtar Games
+#   0: Asterix-MinAtar
+#   1: Breakout-MinAtar
+#   2: Freeway-MinAtar
+#   3: SpaceInvaders-MinAtar
 #
 # Usage:
-#   sbatch scripts/run_slurm_e_variants_suite.sh
-#   ./scripts/run_slurm_e_variants_suite.sh CartPole-v1 (for single env run)
+#   sbatch scripts/run_slurm_minatar_e_vs_td.sh
+#   ./scripts/run_slurm_minatar_e_vs_td.sh Asterix-MinAtar (for single env run)
 # ==============================================================================
 
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -42,31 +54,12 @@ else
     PYTHON="python"
 fi
 
-# Environment Array: 19 Non-Bandit Gymnax environments (indices 0 to 18)
+# MinAtar Environments (indices 0 to 3)
 ALL_ENVS=(
-    # Classic Control
-    "CartPole-v1"
-    "Pendulum-v1"
-    "Acrobot-v1"
-    "MountainCar-v0"
-    "MountainCarContinuous-v0"
-
-    # MinAtar
     "Asterix-MinAtar"
     "Breakout-MinAtar"
     "Freeway-MinAtar"
     "SpaceInvaders-MinAtar"
-
-    # BSuite (excluding Catch-bsuite)
-    "DeepSea-bsuite"
-    "DiscountingChain-bsuite"
-
-    # Misc / Navigation / Continuous
-    "FourRooms-misc"
-    "PointRobot-misc"
-    "Reacher-misc"
-    "Swimmer-misc"
-    "Pong-misc"
 )
 
 # Select environment from argument or SLURM_ARRAY_TASK_ID
@@ -75,7 +68,7 @@ if [ -n "$1" ]; then
 elif [ -n "$SLURM_ARRAY_TASK_ID" ]; then
     ENV_NAME="${ALL_ENVS[$SLURM_ARRAY_TASK_ID]}"
 else
-    ENV_NAME="CartPole-v1"
+    ENV_NAME="Asterix-MinAtar"
 fi
 
 if [ -z "$ENV_NAME" ]; then
@@ -83,59 +76,55 @@ if [ -z "$ENV_NAME" ]; then
     exit 1
 fi
 
-N_SEEDS=8
-
-# Environment-specific horizon: 10M for MinAtar games, 2M (2,048,000) for all other environments
-if [ -n "$CUSTOM_TIMESTEPS" ]; then
-    TOTAL_TIMESTEPS="$CUSTOM_TIMESTEPS"
-elif [[ "$ENV_NAME" == *"MinAtar"* ]]; then
-    TOTAL_TIMESTEPS=10000000
-else
-    TOTAL_TIMESTEPS=2048000
-fi
+N_SEEDS=1
+TOTAL_TIMESTEPS=10000000  # 10M env steps (610 updates of 64 envs x 256 steps)
 
 RANK_BY="final_window"
-WINDOW_SIZE=500
-METRIC="returned_discounted_episode_returns"
+WINDOW_SIZE=100
+METRIC="returned_episode_returns"
 
 # Fixed hyperparameters
 FIXED_ACTOR_LR=0.003
-FIXED_GAE_LAMBDA=0.9
-FIXED_RETURN_LAMBDA=0.99
+FIXED_GAE_LAMBDA=0.8
+FIXED_RETURN_LAMBDA=0.999
+K_DIM=32
 
 # Swept hyperparameters
-CRITIC_LR_GRID="0.003 0.001 0.0003 0.0001"
-E_LAMBDA_GRID="0.0 0.6 0.8 0.9 0.95"
+CRITIC_LR_GRID="0.005 0.001 0.0005"
+E_LAMBDA_GRID="0.0 0.8 0.95 0.99"
+TD_LAMBDA_GRID="0.0 0.8 0.95 0.99"
 
-# Base configuration with Slurm tracking
-CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VF_CLIP\": 1000000.0, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
+# Base configuration with k=32 and Slurm tracking
+CONFIG="{\"NUM_ENVS\": 128, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VALUE_LAMBDA\": $FIXED_RETURN_LAMBDA, \"k\": $K_DIM, \"ENT_COEF\": 0.001,\"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": 0.0001, \"ACTOR_LR\": 0.003, \"CRITIC_LR"\: 0.003,  \"CRITIC_LR_END\": 0.0001 }"
 
 mkdir -p slurm
 
 # Unified suite directory:
-SUITE_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-${SUITE_TAG:-e_variants_$(date +"%Y%m%d_%H%M%S")}}}"
+SUITE_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-${SUITE_TAG:-minatar_k32_$(date +"%Y%m%d_%H%M%S")}}}"
 SWEEP_SUITE_DIR="results/ppo/sweeps/suite_${SUITE_ID}"
 SWEEP_ROOT_DIR="${SWEEP_SUITE_DIR}/${ENV_NAME}"
 mkdir -p "$SWEEP_ROOT_DIR"
 
 echo "======================================================================"
-echo "STARTING GYMNAX SWEEP: COMPARISON OF FOUR VARIANTS OF E"
+echo "STARTING MINATAR 10M INDIVIDUAL RUNS (k=$K_DIM): E-VARIANTS VS TD(LAMBDA)"
 echo "Start Time: $START_TIME"
 echo "Environment: $ENV_NAME"
-echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS"
+echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS (10M)"
+echo "Representation Dimension k: $K_DIM"
 echo "Fixed Return Lambda: $FIXED_RETURN_LAMBDA"
 echo "Fixed Actor LR: $FIXED_ACTOR_LR | Fixed GAE Lambda: $FIXED_GAE_LAMBDA"
 echo "Critic LR Grid: $CRITIC_LR_GRID"
 echo "E(lambda) Grid: $E_LAMBDA_GRID"
+echo "TD(lambda) Grid: $TD_LAMBDA_GRID"
 echo "Ranking Metric: $METRIC ($RANK_BY)"
 echo "Output Directory: $SWEEP_ROOT_DIR"
 echo "======================================================================"
 
 # ------------------------------------------------------------------------------
-# 1. Sweep E (1-step E(0) baseline) across critic LR
+# 1. Sweep E (1-step baseline) across critic LR
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> [1/4] Sweeping E (1-step baseline) across critic LR: $CRITIC_LR_GRID..."
+echo "--> [1/5] Sweeping E (1-step baseline) across critic LR: $CRITIC_LR_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
@@ -156,8 +145,8 @@ $PYTHON scripts/sweep_pipeline.py \
 # 2. Sweep E_lambda_fixed (Method 1: FVI stop-grad) across LR x E_LAMBDA x RECOMPUTE
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> [2/4] Sweeping E_lambda_fixed (Method 1) across LR x E_LAMBDA x RECOMPUTE..."
-$PYTHON scripts/sweep_pipeline.py \
+echo "--> [2/5] Sweeping E_lambda_fixed (Method 1) across LR x E_LAMBDA x RECOMPUTE..."
+$PYTHON -m ppo/E.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
     --algos E_lambda_fixed \
@@ -179,7 +168,7 @@ $PYTHON scripts/sweep_pipeline.py \
 # 3. Sweep E_lambda_differentiable (Method 2: Autodiff Moment Scan) across LR x E_LAMBDA
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> [3/4] Sweeping E_lambda_differentiable (Method 2) across LR x E_LAMBDA: $E_LAMBDA_GRID..."
+echo "--> [3/5] Sweeping E_lambda_differentiable (Method 2) across LR x E_LAMBDA: $E_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
@@ -201,7 +190,7 @@ $PYTHON scripts/sweep_pipeline.py \
 # 4. Sweep E_lambda_geometric (Method 3: Geometric Jump Sampling) across LR x E_LAMBDA
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> [4/4] Sweeping E_lambda_geometric (Method 3) across LR x E_LAMBDA: $E_LAMBDA_GRID..."
+echo "--> [4/5] Sweeping E_lambda_geometric (Method 3) across LR x E_LAMBDA: $E_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
@@ -219,14 +208,36 @@ $PYTHON scripts/sweep_pipeline.py \
     --sweep-root-dir "$SWEEP_ROOT_DIR" \
     --no-log-scale
 
+# ------------------------------------------------------------------------------
+# 5. Sweep TD(lambda) (PPO Baseline) across LR x VALUE_LAMBDA
+# ------------------------------------------------------------------------------
+echo ""
+echo "--> [5/5] Sweeping ppo / TD(lambda) baseline across LR x VALUE_LAMBDA: $TD_LAMBDA_GRID..."
+$PYTHON scripts/sweep_pipeline.py \
+    --policy ppo \
+    --env-name "$ENV_NAME" \
+    --algos ppo \
+    --lr-grid $CRITIC_LR_GRID \
+    --actor-lr-grid $FIXED_ACTOR_LR \
+    --value-lambda-grid $TD_LAMBDA_GRID \
+    --config "$CONFIG" \
+    --n-seeds $N_SEEDS \
+    --total-timesteps $TOTAL_TIMESTEPS \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE \
+    --higher-is-better \
+    --sweep-root-dir "$SWEEP_ROOT_DIR" \
+    --no-log-scale
+
 # Email recipient for completion notifications and PDF attachments
 EMAIL_RECIPIENT="${EMAIL_RECIPIENT:-ds541@cs.duke.edu}"
 
 # ------------------------------------------------------------------------------
-# 5. Dedicated 4-Way Comparison Plot (Learning Curves + E(lambda) Scaling)
+# 6. Dedicated 5-Way Comparison Plot (Learning Curves + E(lambda) Scaling)
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> Generating 4-Way E-Variants Comparison Figure (Learning Curves + E(λ) Scaling)..."
+echo "--> Generating E-Variants vs. TD(λ) Comparison Figure..."
 $PYTHON notebooks/plot_e_variants_comparison.py \
     --sweep-dir "$SWEEP_ROOT_DIR" \
     --metric "$METRIC" \
@@ -234,7 +245,7 @@ $PYTHON notebooks/plot_e_variants_comparison.py \
     --window-size $WINDOW_SIZE
 
 # ------------------------------------------------------------------------------
-# 6. Check suite progress and compile full multi-environment PDF
+# 7. Check suite progress and compile full multi-environment PDF
 # ------------------------------------------------------------------------------
 COMPLETED_COUNT=0
 for E in "${ALL_ENVS[@]}"; do
@@ -244,11 +255,11 @@ for E in "${ALL_ENVS[@]}"; do
 done
 
 echo ""
-echo "Suite Progress: $COMPLETED_COUNT / ${#ALL_ENVS[@]} environments completed."
+echo "MinAtar Progress: $COMPLETED_COUNT / ${#ALL_ENVS[@]} environments completed."
 
 if [ -z "$SLURM_ARRAY_TASK_ID" ] || [ "$COMPLETED_COUNT" -eq "${#ALL_ENVS[@]}" ]; then
     echo "======================================================================"
-    echo "ALL ENVIRONMENTS COMPLETE! Compiling and emailing complete suite PDF..."
+    echo "ALL 4 MINATAR ENVIRONMENTS COMPLETE! Compiling and emailing suite PDF..."
     echo "======================================================================"
     $PYTHON scripts/generate_e_variants_suite_pdf.py \
         --suite-dir "$SWEEP_SUITE_DIR" \
@@ -269,7 +280,7 @@ END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 DURATION=$SECONDS
 echo ""
 echo "======================================================================"
-echo "E-Variants Sweep for $ENV_NAME Completed!"
+echo "MinAtar E-Variants vs TD(λ) Sweep for $ENV_NAME Completed!"
 echo "Total runtime: $(($DURATION / 3600))h $((($DURATION % 3600) / 60))m $(($DURATION % 60))s"
 echo "Job finished at: $END_TIME"
 echo "======================================================================"
