@@ -104,7 +104,7 @@ def evaluate(run_config, make_train, run_dir, args, rng):
         v_start_dict["discounted_return"] = get_metric("returned_discounted_episode_returns", 0)
 
     if len(v_start_dict) > 0:
-        for v_name in ["V_start", "v_start"]:
+        for v_name in ["v_start"]:
             try:
                 save_multi_plot(
                     env_dir=env_dir,

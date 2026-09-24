@@ -1,11 +1,11 @@
 import marimo
 
-__generated_with = "0.10.0"
+__generated_with = "0.23.9"
 app = marimo.App(width="normal")
 
 
 @app.cell
-def __():
+def _():
     import cloudpickle
     import glob
     import json
@@ -15,12 +15,25 @@ def __():
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
+    import sys
+
+    # Ensure repository root is on sys.path
+    _current_dir = os.path.dirname(os.path.abspath(__file__))
+    _repo_root = os.path.abspath(os.path.join(_current_dir, ".."))
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+
+    from notebooks.analyze_sweeps import (
+        load_sweep_data,
+        extract_best_configuration,
+    )
+
 
     return cloudpickle, glob, json, mo, np, os, pd, plt, re
 
 
 @app.cell
-def __(np, pd, re):
+def _(np, pd, re):
     TARGET_ALGS = [
         "E_lambda_diff",
         "E_lambda_fixed",
@@ -130,13 +143,19 @@ def __(np, pd, re):
 
         return metrics, cfg
 
-    return ALGO_STYLE, TARGET_ALGS, load_single_run, parse_lambda, smooth_series
+    return (
+        ALGO_STYLE,
+        TARGET_ALGS,
+        load_single_run,
+        parse_lambda,
+        smooth_series,
+    )
 
 
 @app.cell
-def __(TARGET_ALGS, mo):
+def _(TARGET_ALGS, mo):
     results_dir_input = mo.ui.text(
-        value="results",
+        value="../results",
         label="Results Base Directory",
         placeholder="e.g. results or /path/to/cluster/results",
     )
@@ -176,7 +195,7 @@ def __(TARGET_ALGS, mo):
 
 
 @app.cell
-def __(
+def _(
     alg_selector,
     include_e0_baseline_checkbox,
     mo,
@@ -200,13 +219,13 @@ def __(
 
 
 @app.cell
-def __(control_panel):
+def _(control_panel):
     control_panel
     return
 
 
 @app.cell
-def __(
+def _(
     alg_selector,
     cloudpickle,
     glob,
@@ -326,12 +345,11 @@ def __(
 
     available_envs = sorted(list(set(r["env"] for r in runs_catalog))) if runs_catalog else []
     available_lambdas = sorted(list(set(r["lambda"] for r in runs_catalog if r["lambda"] >= 0))) if runs_catalog else []
-
     return available_envs, available_lambdas, runs_catalog
 
 
 @app.cell
-def __(available_envs, mo, runs_catalog):
+def _(available_envs, mo, runs_catalog):
     if not runs_catalog:
         env_selector = mo.ui.dropdown(options=[], value=None, label="Select Environment")
         _status_msg = mo.md(
@@ -352,13 +370,13 @@ def __(available_envs, mo, runs_catalog):
 
 
 @app.cell
-def __(env_control):
+def _(env_control):
     env_control
     return
 
 
 @app.cell
-def __(
+def _(
     ALGO_STYLE,
     available_lambdas,
     env_selector,
@@ -456,12 +474,11 @@ def __(
             y=0.995,
         )
         fig_grid.tight_layout()
-
     return (fig_grid,)
 
 
 @app.cell
-def __(fig_grid, mo):
+def _(fig_grid, mo):
     if fig_grid is not None:
         grid_view = mo.vstack([
             mo.md("## All $\\lambda$ Values: Facet Grid Comparison"),
@@ -473,13 +490,13 @@ def __(fig_grid, mo):
 
 
 @app.cell
-def __(grid_view):
+def _(grid_view):
     grid_view
     return
 
 
 @app.cell
-def __(available_lambdas, mo):
+def _(available_lambdas, mo):
     lambda_focus_selector = mo.ui.dropdown(
         options=[f"{l:.2f}" for l in available_lambdas],
         value=f"{available_lambdas[0]:.2f}" if available_lambdas else None,
@@ -489,7 +506,7 @@ def __(available_lambdas, mo):
 
 
 @app.cell
-def __(
+def _(
     ALGO_STYLE,
     env_selector,
     include_e0_baseline_checkbox,
@@ -563,12 +580,11 @@ def __(
         _ax.grid(True, linestyle="--", alpha=0.5)
         _ax.legend(loc="best", fontsize=10, frameon=True, framealpha=0.9)
         fig_focus.tight_layout()
-
     return (fig_focus,)
 
 
 @app.cell
-def __(fig_focus, lambda_focus_selector, mo):
+def _(fig_focus, lambda_focus_selector, mo):
     if fig_focus is not None:
         focus_view = mo.vstack([
             mo.md("## Detailed Single-$\\lambda$ View"),
@@ -581,15 +597,14 @@ def __(fig_focus, lambda_focus_selector, mo):
 
 
 @app.cell
-def __(focus_view):
+def _(focus_view):
     focus_view
     return
 
 
 @app.cell
-def __(
+def _(
     ALGO_STYLE,
-    available_lambdas,
     env_selector,
     np,
     pd,
@@ -639,12 +654,11 @@ def __(
                 ascending=[True, False],
                 inplace=True,
             )
-
     return (summary_dataframe,)
 
 
 @app.cell
-def __(mo, summary_dataframe):
+def _(mo, summary_dataframe):
     if not summary_dataframe.empty:
         summary_view = mo.vstack([
             mo.md("## Summary Metrics Table"),
@@ -656,8 +670,13 @@ def __(mo, summary_dataframe):
 
 
 @app.cell
-def __(summary_view):
+def _(summary_view):
     summary_view
+    return
+
+
+@app.cell
+def _():
     return
 
 
