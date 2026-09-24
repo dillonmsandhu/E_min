@@ -198,28 +198,23 @@ def generate_e_variants_suite_pdf(
         zf.write(output_pdf, arcname=os.path.basename(output_pdf))
 
     print(f"Compressed PDF: {zip_path}")
+
     # Optional email notification
-    if email:
-        try:
-            import subprocess
-
-            zip_path = output_pdf + ".zip"
-
-            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.write(output_pdf, arcname=os.path.basename(output_pdf))
-
-            cmd = (
-                f'echo "Sweep suite completed for {suite_name}. '
-                f'See attached comparison PDF." | '
-                f'mail -s "E-Variants Sweep Complete: {suite_name}" '
-                f'-a "{zip_path}" "{email}"'
-            )
-
-            subprocess.run(cmd, shell=True, check=True)
-            print(f"Sent completion email with compressed PDF to: {email}")
-
-        except Exception as e:
-            print(f"Notice: Mail command could not be sent: {e}")
+    recipient = email or os.environ.get("EMAIL_RECIPIENT")
+    if recipient and os.path.exists(output_pdf):
+        from core.mail import email_pdf
+        email_pdf(
+            output_pdf,
+            recipient=recipient,
+            subject=f"E-Variants Sweep Complete: {suite_name}",
+            body=(
+                f"Sweep suite completed for {suite_name}!\n"
+                f"Directory: {suite_dir}\n"
+                f"Environments: {len(loaded_envs)}\n"
+                f"Metric: {metric_key}\n\n"
+                f"See attached comparison PDF."
+            ),
+        )
 
     return output_pdf
 

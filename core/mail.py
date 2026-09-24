@@ -54,6 +54,8 @@ def email_results_file(filename, recipient="ds541@cs.duke.edu", subject=None, bo
         elif filename_lower.endswith((".png", ".jpg", ".jpeg")):
             ext = "jpeg" if filename_lower.endswith("jpg") else filename_lower.split(".")[-1]
             content_type = f"image/{ext}"
+        elif filename_lower.endswith(".zip"):
+            content_type = "application/zip"
         else:
             content_type = "application/pdf"
 
