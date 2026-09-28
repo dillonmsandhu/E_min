@@ -68,6 +68,7 @@ def get_default_param_grid(
     value_lambda_list=None,
     e_lambda_list=None,
     recompute_targets_list=None,
+    return_lambda_list=None,
 ):
     """Returns sensible default parameter grids for standard and multi-param algorithms."""
     standard_lrs = lr_list if lr_list is not None else [1e-2, 5e-3, 1e-3, 5e-4, 1e-4]
@@ -82,7 +83,9 @@ def get_default_param_grid(
     e_algos = ["E", "sampled_E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
 
     # 2. Value / Return lambda grid (strictly for critic returns)
-    if value_lambda_list is not None and algo_name not in mc_algos:
+    if return_lambda_list is not None and algo_name in e_algos:
+        grid["RETURN_LAMBDA"] = return_lambda_list
+    elif value_lambda_list is not None and algo_name not in mc_algos:
         if algo_name in e_algos:
             grid["RETURN_LAMBDA"] = value_lambda_list
         else:
@@ -93,6 +96,9 @@ def get_default_param_grid(
             grid["RETURN_LAMBDA"] = lambda_list
         else:
             grid["VALUE_LAMBDA"] = lambda_list
+
+    if value_lambda_list is not None and algo_name not in e_algos and algo_name not in mc_algos:
+        grid["VALUE_LAMBDA"] = value_lambda_list
 
     # 3. Actor LR grid (for policy net)
     if actor_lr_list is not None:
@@ -106,6 +112,9 @@ def get_default_param_grid(
     ]
     if e_lambda_list is not None and algo_name in e_lambda_algos:
         grid["E_LAMBDA"] = e_lambda_list
+    elif value_lambda_list is not None and return_lambda_list is not None and algo_name in e_lambda_algos:
+        # When both return_lambda and value_lambda are given, value_lambda naturally specifies the Dirichlet E_LAMBDA
+        grid["E_LAMBDA"] = value_lambda_list
 
     # 5. RECOMPUTE_TARGETS_EACH_EPOCH grid (for E_lambda_fixed FVI stop-grad only)
     if recompute_targets_list is not None and algo_name == "E_lambda_fixed":
@@ -174,6 +183,7 @@ def run_sweep_pipeline(
     lambda_grid=None,
     gae_lambda_grid=None,
     value_lambda_grid=None,
+    return_lambda_grid=None,
     e_lambda_grid=None,
     recompute_targets_grid=None,
     custom_grids=None,
@@ -312,6 +322,7 @@ def run_sweep_pipeline(
                 actor_lr_list=actor_lr_grid,
                 gae_lambda_list=gae_lambda_grid,
                 value_lambda_list=value_lambda_grid,
+                return_lambda_list=return_lambda_grid,
                 e_lambda_list=e_lambda_grid,
                 recompute_targets_list=recompute_targets_grid,
             )
@@ -613,7 +624,8 @@ def main():
             light_metrics=args.light_metrics,
             lambda_grid=args.lambda_grid,
             gae_lambda_grid=args.gae_lambda_grid,
-            value_lambda_grid=args.return_lambda_grid if args.return_lambda_grid is not None else args.value_lambda_grid,
+            value_lambda_grid=args.value_lambda_grid,
+            return_lambda_grid=args.return_lambda_grid,
             e_lambda_grid=args.e_lambda_grid,
             recompute_targets_grid=args.recompute_targets_grid,
             custom_grids=custom_grids,

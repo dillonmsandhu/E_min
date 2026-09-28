@@ -509,7 +509,7 @@ def e_lambda_differentiable_loss_fn(
 
     values = network.apply(params, traj_batch.obs, method=network.value)
     gamma = config.get("GAMMA", 0.99)
-    e_lambda = config.get("E_LAMBDA", 0.8)
+    e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
 
     # Boundary continuation at step T
     next_value_T = network.apply(params, traj_batch.next_obs[-1], method=network.value)

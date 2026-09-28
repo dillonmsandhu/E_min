@@ -20,7 +20,7 @@ config = {
 
     # Rollout & Training Loop
     "NUM_ENVS": 256,
-    "NUM_STEPS": 128,
+    "NUM_STEPS": 64,
     "TOTAL_TIMESTEPS": 1000000,
     "NUM_EPOCHS": 4,
     "MINIBATCH_SIZE": 1024,

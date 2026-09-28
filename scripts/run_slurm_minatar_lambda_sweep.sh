@@ -1,0 +1,227 @@
+#!/bin/bash
+#SBATCH --job-name=sweep_minatar_lambdas
+#SBATCH --output=slurm/%A_%a.out
+#SBATCH --time=24:00:00
+#SBATCH --partition compsci-gpu
+#SBATCH --gres=gpu:a5000:1
+#SBATCH --array=0-3
+
+# ==============================================================================
+# MinAtar Suite Sweep: RETURN_LAMBDA vs. VALUE_LAMBDA / E_LAMBDA
+#
+# Compares the 3 key algorithms across return and bootstrapping lambdas:
+#   1. E (E0 base script): swept over RETURN_LAMBDA (baseline return anchor G_t)
+#   2. E_lambda_differentiable (Method 2): 2D grid over RETURN_LAMBDA x E_LAMBDA
+#   3. ppo (TD(lambda) baseline): swept over VALUE_LAMBDA
+#
+# Environments: 4 MinAtar Games
+#   0: Asterix-MinAtar
+#   1: Breakout-MinAtar
+#   2: Freeway-MinAtar
+#   3: SpaceInvaders-MinAtar
+#
+# Usage:
+#   sbatch scripts/run_slurm_minatar_lambda_sweep.sh
+#   ./scripts/run_slurm_minatar_lambda_sweep.sh Asterix-MinAtar (for single env run)
+# ==============================================================================
+
+START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+SECONDS=0
+
+# Python environment
+if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
+    PYTHON="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python"
+elif [ -f "/Users/dillonsandhu/.pyenv/shims/python" ]; then
+    PYTHON="/Users/dillonsandhu/.pyenv/shims/python"
+else
+    PYTHON="python"
+fi
+
+# MinAtar Environments (indices 0 to 3)
+ALL_ENVS=(
+    "Asterix-MinAtar"
+    "Breakout-MinAtar"
+    "Freeway-MinAtar"
+    "SpaceInvaders-MinAtar"
+)
+
+# Select environment from argument or SLURM_ARRAY_TASK_ID
+if [ -n "$1" ]; then
+    ENV_NAME="$1"
+elif [ -n "$SLURM_ARRAY_TASK_ID" ]; then
+    ENV_NAME="${ALL_ENVS[$SLURM_ARRAY_TASK_ID]}"
+else
+    ENV_NAME="Asterix-MinAtar"
+fi
+
+if [ -z "$ENV_NAME" ]; then
+    echo "ERROR: ENV_NAME is empty. SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) is out of bounds for ALL_ENVS (size ${#ALL_ENVS[@]})."
+    exit 1
+fi
+
+N_SEEDS=8
+TOTAL_TIMESTEPS=10000000  # 10M env steps
+
+RANK_BY="final_window"
+WINDOW_SIZE=500
+METRIC="returned_discounted_episode_returns"
+
+# Fixed network and policy hyperparameters
+FIXED_ACTOR_LR=0.003
+ACTOR_LR_END=0.0001
+FIXED_GAE_LAMBDA=0.8
+K_DIM=64
+
+# Swept lambda grids
+RETURN_LAMBDA_GRID="0.9 0.95 0.99 1.0"
+E_LAMBDA_GRID="0.0 0.6 0.8 0.95 0.99"
+TD_LAMBDA_GRID="0.0 0.6 0.8 0.9 0.95 0.99 1.0"
+
+# Critic learning rate (default 0.001; can be expanded to e.g. "0.003 0.001")
+CRITIC_LR_GRID="0.001 0.0005"
+
+# Base configuration with Slurm tracking
+CONFIG="{\"NUM_ENVS\": 256, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"VF_CLIP\": 1000000.0, \"k\": $K_DIM, \"ENT_COEF\": 0.001, \"LAYER_NORM\": \"True\", \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\", \"ACTOR_LR_END\": $ACTOR_LR_END}"
+
+mkdir -p slurm
+
+# Unified suite directory:
+# When running as an sbatch array, all 4 tasks share $SLURM_ARRAY_JOB_ID.
+SUITE_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-${SUITE_TAG:-minatar_lambdas_$(date +"%Y%m%d_%H%M%S")}}}"
+SWEEP_SUITE_DIR="results/ppo/sweeps/suite_${SUITE_ID}"
+SWEEP_ROOT_DIR="${SWEEP_SUITE_DIR}/${ENV_NAME}"
+mkdir -p "$SWEEP_ROOT_DIR"
+
+echo "======================================================================"
+echo "STARTING MINATAR LAMBDA SWEEP: RETURN_LAMBDA vs. VALUE_LAMBDA / E_LAMBDA"
+echo "Start Time: $START_TIME"
+echo "Environment: $ENV_NAME"
+echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS (10M)"
+echo "Critic LR Grid: $CRITIC_LR_GRID | Fixed Actor LR: $FIXED_ACTOR_LR"
+echo "RETURN_LAMBDA Grid (E and E_diff): $RETURN_LAMBDA_GRID"
+echo "E_LAMBDA Grid (E_diff): $E_LAMBDA_GRID"
+echo "VALUE_LAMBDA Grid (TD / PPO): $TD_LAMBDA_GRID"
+echo "Output Directory: $SWEEP_ROOT_DIR"
+echo "======================================================================"
+
+# ------------------------------------------------------------------------------
+# 1. Sweep E (E0 base script) across RETURN_LAMBDA (and critic LR)
+# ------------------------------------------------------------------------------
+echo ""
+echo "--> [1/3] Sweeping E (E0 1-step) across RETURN_LAMBDA: $RETURN_LAMBDA_GRID..."
+$PYTHON scripts/sweep_pipeline.py \
+    --policy ppo \
+    --env-name "$ENV_NAME" \
+    --algos E \
+    --lr-grid $CRITIC_LR_GRID \
+    --actor-lr-grid $FIXED_ACTOR_LR \
+    --return-lambda-grid $RETURN_LAMBDA_GRID \
+    --config "$CONFIG" \
+    --n-seeds $N_SEEDS \
+    --total-timesteps $TOTAL_TIMESTEPS \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE \
+    --higher-is-better \
+    --sweep-root-dir "$SWEEP_ROOT_DIR" \
+    --no-log-scale
+
+# ------------------------------------------------------------------------------
+# 2. Sweep E_lambda_differentiable (Method 2) across RETURN_LAMBDA x E_LAMBDA
+# ------------------------------------------------------------------------------
+echo ""
+echo "--> [2/3] Sweeping E_lambda_differentiable across RETURN_LAMBDA: $RETURN_LAMBDA_GRID x E_LAMBDA: $E_LAMBDA_GRID..."
+$PYTHON scripts/sweep_pipeline.py \
+    --policy ppo \
+    --env-name "$ENV_NAME" \
+    --algos E_lambda_differentiable \
+    --lr-grid $CRITIC_LR_GRID \
+    --actor-lr-grid $FIXED_ACTOR_LR \
+    --return-lambda-grid $RETURN_LAMBDA_GRID \
+    --e-lambda-grid $E_LAMBDA_GRID \
+    --config "$CONFIG" \
+    --n-seeds $N_SEEDS \
+    --total-timesteps $TOTAL_TIMESTEPS \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE \
+    --higher-is-better \
+    --sweep-root-dir "$SWEEP_ROOT_DIR" \
+    --no-log-scale
+
+# ------------------------------------------------------------------------------
+# 3. Sweep ppo / TD(lambda) baseline across VALUE_LAMBDA
+# ------------------------------------------------------------------------------
+echo ""
+echo "--> [3/3] Sweeping ppo / TD(lambda) baseline across VALUE_LAMBDA: $TD_LAMBDA_GRID..."
+$PYTHON scripts/sweep_pipeline.py \
+    --policy ppo \
+    --env-name "$ENV_NAME" \
+    --algos ppo \
+    --lr-grid $CRITIC_LR_GRID \
+    --actor-lr-grid $FIXED_ACTOR_LR \
+    --value-lambda-grid $TD_LAMBDA_GRID \
+    --config "$CONFIG" \
+    --n-seeds $N_SEEDS \
+    --total-timesteps $TOTAL_TIMESTEPS \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE \
+    --higher-is-better \
+    --sweep-root-dir "$SWEEP_ROOT_DIR" \
+    --no-log-scale
+
+# Email recipient for completion notifications and PDF attachments
+EMAIL_RECIPIENT="${EMAIL_RECIPIENT:-ds541@cs.duke.edu}"
+
+# ------------------------------------------------------------------------------
+# 4. Generate 3-Way Comparison Plot (Learning Curves + Lambda Scaling)
+# ------------------------------------------------------------------------------
+echo ""
+echo "--> Generating Comparison Figure for $ENV_NAME..."
+$PYTHON notebooks/plot_e_variants_comparison.py \
+    --sweep-dir "$SWEEP_ROOT_DIR" \
+    --metric "$METRIC" \
+    --rank-by "$RANK_BY" \
+    --window-size $WINDOW_SIZE
+
+# ------------------------------------------------------------------------------
+# 5. Check Suite Completion: Compile Multi-Page PDF Once All 4 Tasks Finish
+# ------------------------------------------------------------------------------
+COMPLETED_COUNT=0
+for E in "${ALL_ENVS[@]}"; do
+    if [ -f "${SWEEP_SUITE_DIR}/${E}/comparison/comparison_summary.csv" ] || [ -d "${SWEEP_SUITE_DIR}/${E}/ppo/tuning" ]; then
+        COMPLETED_COUNT=$((COMPLETED_COUNT + 1))
+    fi
+done
+
+echo ""
+echo "MinAtar Suite Progress: $COMPLETED_COUNT / ${#ALL_ENVS[@]} environments finished."
+
+if [ -z "$SLURM_ARRAY_TASK_ID" ] || [ "$COMPLETED_COUNT" -eq "${#ALL_ENVS[@]}" ]; then
+    echo "======================================================================"
+    echo "ALL 4 MINATAR ENVIRONMENTS COMPLETE! Compiling and emailing PDF..."
+    echo "======================================================================"
+    $PYTHON scripts/generate_e_variants_suite_pdf.py \
+        --suite-dir "$SWEEP_SUITE_DIR" \
+        --metric "$METRIC" \
+        --rank-by "$RANK_BY" \
+        --window-size $WINDOW_SIZE \
+        --email "$EMAIL_RECIPIENT"
+else
+    # Update local PDF without sending email yet
+    $PYTHON scripts/generate_e_variants_suite_pdf.py \
+        --suite-dir "$SWEEP_SUITE_DIR" \
+        --metric "$METRIC" \
+        --rank-by "$RANK_BY" \
+        --window-size $WINDOW_SIZE
+fi
+
+END_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+DURATION=$SECONDS
+echo ""
+echo "======================================================================"
+echo "MinAtar Sweep for $ENV_NAME Completed!"
+echo "Total runtime: $(($DURATION / 3600))h $((($DURATION % 3600) / 60))m $(($DURATION % 60))s"
+echo "Job finished at: $END_TIME"
+echo "======================================================================"
