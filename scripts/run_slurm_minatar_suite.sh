@@ -62,7 +62,7 @@ N_SEEDS=8
 TOTAL_TIMESTEPS=10000000  # 10M env steps (610 updates of 64 envs x 256 steps)
 
 RANK_BY="final_window"
-WINDOW_SIZE=100
+WINDOW_SIZE=250
 METRIC="returned_discounted_episode_returns"
 
 # Value learning dynamics: sweep critic LR while keeping policy training fixed
