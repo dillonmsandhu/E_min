@@ -44,6 +44,7 @@ ALGO_REGISTRY = {
     "ppo": {
         "E": "algos.E",
         "sampled_E": "algos.E",
+        "E_experimental": "algos.E_experimental",
         "E_lambda_fixed": "algos.E_lambda_fixed",
         "E_lambda_differentiable": "algos.E_lambda_differentiable",
         "E_lambda_geometric": "algos.E_lambda_geometric",
@@ -80,7 +81,7 @@ def get_default_param_grid(
     if gae_lambda_list is not None and algo_name not in mc_algos:
         grid["GAE_LAMBDA"] = gae_lambda_list
 
-    e_algos = ["E", "sampled_E", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
+    e_algos = ["E", "sampled_E", "E_experimental", "E_lambda_fixed", "E_lambda_differentiable", "E_lambda_geometric"]
 
     # 2. Value / Return lambda grid (strictly for critic returns)
     if return_lambda_list is not None and algo_name in e_algos:
