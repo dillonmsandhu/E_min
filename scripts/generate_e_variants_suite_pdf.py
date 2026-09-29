@@ -199,8 +199,8 @@ def generate_e_variants_suite_pdf(
 
     print(f"Compressed PDF: {zip_path}")
 
-    # Optional email notification
-    recipient = email or os.environ.get("EMAIL_RECIPIENT")
+    # Optional email notification (only if explicitly requested via argument)
+    recipient = email
     if recipient and os.path.exists(output_pdf):
         from core.mail import email_pdf
         email_pdf(

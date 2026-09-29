@@ -192,12 +192,15 @@ $PYTHON notebooks/plot_e_variants_comparison.py \
     --rank-by "$RANK_BY" \
     --window-size $WINDOW_SIZE
 
+# Mark this environment as 100% finished
+touch "${SWEEP_ROOT_DIR}/.env_complete"
+
 # ------------------------------------------------------------------------------
 # 5. Check Suite Completion: Compile Multi-Page PDF Once All 4 Tasks Finish
 # ------------------------------------------------------------------------------
 COMPLETED_COUNT=0
 for E in "${ALL_ENVS[@]}"; do
-    if [ -f "${SWEEP_SUITE_DIR}/${E}/comparison/comparison_summary.csv" ] || [ -d "${SWEEP_SUITE_DIR}/${E}/ppo/tuning" ]; then
+    if [ -f "${SWEEP_SUITE_DIR}/${E}/.env_complete" ]; then
         COMPLETED_COUNT=$((COMPLETED_COUNT + 1))
     fi
 done
@@ -205,18 +208,34 @@ done
 echo ""
 echo "MinAtar Suite Progress: $COMPLETED_COUNT / ${#ALL_ENVS[@]} environments finished."
 
-if [ -z "$SLURM_ARRAY_TASK_ID" ] || [ "$COMPLETED_COUNT" -eq "${#ALL_ENVS[@]}" ]; then
-    echo "======================================================================"
-    echo "ALL 4 MINATAR ENVIRONMENTS COMPLETE! Compiling and emailing PDF..."
-    echo "======================================================================"
-    $PYTHON scripts/generate_e_variants_suite_pdf.py \
-        --suite-dir "$SWEEP_SUITE_DIR" \
-        --metric "$METRIC" \
-        --rank-by "$RANK_BY" \
-        --window-size $WINDOW_SIZE \
-        --email "$EMAIL_RECIPIENT"
+if [ -n "$SLURM_ARRAY_TASK_ID" ]; then
+    # Running in a SLURM array job
+    if [ "$COMPLETED_COUNT" -eq "${#ALL_ENVS[@]}" ]; then
+        # Use atomic directory lock so only the FIRST task to notice completion sends the email
+        if mkdir "${SWEEP_SUITE_DIR}/.suite_email_lock" 2>/dev/null; then
+            echo "======================================================================"
+            echo "ALL ${#ALL_ENVS[@]} MINATAR ENVIRONMENTS COMPLETE! Compiling and emailing PDF..."
+            echo "======================================================================"
+            $PYTHON scripts/generate_e_variants_suite_pdf.py \
+                --suite-dir "$SWEEP_SUITE_DIR" \
+                --metric "$METRIC" \
+                --rank-by "$RANK_BY" \
+                --window-size $WINDOW_SIZE \
+                --email "$EMAIL_RECIPIENT"
+        else
+            echo "Complete suite PDF already compiled and emailed by another finished task."
+        fi
+    else
+        # Waiting for other array tasks to finish: compile local PDF without emailing
+        $PYTHON scripts/generate_e_variants_suite_pdf.py \
+            --suite-dir "$SWEEP_SUITE_DIR" \
+            --metric "$METRIC" \
+            --rank-by "$RANK_BY" \
+            --window-size $WINDOW_SIZE
+    fi
 else
-    # Update local PDF without sending email yet
+    # Single environment run from CLI: generate local PDF without emailing
+    echo "Single environment run finished. Generating local PDF..."
     $PYTHON scripts/generate_e_variants_suite_pdf.py \
         --suite-dir "$SWEEP_SUITE_DIR" \
         --metric "$METRIC" \
