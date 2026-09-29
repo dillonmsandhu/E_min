@@ -76,14 +76,15 @@ def parse_args():
                         help="Multi-head loss aggregation (default: sum)")
     
     # Grid options
-    parser.add_argument("--grid-mode", type=str, default="full", choices=["full", "opt8", "custom"],
-                        help="Grid mode: 'full' (16 configs: loss x heads x epochs x wd), 'opt8' (8 configs), or 'custom'")
+    parser.add_argument("--grid-mode", type=str, default="default",
+                        choices=["default", "opt8", "epochs16", "heads16", "custom"],
+                        help="Grid mode: 'default'/'opt8' (8 configs: epochs x wd x heads with MSE), 'epochs16' (16 configs: [4,8,16,32] epochs), 'heads16' (16 configs: [1,2,4,8] heads), or 'custom'")
     parser.add_argument("--epochs-grid", type=int, nargs="+", default=[4, 16],
                         help="Critic epochs grid (default: 4 16)")
-    parser.add_argument("--wd-grid", type=float, nargs="+", default=[0.0, 0.01],
-                        help="Critic weight decay grid (default: 0.0 0.01)")
-    parser.add_argument("--loss-grid", type=str, nargs="+", default=["mse", "huber"],
-                        help="Critic loss types grid (default: mse huber)")
+    parser.add_argument("--wd-grid", type=float, nargs="+", default=[0.001, 0.01],
+                        help="Critic weight decay grid (default: 0.001 0.01)")
+    parser.add_argument("--loss-grid", type=str, nargs="+", default=["mse"],
+                        help="Critic loss types grid (default: mse)")
     parser.add_argument("--heads-grid", type=int, nargs="+", default=[1, 4],
                         help="Value heads grid (default: 1 4)")
     parser.add_argument("--num-envs-grid", type=int, nargs="+", default=None,
@@ -100,18 +101,24 @@ def parse_args():
 
 def build_grid(args):
     """Constructs the list of configurations based on the chosen grid mode."""
-    if args.grid_mode == "full":
+    if args.grid_mode in ["default", "opt8"]:
         epochs_list = [4, 16]
-        wd_list = [0.0, 0.01]
-        loss_list = ["mse", "huber"]
+        wd_list = [0.001, 0.01]
+        loss_list = ["mse"]
         heads_list = [1, 4]
         envs_list = [args.num_envs] if args.num_envs_grid is None else args.num_envs_grid
-    elif args.grid_mode == "opt8":
-        epochs_list = [4, 16]
-        wd_list = [0.0, 0.01]
+    elif args.grid_mode == "epochs16":
+        epochs_list = [4, 8, 16, 32]
+        wd_list = [0.001, 0.01]
         loss_list = ["mse"]
-        heads_list = [1]
-        envs_list = [64, 512] if args.num_envs_grid is None else args.num_envs_grid
+        heads_list = [1, 4]
+        envs_list = [args.num_envs] if args.num_envs_grid is None else args.num_envs_grid
+    elif args.grid_mode == "heads16":
+        epochs_list = [4, 16]
+        wd_list = [0.001, 0.01]
+        loss_list = ["mse"]
+        heads_list = [1, 2, 4, 8]
+        envs_list = [args.num_envs] if args.num_envs_grid is None else args.num_envs_grid
     else:  # custom
         epochs_list = args.epochs_grid
         wd_list = args.wd_grid

@@ -12,10 +12,10 @@
 #
 # Tunes the new E_experimental objective across non-MinAtar Gymnax environments:
 #   - Critic Epochs: [4, 16]
-#   - Weight Decay: [0.0, 0.01]
-#   - Critic Loss: ["mse", "huber"]
+#   - Weight Decay: [0.001, 0.01]
+#   - Critic Loss: MSE (Huber removed due to poor performance on sparse rewards)
 #   - Value Heads: [1, 4]
-# Total: 16 configurations per environment evaluated over 8 seeds.
+# Total: 8 configurations per environment evaluated over 8 seeds.
 #
 # Environments: 12 Non-MinAtar, Non-Bandit Gymnax Environments:
 #   Classic Control: CartPole-v1, Pendulum-v1, Acrobot-v1, MountainCar-v0, MountainCarContinuous-v0
