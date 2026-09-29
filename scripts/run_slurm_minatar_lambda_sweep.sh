@@ -11,7 +11,9 @@
 #
 # Compares the 3 key algorithms across return and bootstrapping lambdas:
 #   1. E (E0 base script): swept over RETURN_LAMBDA (baseline return anchor G_t)
-#   2. E_lambda_differentiable (Method 2): 2D grid over RETURN_LAMBDA x E_LAMBDA
+#   2. E_lambda algorithm (E_lambda_geometric or E_lambda_differentiable):
+#      Configurable via E_LAMBDA_ALGO env var or 2nd CLI argument (default: E_lambda_geometric).
+#      Swept over RETURN_LAMBDA x E_LAMBDA grid.
 #   3. ppo (TD(lambda) baseline): swept over VALUE_LAMBDA
 #
 # Environments: 4 MinAtar Games
@@ -22,7 +24,8 @@
 #
 # Usage:
 #   sbatch scripts/run_slurm_minatar_lambda_sweep.sh
-#   ./scripts/run_slurm_minatar_lambda_sweep.sh Asterix-MinAtar (for single env run)
+#   E_LAMBDA_ALGO=E_lambda_differentiable sbatch scripts/run_slurm_minatar_lambda_sweep.sh
+#   ./scripts/run_slurm_minatar_lambda_sweep.sh Asterix-MinAtar E_lambda_geometric
 # ==============================================================================
 
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -53,6 +56,9 @@ elif [ -n "$SLURM_ARRAY_TASK_ID" ]; then
 else
     ENV_NAME="Asterix-MinAtar"
 fi
+
+# Select E_lambda algorithm variant (default: E_lambda_geometric)
+E_LAMBDA_ALGO="${2:-${E_LAMBDA_ALGO:-E_lambda_geometric}}"
 
 if [ -z "$ENV_NAME" ]; then
     echo "ERROR: ENV_NAME is empty. SLURM_ARRAY_TASK_ID ($SLURM_ARRAY_TASK_ID) is out of bounds for ALL_ENVS (size ${#ALL_ENVS[@]})."
@@ -96,10 +102,11 @@ echo "======================================================================"
 echo "STARTING MINATAR LAMBDA SWEEP: RETURN_LAMBDA vs. VALUE_LAMBDA / E_LAMBDA"
 echo "Start Time: $START_TIME"
 echo "Environment: $ENV_NAME"
+echo "E_lambda Algorithm: $E_LAMBDA_ALGO"
 echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS (10M)"
 echo "Critic LR Grid: $CRITIC_LR_GRID | Fixed Actor LR: $FIXED_ACTOR_LR"
-echo "RETURN_LAMBDA Grid (E and E_diff): $RETURN_LAMBDA_GRID"
-echo "E_LAMBDA Grid (E_diff): $E_LAMBDA_GRID"
+echo "RETURN_LAMBDA Grid (E and $E_LAMBDA_ALGO): $RETURN_LAMBDA_GRID"
+echo "E_LAMBDA Grid ($E_LAMBDA_ALGO): $E_LAMBDA_GRID"
 echo "VALUE_LAMBDA Grid (TD / PPO): $TD_LAMBDA_GRID"
 echo "Output Directory: $SWEEP_ROOT_DIR"
 echo "======================================================================"
@@ -127,14 +134,14 @@ $PYTHON scripts/sweep_pipeline.py \
     --no-log-scale
 
 # ------------------------------------------------------------------------------
-# 2. Sweep E_lambda_differentiable (Method 2) across RETURN_LAMBDA x E_LAMBDA
+# 2. Sweep E_lambda algorithm across RETURN_LAMBDA x E_LAMBDA
 # ------------------------------------------------------------------------------
 echo ""
-echo "--> [2/3] Sweeping E_lambda_differentiable across RETURN_LAMBDA: $RETURN_LAMBDA_GRID x E_LAMBDA: $E_LAMBDA_GRID..."
+echo "--> [2/3] Sweeping $E_LAMBDA_ALGO across RETURN_LAMBDA: $RETURN_LAMBDA_GRID x E_LAMBDA: $E_LAMBDA_GRID..."
 $PYTHON scripts/sweep_pipeline.py \
     --policy ppo \
     --env-name "$ENV_NAME" \
-    --algos E_lambda_differentiable \
+    --algos "$E_LAMBDA_ALGO" \
     --lr-grid $CRITIC_LR_GRID \
     --actor-lr-grid $FIXED_ACTOR_LR \
     --return-lambda-grid $RETURN_LAMBDA_GRID \

@@ -79,39 +79,69 @@ def make_train(base_config):
             return_lambda = config.get("RETURN_LAMBDA", 0.99)
             _, returns = helpers.calculate_gae(traj_batch, config["GAMMA"], return_lambda)
 
-            # 3. UPDATE NETWORK OVER EPOCHS AND TRAJECTORY MINIBATCHES
+            # Sample geometric lookahead jumps ONCE per rollout buffer
+            e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
+            rng, _rng = jax.random.split(rng)
+            obs_jump, targets_jump, valid_jump, is_absorbing = helpers.prepare_geometric_jump_transitions(
+                traj_batch, returns, config["GAMMA"], e_lambda, _rng
+            )
+
+            # 3. UPDATE NETWORK OVER EPOCHS AND TRANSITION MINIBATCHES
             def _update_epoch(update_state, unused):
-                def _update_minbatch(state, batch_info):
-                    train_state, rng = state
-                    rng, _rng = jax.random.split(rng)
-                    traj_batch_mb, advantages_mb, returns_mb = batch_info
-                    grad_fn = jax.value_and_grad(helpers.e_lambda_geometric_loss_fn, has_aux=True)
+                def _update_minbatch(train_state, batch_info):
+                    (
+                        obs_mb,
+                        action_mb,
+                        log_prob_mb,
+                        advantages_mb,
+                        targets_mb,
+                        obs_jump_mb,
+                        targets_jump_mb,
+                        valid_jump_mb,
+                        is_absorbing_mb,
+                    ) = batch_info
+                    grad_fn = jax.value_and_grad(helpers.e_lambda_geometric_transition_loss_fn, has_aux=True)
                     (total_loss, losses), grads = grad_fn(
                         train_state.params,
                         network,
-                        traj_batch_mb,
+                        obs_mb,
+                        action_mb,
+                        log_prob_mb,
                         advantages_mb,
-                        returns_mb,
+                        targets_mb,
+                        obs_jump_mb,
+                        targets_jump_mb,
+                        valid_jump_mb,
+                        is_absorbing_mb,
                         config,
-                        _rng,
                     )
                     train_state = train_state.apply_gradients(grads=grads)
-                    return (train_state, rng), losses
+                    return train_state, losses
 
-                train_state, traj_batch, advantages, returns, rng = update_state
+                train_state, batch, rng = update_state
                 rng, _rng = jax.random.split(rng)
-                batch = (traj_batch, advantages, returns)
-                # Batch along environment axis to preserve temporal trajectory continuity
-                minibatches = helpers.shuffle_and_batch_envs(_rng, batch, config["NUM_MINIBATCHES"])
+                # Shuffle and minibatch at the individual transition level
+                minibatches = helpers.shuffle_and_batch(_rng, batch, config["NUM_MINIBATCHES"])
 
-                (train_state, rng), loss_info = jax.lax.scan(_update_minbatch, (train_state, rng), minibatches)
-                return (train_state, traj_batch, advantages, returns, rng), loss_info
+                train_state, epoch_losses = jax.lax.scan(_update_minbatch, train_state, minibatches)
+                return (train_state, batch, rng), epoch_losses
 
-            initial_update_state = (train_state, traj_batch, advantages, returns, rng)
+            batch = (
+                traj_batch.obs,
+                traj_batch.action,
+                traj_batch.log_prob,
+                advantages,
+                returns,
+                obs_jump,
+                targets_jump,
+                valid_jump,
+                is_absorbing,
+            )
+            initial_update_state = (train_state, batch, rng)
             update_state, loss_info = jax.lax.scan(
                 _update_epoch, initial_update_state, None, config["NUM_EPOCHS"]
             )
-            train_state, _, _, _, rng = update_state
+            train_state, _, rng = update_state
 
             # 4. RUNTIME METRICS
             metric = runtime_metrics.compute_runtime_metrics(

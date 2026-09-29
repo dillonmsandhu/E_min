@@ -17,11 +17,15 @@ class PQN_CNN(nn.Module):
         else:
             normalize = lambda tensor: tensor
 
-        assert x.ndim in (3, 4), f"Input shape should be (H, W, C) or (B, H, W, C), got {x.shape}"
-        batch_dims = (x.shape[0],) if x.ndim == 4 else (1,)
+        assert x.ndim >= 3, f"Input shape should be at least (H, W, C), got {x.shape}"
+        batch_dims = x.shape[:-3]
 
-        if x.ndim == 3:
+        if len(batch_dims) == 0:
             x = x[None, ...]
+            batch_dims = (1,)
+        elif len(batch_dims) > 1:
+            x = x.reshape(-1, *x.shape[-3:])
+
         x = nn.Conv(
             features=16,
             kernel_size=(3, 3),

@@ -722,4 +722,179 @@ def e_lambda_geometric_loss_fn(
     return total_loss, losses
 
 
+def prepare_geometric_jump_transitions(
+    traj_batch,
+    targets,
+    gamma: float,
+    lmbda: float,
+    rng: jax.Array,
+):
+    """
+    Samples geometric lookahead jumps K ~ Geometric(1 - gamma * lambda) on the rollout buffer
+    and extracts jump observation targets, continuation states, and validity masks
+    for transition-level minibatching (Method 3).
+
+    Returns:
+        obs_jump: (T, B, *obs_shape) jump target observations
+        targets_jump: (T, B) return targets for jump states
+        valid_jump: (T, B) bool mask indicating jump does not cross episode reset
+        is_absorbing: (T, B) bool mask indicating true terminal absorbing state
+    """
+    T, B = targets.shape[:2]
+    gl = gamma * lmbda
+
+    # 1. Sample lookahead horizon jump K >= 0 from Geometric(1 - gl)
+    # For gl < 1e-6 (e.g. lambda = 0), K = 0 deterministically
+    u = jax.random.uniform(rng, shape=(T, B))
+    safe_gl = jnp.clip(gl, 1e-8, 1.0 - 1e-8)
+    jumps = jnp.where(
+        gl < 1e-6,
+        jnp.zeros((T, B), dtype=jnp.int32),
+        jnp.floor(jnp.log(jnp.clip(1.0 - u, 1e-8, 1.0)) / jnp.log(safe_gl)).astype(jnp.int32),
+    )
+    jumps = jnp.maximum(jumps, 0)
+
+    # 2. Clamped target index (T represents continuation state s_T)
+    t_arr = jnp.arange(T)[:, None]
+    target_idx = t_arr + jumps + 1
+    t_clamped = jnp.minimum(target_idx, T)
+
+    # 3. Detect episode resets between t and target
+    t_prev = jnp.minimum(t_arr + jumps, T - 1)
+    done_cumsum = jnp.cumsum(traj_batch.done.astype(jnp.int32), axis=0)
+    has_reset_between = (
+        jnp.take_along_axis(done_cumsum, t_prev, axis=0) - done_cumsum
+    ) > 0
+
+    # 4. Terminals and Timeouts
+    is_timeout = traj_batch.info.get("is_timeout", jnp.zeros_like(traj_batch.done, dtype=bool))
+    true_terminal = traj_batch.done & ~is_timeout
+    is_absorbing = true_terminal
+
+    # 5. Extended arrays up to index T (continuation boundary)
+    next_target_T = jnp.where(true_terminal[-1], 0.0, traj_batch.next_value[-1])
+    obs_ext = jnp.concatenate([traj_batch.obs, traj_batch.next_obs[-1][None]], axis=0)
+    targets_ext = jnp.concatenate([targets, next_target_T[None]], axis=0)
+
+    # 6. Gather jump observations and targets
+    idx_expanded = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.obs.ndim - 2))
+    idx_broadcast = jnp.broadcast_to(idx_expanded, (T, B) + traj_batch.obs.shape[2:])
+    obs_jump_gathered = jnp.take_along_axis(obs_ext, idx_broadcast, axis=0)
+    targets_jump_gathered = jnp.take_along_axis(targets_ext, t_clamped, axis=0)
+
+    # For timeouts with K==0, use real_next_obs and next_value
+    timeout_mask_obs = is_timeout.reshape(is_timeout.shape + (1,) * (traj_batch.obs.ndim - 2))
+    obs_jump = jnp.where(timeout_mask_obs, traj_batch.next_obs, obs_jump_gathered)
+    targets_jump = jnp.where(is_timeout, traj_batch.next_value, targets_jump_gathered)
+
+    # 7. Valid jump mask:
+    # - true terminal: absorbing (handled via is_absorbing)
+    # - timeout: valid iff jumps == 0
+    # - ongoing: valid iff no episode reset occurred between t and target
+    valid_jump = jnp.where(
+        true_terminal,
+        False,
+        jnp.where(is_timeout, jumps == 0, ~has_reset_between),
+    )
+
+    return obs_jump, targets_jump, valid_jump, is_absorbing
+
+
+def e_lambda_geometric_transition_critic_loss(
+    v_i,
+    targets_i,
+    v_jump,
+    targets_jump,
+    valid_jump,
+    is_absorbing,
+    gamma: float,
+    lmbda: float,
+):
+    """
+    Computes transition-level sampled E(lambda) critic loss with geometric jump pairs.
+    """
+    e_i = targets_i - v_i
+    e_jump = targets_jump - v_jump
+
+    diff_sq = jnp.where(
+        is_absorbing,
+        e_i ** 2,
+        jnp.where(valid_jump, (e_i - e_jump) ** 2, 0.0),
+    )
+
+    gl = gamma * lmbda
+    tilde_gamma = (gamma * (1.0 - lmbda)) / jnp.maximum(1.0 - gl, 1e-8)
+    magnitude_weight = (1.0 - gamma) / jnp.maximum(1.0 - gl, 1e-8)
+    dirichlet_weight = 0.5 * tilde_gamma
+
+    magnitude_loss = magnitude_weight * jnp.mean(e_i ** 2)
+    dirichlet_loss = dirichlet_weight * jnp.mean(diff_sq)
+    value_loss = magnitude_loss + dirichlet_loss
+
+    return value_loss, magnitude_loss, dirichlet_loss
+
+
+def e_lambda_geometric_transition_loss_fn(
+    params,
+    network,
+    obs,
+    action,
+    log_prob_old,
+    advantages,
+    targets,
+    obs_jump,
+    targets_jump,
+    valid_jump,
+    is_absorbing,
+    config,
+):
+    """
+    Combined PPO loss with transition-level minibatched geometric jump E(lambda) critic loss.
+    """
+    # 1. Actor Loss (PPO clipped surrogate)
+    pi = network.apply(params, obs, method=network.policy)
+    log_prob = pi.log_prob(action)
+    entropy = pi.entropy().mean()
+    ratio = jnp.exp(log_prob - log_prob_old)
+
+    adv_norm = post_process_advantage(advantages, config)
+    surr1 = ratio * adv_norm
+    surr2 = jnp.clip(ratio, 1.0 - config["CLIP_EPS"], 1.0 + config["CLIP_EPS"]) * adv_norm
+    actor_loss = -jnp.minimum(surr1, surr2).mean()
+
+    # 2. Critic Loss (Transition-level Geometric Jump E(lambda))
+    v_i = network.apply(params, obs, method=network.value)
+    v_jump = network.apply(params, obs_jump, method=network.value)
+
+    gamma = config.get("GAMMA", 0.99)
+    e_lambda = config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8))
+
+    value_loss, magnitude_loss, dirichlet_loss = e_lambda_geometric_transition_critic_loss(
+        v_i=v_i,
+        targets_i=targets,
+        v_jump=v_jump,
+        targets_jump=targets_jump,
+        valid_jump=valid_jump,
+        is_absorbing=is_absorbing,
+        gamma=gamma,
+        lmbda=e_lambda,
+    )
+
+    total_loss = (
+        config.get("POLICY_COEFF", 1.0) * actor_loss
+        + config.get("VF_COEF", 0.5) * value_loss
+        - config.get("ENT_COEF", 0.01) * entropy
+    )
+
+    losses = {
+        "total_loss": total_loss,
+        "value_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "actor_loss": actor_loss,
+        "entropy": entropy,
+    }
+    return total_loss, losses
+
+
 
