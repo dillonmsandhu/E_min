@@ -171,6 +171,62 @@ def e_critic_loss(v_i, targets_i, v_j, targets_j, done, gamma):
     return value_loss, magnitude_loss, laplacian_loss
 
 
+def huber_loss(x, delta: float = 1.0):
+    """Huber loss (Smooth L1) with linear scaling for |x| > delta."""
+    abs_x = jnp.abs(x)
+    quadratic = jnp.minimum(abs_x, delta)
+    linear = abs_x - quadratic
+    return 0.5 * (quadratic ** 2) + delta * linear
+
+
+def e_experimental_critic_loss(
+    v_i, targets_i, v_j, targets_j, done, gamma: float, loss_type: str = "mse", delta: float = 1.0, agg: str = "sum"
+):
+    """
+    Sampled E-loss supporting Huber loss and multi-value head aggregation.
+    - v_i, v_j: (B,) or (B, K) where K is the number of value heads.
+    - targets_i, targets_j: (B,) or (B, 1)
+    - done: (B,) or (B, 1)
+    - loss_type: 'mse' or 'huber'
+    - delta: transition threshold for Huber loss
+    - agg: 'sum' or 'mean' across value heads
+    """
+    if v_i.ndim == 1:
+        v_i = v_i[:, None]
+        v_j = v_j[:, None]
+    if targets_i.ndim == 1:
+        targets_i = targets_i[:, None]
+        targets_j = targets_j[:, None]
+    if done.ndim == 1:
+        done = done[:, None]
+
+    e_i = targets_i - v_i
+    e_j = jnp.where(done, 0.0, targets_j - v_j)
+
+    if loss_type.lower() == "huber":
+        mag_err = 2.0 * huber_loss(e_i, delta)
+        lap_err = 2.0 * huber_loss(e_i - e_j, delta)
+    else:
+        mag_err = e_i ** 2
+        lap_err = (e_i - e_j) ** 2
+
+    # Compute per-head losses along batch dimension
+    mag_per_head = (1.0 - gamma) * jnp.mean(mag_err, axis=0)
+    lap_per_head = 0.5 * gamma * jnp.mean(lap_err, axis=0)
+    loss_per_head = mag_per_head + lap_per_head
+
+    if agg.lower() == "sum":
+        value_loss = jnp.sum(loss_per_head)
+        magnitude_loss = jnp.sum(mag_per_head)
+        laplacian_loss = jnp.sum(lap_per_head)
+    else:
+        value_loss = jnp.mean(loss_per_head)
+        magnitude_loss = jnp.mean(mag_per_head)
+        laplacian_loss = jnp.mean(lap_per_head)
+
+    return value_loss, magnitude_loss, laplacian_loss
+
+
 def e_loss_fn(
     params,
     network,
