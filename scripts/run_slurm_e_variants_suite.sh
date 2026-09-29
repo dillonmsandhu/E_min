@@ -4,7 +4,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1
-#SBATCH --array=0-15
+#SBATCH --array=0-11
 
 # ==============================================================================
 # Comprehensive Gymnax Suite Sweep: Comparison of Four Variants of E
@@ -51,12 +51,6 @@ ALL_ENVS=(
     "MountainCar-v0"
     "MountainCarContinuous-v0"
 
-    # MinAtar
-    "Asterix-MinAtar"
-    "Breakout-MinAtar"
-    "Freeway-MinAtar"
-    "SpaceInvaders-MinAtar"
-
     # BSuite (excluding Catch-bsuite)
     "DeepSea-bsuite"
     "DiscountingChain-bsuite"
@@ -83,7 +77,7 @@ if [ -z "$ENV_NAME" ]; then
     exit 1
 fi
 
-N_SEEDS=8
+N_SEEDS=16
 
 # Environment-specific horizon: 10M for MinAtar games, 2M (2,048,000) for all other environments
 if [ -n "$CUSTOM_TIMESTEPS" ]; then
@@ -108,7 +102,7 @@ CRITIC_LR_GRID="0.003 0.001 0.0003 0.0001"
 E_LAMBDA_GRID="0.0 0.6 0.8 0.9 0.95"
 
 # Base configuration with Slurm tracking
-CONFIG="{\"NUM_ENVS\": 64, \"NUM_STEPS\": 256, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VF_CLIP\": 1000000.0, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
+CONFIG="{\"NUM_ENVS\": 256, \"NUM_STEPS\": 64, \"MINIBATCH_SIZE\": 1024, \"TOTAL_TIMESTEPS\": $TOTAL_TIMESTEPS, \"NUM_EPOCHS\": 4, \"GAE_LAMBDA\": $FIXED_GAE_LAMBDA, \"RETURN_LAMBDA\": $FIXED_RETURN_LAMBDA, \"VF_CLIP\": 1000000.0, \"SLURM_JOB_ID\": \"${SLURM_JOB_ID:-local}\", \"SLURM_ARRAY_JOB_ID\": \"${SLURM_ARRAY_JOB_ID:-local}\", \"SLURM_ARRAY_TASK_ID\": \"${SLURM_ARRAY_TASK_ID:-0}\"}"
 
 mkdir -p slurm
 
