@@ -96,8 +96,10 @@ def parse_args():
                         help="Critic loss type for both algos (default: mse)")
     parser.add_argument("--td-lambda", type=float, default=0.0,
                         help="TD lambda parameter for algos.td (default: 0.0 for live 1-step TD)")
-    parser.add_argument("--return-lambda", type=float, default=0.99,
-                        help="Return anchor lambda for E_experimental (default: 0.99)")
+    parser.add_argument("--return-lambda-grid", type=float, nargs="+", default=[0.9, 0.99],
+                        help="Return anchor lambda grid for E_experimental (default: 0.9 0.99)")
+    parser.add_argument("--return-lambda", type=float, default=None,
+                        help="Single return anchor lambda for backwards compatibility")
     
     parser.add_argument("--sweep-id", type=str, default=None,
                         help="Unified sweep identifier across SLURM array tasks (default: SLURM_ARRAY_JOB_ID or timestamp)")
@@ -150,8 +152,8 @@ def run_single_algo_sweep(algo_name, make_train_fn, grid, args, out_algo_dir):
         cfg["ACTOR_LR"] = args.actor_lr
         cfg["LR"] = clr
         cfg["CRITIC_LR"] = clr
-        cfg["TD_LAMBDA"] = args.td_lambda
-        cfg["RETURN_LAMBDA"] = args.return_lambda
+        cfg["TD_LAMBDA"] = item.get("td_lambda", args.td_lambda)
+        cfg["RETURN_LAMBDA"] = item.get("return_lambda", args.return_lambda if args.return_lambda is not None else 0.99)
 
         start_time = time.time()
         train_fn = make_train_fn(cfg)
@@ -186,7 +188,7 @@ def run_single_algo_sweep(algo_name, make_train_fn, grid, args, out_algo_dir):
         final_sem = float(np.mean(sem_c[-win:]))
         auc = float(np.mean(mean_c))
 
-        summary_rows.append({
+        row = {
             "algo": algo_name,
             "config": label,
             "critic_lr": clr,
@@ -197,7 +199,12 @@ def run_single_algo_sweep(algo_name, make_train_fn, grid, args, out_algo_dir):
             "final_window_sem": final_sem,
             "auc": auc,
             "elapsed_seconds": elapsed,
-        })
+        }
+        if "return_lambda" in item:
+            row["return_lambda"] = item["return_lambda"]
+        if "td_lambda" in item:
+            row["td_lambda"] = item["td_lambda"]
+        summary_rows.append(row)
 
     df = pd.DataFrame(summary_rows)
     df.sort_values(by="final_window_mean", ascending=False, inplace=True)
@@ -327,7 +334,16 @@ def plot_head_to_head_poster(df_e, curves_e, df_td, curves_td, out_dir, env_name
     mx = max(y_e.max(), x_td.max()) + 1.0
 
     ax_sc.plot([mn, mx], [mn, mx], "k--", alpha=0.6, label="y = x (Equality)")
-    ax_sc.scatter(x_td, y_e, c="#1a73e8", edgecolors="#174ea6", s=50, alpha=0.85, zorder=4)
+    if "return_lambda" in merged.columns and merged["return_lambda"].nunique() > 1:
+        u_lams = sorted(merged["return_lambda"].unique())
+        colors = ["#1b7837", "#1a73e8", "#ea4335", "#fbbc04"]
+        for i_lam, lam in enumerate(u_lams):
+            sub = merged[merged["return_lambda"] == lam]
+            ax_sc.scatter(sub["final_window_mean_td"], sub["final_window_mean_e"],
+                          color=colors[i_lam % len(colors)], edgecolors="#333", s=45, alpha=0.85, zorder=4,
+                          label=f"E (λ_ret={lam})")
+    else:
+        ax_sc.scatter(x_td, y_e, c="#1a73e8", edgecolors="#174ea6", s=50, alpha=0.85, zorder=4)
 
     e_wins = np.sum(y_e > x_td)
     td_wins = np.sum(x_td > y_e)
@@ -373,10 +389,34 @@ def plot_head_to_head_poster(df_e, curves_e, df_td, curves_td, out_dir, env_name
     print(f"{'='*70}\n")
 
 
-def build_comparison_grid(args):
-    """Builds the Cartesian product of (critic_lr, epochs, weight_decay, num_value_heads)."""
+def build_e_grid(args):
+    """Builds the Cartesian product of (critic_lr, epochs, weight_decay, num_value_heads, return_lambda)."""
+    ret_lams = [args.return_lambda] if args.return_lambda is not None else args.return_lambda_grid
     grid = []
-    for clr, ep, wd, heads in itertools.product(args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid):
+    for clr, ep, wd, heads, ret_lam in itertools.product(
+        args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid, ret_lams
+    ):
+        if len(ret_lams) > 1:
+            label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}_retlam={ret_lam}"
+        else:
+            label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}"
+        grid.append({
+            "label": label,
+            "critic_lr": clr,
+            "critic_epochs": ep,
+            "weight_decay": wd,
+            "num_value_heads": heads,
+            "return_lambda": ret_lam,
+        })
+    return grid
+
+
+def build_td_grid(args):
+    """Builds the Cartesian product for Classic TD (which does not depend on return_lambda)."""
+    grid = []
+    for clr, ep, wd, heads in itertools.product(
+        args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid
+    ):
         label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}"
         grid.append({
             "label": label,
@@ -384,6 +424,7 @@ def build_comparison_grid(args):
             "critic_epochs": ep,
             "weight_decay": wd,
             "num_value_heads": heads,
+            "td_lambda": args.td_lambda,
         })
     return grid
 
@@ -412,7 +453,8 @@ def main():
         out_dir = os.path.join(_repo_root, "results", "ppo", "sweeps", suite_id, args.env_name)
 
     os.makedirs(out_dir, exist_ok=True)
-    grid = build_comparison_grid(args)
+    grid_e = build_e_grid(args)
+    grid_td = build_td_grid(args)
 
     print("=" * 70)
     print("STANDARD COMPARISON SWEEP: CLASSIC TD vs E_EXPERIMENTAL")
@@ -422,7 +464,9 @@ def main():
     print(f"Critic Epochs:     {args.epochs_grid}")
     print(f"Weight Decay:      {args.wd_grid}")
     print(f"Value Heads:       {args.heads_grid}")
-    print(f"Configs per Algo:  {len(grid)} (Total evaluations: {2 * len(grid)})")
+    ret_lams_info = [args.return_lambda] if args.return_lambda is not None else args.return_lambda_grid
+    print(f"Return Lambdas:    {ret_lams_info} (E_experimental)")
+    print(f"Configs:           E_experimental: {len(grid_e)} | Classic TD: {len(grid_td)}")
     print(f"Output Directory:  {out_dir}")
     print("=" * 70)
 
@@ -431,7 +475,7 @@ def main():
     df_e, curves_e, _ = run_single_algo_sweep(
         algo_name="E_experimental",
         make_train_fn=make_train_e,
-        grid=grid,
+        grid=grid_e,
         args=args,
         out_algo_dir=e_dir,
     )
@@ -441,7 +485,7 @@ def main():
     df_td, curves_td, _ = run_single_algo_sweep(
         algo_name="td",
         make_train_fn=make_train_td,
-        grid=grid,
+        grid=grid_td,
         args=args,
         out_algo_dir=td_dir,
     )

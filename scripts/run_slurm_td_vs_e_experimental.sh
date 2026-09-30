@@ -101,6 +101,7 @@ CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0003 0.001 0.003"}
 EPOCHS=${CUSTOM_EPOCHS:-"4 16"}
 WDS=${CUSTOM_WDS:-"0.001 0.01"}
 HEADS=${CUSTOM_HEADS:-"1 4"}
+RETURN_LAMBDAS=${CUSTOM_RETURN_LAMBDAS:-"0.9 0.99"}
 
 # Unified suite directory: all tasks in the SLURM array share SLURM_ARRAY_JOB_ID
 SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+cmp_td_vs_e_${SLURM_ARRAY_JOB_ID}}}"
@@ -108,17 +109,18 @@ SWEEP_ID="${SWEEP_ID:-cmp_td_vs_e_${SLURM_JOB_ID:-$(date +"%Y%m%d_%H%M%S")}}"
 
 echo "======================================================================"
 echo "LAUNCHING HEAD-TO-HEAD COMPARISON: TD vs E_EXPERIMENTAL"
-echo "  Suite / Sweep: $SWEEP_ID"
-echo "  Environment:   $ENV_NAME"
-echo "  Timesteps:     $TOTAL_TIMESTEPS"
-echo "  Seeds:         $N_SEEDS"
-echo "  Critic LRs:    $CRITIC_LRS"
-echo "  Critic Epochs: $EPOCHS"
-echo "  Weight Decays: $WDS"
-echo "  Value Heads:   $HEADS"
-echo "  Python:        $PYTHON"
-echo "  Node / Host:   $(hostname)"
-echo "  Date:          $(date)"
+echo "  Suite / Sweep:  $SWEEP_ID"
+echo "  Environment:    $ENV_NAME"
+echo "  Timesteps:      $TOTAL_TIMESTEPS"
+echo "  Seeds:          $N_SEEDS"
+echo "  Critic LRs:     $CRITIC_LRS"
+echo "  Critic Epochs:  $EPOCHS"
+echo "  Weight Decays:  $WDS"
+echo "  Value Heads:    $HEADS"
+echo "  Return Lambdas: $RETURN_LAMBDAS"
+echo "  Python:         $PYTHON"
+echo "  Node / Host:    $(hostname)"
+echo "  Date:           $(date)"
 echo "======================================================================"
 
 $PYTHON scripts/sweep_td_vs_e_experimental.py \
@@ -129,7 +131,8 @@ $PYTHON scripts/sweep_td_vs_e_experimental.py \
     --critic-lr-grid $CRITIC_LRS \
     --epochs-grid $EPOCHS \
     --wd-grid $WDS \
-    --heads-grid $HEADS
+    --heads-grid $HEADS \
+    --return-lambda-grid $RETURN_LAMBDAS
 
 STATUS=$?
 if [ $STATUS -eq 0 ]; then

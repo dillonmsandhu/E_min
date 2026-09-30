@@ -48,6 +48,7 @@ def plot_parallel_coordinates(df: pd.DataFrame, ax: plt.Axes, env_name: str, sco
     # Identify swept columns
     candidate_cols = [
         ("lambda", "Lambda (λ)"),
+        ("return_lambda", "Return Lambda (λ_ret)"),
         ("critic_epochs", "Critic Epochs"),
         ("critic_lr", "Critic LR"),
         ("num_value_heads", "Value Heads"),
