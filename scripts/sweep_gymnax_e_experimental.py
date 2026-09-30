@@ -79,7 +79,7 @@ def parse_args():
     parser.add_argument("--grid-mode", type=str, default="default",
                         choices=["default", "opt8", "epochs16", "heads16", "custom"],
                         help="Grid mode: 'default'/'opt8' (8 configs: epochs x wd x heads with MSE), 'epochs16' (16 configs: [4,8,16,32] epochs), 'heads16' (16 configs: [1,2,4,8] heads), or 'custom'")
-    parser.add_argument("--epochs-grid", type=int, nargs="+", default=[4, 16],
+    parser.add_argument("--epochs-grid", type=int, nargs="+", default=[4, 16, 32],
                         help="Critic epochs grid (default: 4 16)")
     parser.add_argument("--wd-grid", type=float, nargs="+", default=[0.001, 0.01],
                         help="Critic weight decay grid (default: 0.001 0.01)")

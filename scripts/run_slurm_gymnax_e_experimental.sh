@@ -83,7 +83,7 @@ fi
 
 TOTAL_TIMESTEPS=${CUSTOM_TIMESTEPS:-2048000}
 N_SEEDS=${CUSTOM_SEEDS:-8}
-GRID_MODE=${GRID_MODE:-full}
+GRID_MODE=${GRID_MODE:-default}
 
 echo "======================================================================"
 echo "Starting E_experimental Multi-Dimensional Sweep"
