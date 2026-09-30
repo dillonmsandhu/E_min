@@ -90,6 +90,8 @@ def parse_args():
     parser.add_argument("--num-envs-grid", type=int, nargs="+", default=None,
                         help="Optional num_envs grid (default: None, uses --num-envs)")
 
+    parser.add_argument("--sweep-id", type=str, default=None,
+                        help="Unified sweep identifier across SLURM array tasks (default: SLURM_ARRAY_JOB_ID or timestamp)")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Explicit directory to save results")
     parser.add_argument("--window-size", type=int, default=100,
@@ -200,7 +202,13 @@ def main():
     if args.output_dir is not None:
         out_dir = args.output_dir
     else:
-        sweep_id = f"e_exp_gymnax_{timestamp}"
+        sweep_id = (
+            args.sweep_id
+            or os.environ.get("SWEEP_ID")
+            or (f"e_exp_gymnax_{os.environ['SLURM_ARRAY_JOB_ID']}" if "SLURM_ARRAY_JOB_ID" in os.environ else None)
+            or (f"e_exp_gymnax_{os.environ['SLURM_JOB_ID']}" if "SLURM_JOB_ID" in os.environ else None)
+            or f"e_exp_gymnax_{timestamp}"
+        )
         out_dir = os.path.join(_repo_root, "results", "ppo", "sweeps", sweep_id, args.env_name)
 
     os.makedirs(out_dir, exist_ok=True)

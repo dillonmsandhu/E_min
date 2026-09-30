@@ -473,20 +473,33 @@ def generate_multidim_analysis_pdf(env_dir: str, output_pdf=None):
 
 def generate_suite_multidim_pdf(suite_dir: str, output_pdf=None):
     """Compiles suite-level multi-environment normalized comparisons across all games."""
+    import glob
     env_dirs = []
-    for item in sorted(os.listdir(suite_dir)):
-        p = os.path.join(suite_dir, item)
-        if os.path.isdir(p) and (os.path.exists(os.path.join(p, "summary_e_experimental.csv")) or
-                                 os.path.exists(os.path.join(p, "summary_td.csv")) or
-                                 os.path.exists(os.path.join(p, "summary_e_opt.csv"))):
-            env_dirs.append((item, p))
+    candidate_roots = glob.glob(suite_dir) if ("*" in suite_dir or "?" in suite_dir) else [suite_dir]
+    
+    seen_envs = set()
+    for s_dir in sorted(candidate_roots):
+        if not os.path.isdir(s_dir):
+            continue
+        for item in sorted(os.listdir(s_dir)):
+            p = os.path.join(s_dir, item)
+            if os.path.isdir(p) and (os.path.exists(os.path.join(p, "summary_e_experimental.csv")) or
+                                     os.path.exists(os.path.join(p, "summary_td.csv")) or
+                                     os.path.exists(os.path.join(p, "summary_e_opt.csv"))):
+                if item not in seen_envs:
+                    env_dirs.append((item, p))
+                    seen_envs.add(item)
 
     if not env_dirs:
         print(f"No environment directories with summary CSVs found in {suite_dir}")
         return None
 
+    first_root = candidate_roots[0] if candidate_roots else "."
+    if not os.path.isdir(first_root):
+        first_root = os.path.dirname(first_root) or "."
+
     if output_pdf is None:
-        output_pdf = os.path.join(suite_dir, "suite_multidim_analysis.pdf")
+        output_pdf = os.path.join(first_root, "suite_multidim_analysis.pdf")
     output_png = os.path.splitext(output_pdf)[0] + ".png"
 
     print(f"Found {len(env_dirs)} completed environments in suite: {[name for name, _ in env_dirs]}")

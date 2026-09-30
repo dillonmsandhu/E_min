@@ -99,6 +99,8 @@ def parse_args():
     parser.add_argument("--return-lambda", type=float, default=0.99,
                         help="Return anchor lambda for E_experimental (default: 0.99)")
     
+    parser.add_argument("--sweep-id", type=str, default=None,
+                        help="Unified sweep identifier across SLURM array tasks (default: SLURM_ARRAY_JOB_ID or timestamp)")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Explicit directory to save results")
     parser.add_argument("--window-size", type=int, default=100,
@@ -400,7 +402,13 @@ def main():
     if args.output_dir is not None:
         out_dir = args.output_dir
     else:
-        suite_id = f"cmp_td_vs_e_{timestamp}"
+        suite_id = (
+            args.sweep_id
+            or os.environ.get("SWEEP_ID")
+            or (f"cmp_td_vs_e_{os.environ['SLURM_ARRAY_JOB_ID']}" if "SLURM_ARRAY_JOB_ID" in os.environ else None)
+            or (f"cmp_td_vs_e_{os.environ['SLURM_JOB_ID']}" if "SLURM_JOB_ID" in os.environ else None)
+            or f"cmp_td_vs_e_{timestamp}"
+        )
         out_dir = os.path.join(_repo_root, "results", "ppo", "sweeps", suite_id, args.env_name)
 
     os.makedirs(out_dir, exist_ok=True)

@@ -84,19 +84,24 @@ TOTAL_TIMESTEPS=${CUSTOM_TIMESTEPS:-2048000}
 N_SEEDS=${CUSTOM_SEEDS:-8}
 GRID_MODE=${GRID_MODE:-default}
 
+SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+e_exp_gymnax_${SLURM_ARRAY_JOB_ID}}}"
+SWEEP_ID="${SWEEP_ID:-e_exp_gymnax_${SLURM_JOB_ID:-$(date +"%Y%m%d_%H%M%S")}}"
+
 echo "======================================================================"
 echo "Starting E_experimental Multi-Dimensional Sweep"
-echo "  Environment: $ENV_NAME"
-echo "  Timesteps:   $TOTAL_TIMESTEPS"
-echo "  Seeds:       $N_SEEDS"
-echo "  Grid Mode:   $GRID_MODE (16 configs: epochs x wd x loss x heads)"
-echo "  Python:      $PYTHON"
-echo "  Node / Host: $(hostname)"
-echo "  Date:        $(date)"
+echo "  Suite / Sweep: $SWEEP_ID"
+echo "  Environment:   $ENV_NAME"
+echo "  Timesteps:     $TOTAL_TIMESTEPS"
+echo "  Seeds:         $N_SEEDS"
+echo "  Grid Mode:     $GRID_MODE (16 configs: epochs x wd x loss x heads)"
+echo "  Python:        $PYTHON"
+echo "  Node / Host:   $(hostname)"
+echo "  Date:          $(date)"
 echo "======================================================================"
 
 $PYTHON scripts/sweep_gymnax_e_experimental.py \
     --env-name "$ENV_NAME" \
+    --sweep-id "$SWEEP_ID" \
     --total-timesteps "$TOTAL_TIMESTEPS" \
     --n-seeds "$N_SEEDS" \
     --grid-mode "$GRID_MODE"

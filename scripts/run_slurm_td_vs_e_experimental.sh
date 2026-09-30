@@ -102,8 +102,13 @@ EPOCHS=${CUSTOM_EPOCHS:-"4 16 32"}
 WDS=${CUSTOM_WDS:-"0.001 0.01"}
 HEADS=${CUSTOM_HEADS:-"1 4"}
 
+# Unified suite directory: all tasks in the SLURM array share SLURM_ARRAY_JOB_ID
+SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+cmp_td_vs_e_${SLURM_ARRAY_JOB_ID}}}"
+SWEEP_ID="${SWEEP_ID:-cmp_td_vs_e_${SLURM_JOB_ID:-$(date +"%Y%m%d_%H%M%S")}}"
+
 echo "======================================================================"
 echo "LAUNCHING HEAD-TO-HEAD COMPARISON: TD vs E_EXPERIMENTAL"
+echo "  Suite / Sweep: $SWEEP_ID"
 echo "  Environment:   $ENV_NAME"
 echo "  Timesteps:     $TOTAL_TIMESTEPS"
 echo "  Seeds:         $N_SEEDS"
@@ -118,6 +123,7 @@ echo "======================================================================"
 
 $PYTHON scripts/sweep_td_vs_e_experimental.py \
     --env-name "$ENV_NAME" \
+    --sweep-id "$SWEEP_ID" \
     --total-timesteps "$TOTAL_TIMESTEPS" \
     --n-seeds "$N_SEEDS" \
     --critic-lr-grid $CRITIC_LRS \
