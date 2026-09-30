@@ -90,6 +90,9 @@ def run_experiment_main(make_train, default_critic="fitted", save_dir=None, args
         help="Critic loss formulation: 'fitted', 'td_0', 'e_0', or 'e_lambda'",
     )
     parser.add_argument("--e-lambda", dest="e_lambda", type=float, default=None, help="Lambda value for E(lambda) critic")
+    parser.add_argument("--gae-lambda", dest="gae_lambda", type=float, default=None, help="Lambda value for GAE advantages")
+    parser.add_argument("--value-lambda", dest="value_lambda", type=float, default=None, help="Lambda value for fitted critic value targets")
+    parser.add_argument("--return-lambda", dest="return_lambda", type=float, default=None, help="Lambda value for E-minimization return targets")
     parser.add_argument("--env", "--envs", dest="envs", type=str, nargs="*", default=[], help="Environment names to run")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--num-seeds", type=int, default=1)
@@ -147,6 +150,12 @@ def run_experiment_main(make_train, default_critic="fitted", save_dir=None, args
         config["CRITIC_MINIBATCH_SIZE"] = cli_args.critic_minibatch_size
     if cli_args.e_lambda is not None:
         config["E_LAMBDA"] = cli_args.e_lambda
+    if cli_args.gae_lambda is not None:
+        config["GAE_LAMBDA"] = cli_args.gae_lambda
+    if cli_args.value_lambda is not None:
+        config["VALUE_LAMBDA"] = cli_args.value_lambda
+    if cli_args.return_lambda is not None:
+        config["RETURN_LAMBDA"] = cli_args.return_lambda
 
     config["ALG"] = f"PPO_{config['CRITIC_TYPE'].upper()}"
     config["NUM_SEEDS"] = cli_args.num_seeds

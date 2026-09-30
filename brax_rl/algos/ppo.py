@@ -26,6 +26,8 @@ from brax_rl.core.brax_network import ActorCritic, initialize_split_train_state
 from brax_rl.core.brax_critics import (
     get_critic_loss_fn,
     calculate_gae,
+    calculate_targets,
+    get_critic_target_lambda,
     prepare_critic_transitions,
     ppo_actor_loss_fn,
 )
@@ -66,6 +68,9 @@ def make_train(config):
 
     critic_loss_fn = get_critic_loss_fn(config.get("CRITIC_TYPE", "fitted"), split=True)
     actor_loss_fn = ppo_actor_loss_fn
+
+    gae_lambda = config.get("GAE_LAMBDA", 0.95)
+    target_lambda = get_critic_target_lambda(config)
 
     def train(rng):
         n_value_heads = config.get("NUM_VALUE_HEADS", 1)
@@ -116,12 +121,21 @@ def make_train(config):
 
             # CALCULATE ADVANTAGE & TARGETS
             _, last_val = network.apply(train_state.params, last_obs)
-            advantages, targets = calculate_gae(
+            advantages, gae_targets = calculate_gae(
                 traj_batch,
                 last_val,
                 gamma=config["GAMMA"],
-                gae_lambda=config["GAE_LAMBDA"],
+                gae_lambda=gae_lambda,
             )
+            if target_lambda == gae_lambda:
+                targets = gae_targets
+            else:
+                targets = calculate_targets(
+                    traj_batch,
+                    last_val,
+                    gamma=config["GAMMA"],
+                    target_lambda=target_lambda,
+                )
 
             # PREPARE CRITIC TRANSITIONS (e.g. geometric lookahead jumps for E0 / E(lambda))
             critic_type = config.get("CRITIC_TYPE", "fitted").lower()

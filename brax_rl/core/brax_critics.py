@@ -29,6 +29,36 @@ def calculate_gae(traj_batch, last_val, gamma: float = 0.99, gae_lambda: float =
     return advantages, targets
 
 
+def calculate_targets(traj_batch, last_val, gamma: float = 0.99, target_lambda: float = 1.0):
+    """
+    Computes value regression targets (or empirical returns) using generalized lambda-returns.
+    When target_lambda=1.0, this computes empirical Monte Carlo returns on the rollout.
+    """
+    _, targets = calculate_gae(traj_batch, last_val, gamma=gamma, gae_lambda=target_lambda)
+    return targets
+
+
+# Aliases
+get_return = calculate_targets
+calculate_return = calculate_targets
+
+
+def get_critic_target_lambda(config: dict) -> float:
+    """
+    Returns the appropriate lambda to compute value targets based on the critic loss type:
+    - E-minimization (e_0, e_lambda): RETURN_LAMBDA (default 1.0) for empirical returns.
+    - Fitted PPO: VALUE_LAMBDA (default GAE_LAMBDA, e.g. 0.95).
+    - TD(0): TD_LAMBDA (default 0.0).
+    """
+    critic_type = config.get("CRITIC_TYPE", "fitted").lower()
+    if critic_type in ["e_0", "e0", "e", "e_lambda", "elambda", "e_geometric"]:
+        return config.get("RETURN_LAMBDA", 1.0)
+    elif critic_type in ["td_0", "td", "td0"]:
+        return config.get("TD_LAMBDA", 0.0)
+    else:  # fitted / ppo
+        return config.get("VALUE_LAMBDA", config.get("GAE_LAMBDA", 0.95))
+
+
 def ppo_value_loss(value, targets, value_old=None, vf_clip=None):
     """
     Standard PPO value loss with optional value clipping (Fitted Value Iteration MSE).
