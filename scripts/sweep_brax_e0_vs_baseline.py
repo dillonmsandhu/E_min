@@ -122,6 +122,7 @@ def extract_scalar_summary(returns_matrix, window_size=10):
     mean_ret = float(np.mean(final_per_seed))
     std_ret = float(np.std(final_per_seed, ddof=1)) if n_seeds > 1 else 0.0
     sem_ret = float(std_ret / np.sqrt(n_seeds)) if n_seeds > 1 else 0.0
+    max_ret = float(np.max(returns_matrix))
     trapz_fn = getattr(np, "trapezoid", np.trapz)
     auc_ret = float(np.mean(trapz_fn(returns_matrix, axis=1)))
 
