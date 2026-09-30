@@ -47,10 +47,12 @@ def plot_parallel_coordinates(df: pd.DataFrame, ax: plt.Axes, env_name: str, sco
     
     # Identify swept columns
     candidate_cols = [
-        ("critic_loss_type", "Loss Type"),
-        ("num_value_heads", "Value Heads"),
+        ("lambda", "Lambda (λ)"),
         ("critic_epochs", "Critic Epochs"),
+        ("critic_lr", "Critic LR"),
+        ("num_value_heads", "Value Heads"),
         ("weight_decay", "Weight Decay"),
+        ("critic_loss_type", "Loss Type"),
         ("num_envs", "Num Envs"),
     ]
     for c, label in candidate_cols:
@@ -198,11 +200,13 @@ def plot_marginal_effects(df: pd.DataFrame, axes: list, score_col="final_window_
 def plot_interaction_heatmaps(df: pd.DataFrame, axes: list, score_col="final_window_mean"):
     """Plots 2D interaction grids across actively varying hyperparameter pairs."""
     varying_cols = [
-        c for c in ["critic_epochs", "weight_decay", "num_value_heads", "critic_loss_type", "num_envs"]
+        c for c in ["lambda", "critic_epochs", "critic_lr", "num_value_heads", "weight_decay", "critic_loss_type", "num_envs"]
         if c in df.columns and df[c].nunique() > 1
     ]
     name_map = {
+        "lambda": "Lambda (λ)",
         "critic_epochs": "Critic Epochs",
+        "critic_lr": "Critic LR",
         "weight_decay": "Weight Decay",
         "num_value_heads": "Value Heads",
         "critic_loss_type": "Critic Loss",
@@ -252,7 +256,7 @@ def plot_interaction_heatmaps(df: pd.DataFrame, axes: list, score_col="final_win
 
 def plot_variance_decomposition(df: pd.DataFrame, ax: plt.Axes, score_col="final_window_mean"):
     """Computes two-way ANOVA variance attribution across swept dimensions."""
-    factors = [c for c in ["critic_loss_type", "num_value_heads", "critic_epochs", "weight_decay", "num_envs"]
+    factors = [c for c in ["lambda", "critic_epochs", "critic_lr", "num_value_heads", "weight_decay", "critic_loss_type", "num_envs"]
                if c in df.columns and df[c].nunique() > 1]
     
     if len(factors) < 2:
@@ -402,7 +406,11 @@ def plot_ablation_curves(metrics_dict: dict, df: pd.DataFrame, ax: plt.Axes, env
 
 def generate_multidim_analysis_pdf(env_dir: str, output_pdf=None):
     """Compiles the full 5-panel multi-dimensional analysis into a publication-ready PDF and PNG."""
-    summary_path = os.path.join(env_dir, "summary_e_experimental.csv")
+    summary_path = os.path.join(env_dir, "summary_e_lambda.csv")
+    if not os.path.exists(summary_path):
+        summary_path = os.path.join(env_dir, "summary_td_lambda.csv")
+    if not os.path.exists(summary_path):
+        summary_path = os.path.join(env_dir, "summary_e_experimental.csv")
     if not os.path.exists(summary_path):
         summary_path = os.path.join(env_dir, "summary_td.csv")
     if not os.path.exists(summary_path):
@@ -483,7 +491,9 @@ def generate_suite_multidim_pdf(suite_dir: str, output_pdf=None):
             continue
         for item in sorted(os.listdir(s_dir)):
             p = os.path.join(s_dir, item)
-            if os.path.isdir(p) and (os.path.exists(os.path.join(p, "summary_e_experimental.csv")) or
+            if os.path.isdir(p) and (os.path.exists(os.path.join(p, "summary_e_lambda.csv")) or
+                                     os.path.exists(os.path.join(p, "summary_td_lambda.csv")) or
+                                     os.path.exists(os.path.join(p, "summary_e_experimental.csv")) or
                                      os.path.exists(os.path.join(p, "summary_td.csv")) or
                                      os.path.exists(os.path.join(p, "summary_e_opt.csv"))):
                 if item not in seen_envs:
@@ -508,7 +518,11 @@ def generate_suite_multidim_pdf(suite_dir: str, output_pdf=None):
     # Load and normalize data across environments
     dfs = []
     for env_name, env_path in env_dirs:
-        csv_file = os.path.join(env_path, "summary_e_experimental.csv")
+        csv_file = os.path.join(env_path, "summary_e_lambda.csv")
+        if not os.path.exists(csv_file):
+            csv_file = os.path.join(env_path, "summary_td_lambda.csv")
+        if not os.path.exists(csv_file):
+            csv_file = os.path.join(env_path, "summary_e_experimental.csv")
         if not os.path.exists(csv_file):
             csv_file = os.path.join(env_path, "summary_td.csv")
         if not os.path.exists(csv_file):
