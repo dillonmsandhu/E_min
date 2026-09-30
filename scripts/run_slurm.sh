@@ -5,8 +5,12 @@
 #SBATCH --partition compsci-gpu
 #SBATCH --gres=gpu:a5000:1 
 
-cd "$SLURM_SUBMIT_DIR"
-export PYTHONPATH="${SLURM_SUBMIT_DIR}:${PYTHONPATH}"
+if [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ]; then
+    cd "$SLURM_SUBMIT_DIR"
+else
+    cd "$(dirname "$0")/.." 2>/dev/null || true
+fi
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
 
 START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
 SECONDS=0
