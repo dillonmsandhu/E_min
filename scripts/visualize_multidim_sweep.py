@@ -196,18 +196,31 @@ def plot_marginal_effects(df: pd.DataFrame, axes: list, score_col="final_window_
 
 
 def plot_interaction_heatmaps(df: pd.DataFrame, axes: list, score_col="final_window_mean"):
-    """Plots 2D interaction grids (Epochs x Weight Decay, Loss x Epochs, Heads x Loss)."""
-    pairs = [
-        ("critic_epochs", "weight_decay", "Critic Epochs", "Weight Decay"),
-        ("critic_loss_type", "critic_epochs", "Critic Loss", "Critic Epochs"),
-        ("num_value_heads", "critic_loss_type", "Value Heads", "Critic Loss"),
+    """Plots 2D interaction grids across actively varying hyperparameter pairs."""
+    varying_cols = [
+        c for c in ["critic_epochs", "weight_decay", "num_value_heads", "critic_loss_type", "num_envs"]
+        if c in df.columns and df[c].nunique() > 1
     ]
+    name_map = {
+        "critic_epochs": "Critic Epochs",
+        "weight_decay": "Weight Decay",
+        "num_value_heads": "Value Heads",
+        "critic_loss_type": "Critic Loss",
+        "num_envs": "Num Envs",
+    }
 
-    for idx, (col_x, col_y, label_x, label_y) in enumerate(pairs):
-        ax = axes[idx]
-        if col_x not in df.columns or col_y not in df.columns:
-            ax.text(0.5, 0.5, "Columns missing", ha="center", va="center", transform=ax.transAxes)
+    candidate_pairs = []
+    for i in range(len(varying_cols)):
+        for j in range(i + 1, len(varying_cols)):
+            c1, c2 = varying_cols[i], varying_cols[j]
+            candidate_pairs.append((c1, c2, name_map[c1], name_map[c2]))
+
+    for idx, ax in enumerate(axes):
+        if idx >= len(candidate_pairs):
+            ax.set_visible(False)
             continue
+
+        col_x, col_y, label_x, label_y = candidate_pairs[idx]
 
         pivot = df.pivot_table(index=col_y, columns=col_x, values=score_col, aggfunc="mean")
         pivot_sem = df.pivot_table(index=col_y, columns=col_x, values=score_col, aggfunc=lambda x: np.std(x, ddof=1)/np.sqrt(max(1, len(x))))
@@ -301,25 +314,43 @@ def plot_variance_decomposition(df: pd.DataFrame, ax: plt.Axes, score_col="final
 
 
 def plot_ablation_curves(metrics_dict: dict, df: pd.DataFrame, ax: plt.Axes, env_name: str, window_size=100):
-    """Plots clean paired comparisons: Best Huber vs Best MSE, Best 4-Head vs Best 1-Head."""
+    """Plots clean paired comparisons across key varying dimensions."""
     if not metrics_dict:
         ax.text(0.5, 0.5, "No metrics.pkl found for learning curves", ha="center", va="center", transform=ax.transAxes)
         return
 
-    # Find best configs for key binary dimensions
     comparisons = []
     
+    # 1. Loss type comparison if varying
     if "critic_loss_type" in df.columns and set(df["critic_loss_type"].unique()) >= {"mse", "huber"}:
         best_mse = df[df["critic_loss_type"] == "mse"].sort_values("final_window_mean", ascending=False).iloc[0]
         best_huber = df[df["critic_loss_type"] == "huber"].sort_values("final_window_mean", ascending=False).iloc[0]
         comparisons.append(("Best Huber", best_huber["config"], "#1b7837", "-"))
         comparisons.append(("Best MSE", best_mse["config"], "#762a83", "--"))
 
-    if "num_value_heads" in df.columns and set(df["num_value_heads"].unique()) >= {1, 4}:
-        best_1h = df[df["num_value_heads"] == 1].sort_values("final_window_mean", ascending=False).iloc[0]
-        best_4h = df[df["num_value_heads"] == 4].sort_values("final_window_mean", ascending=False).iloc[0]
-        comparisons.append(("Best 4-Head", best_4h["config"], "#00441b", "-."))
-        comparisons.append(("Best 1-Head", best_1h["config"], "#b2182b", ":"))
+    # 2. Value Heads comparison if varying
+    if "num_value_heads" in df.columns and df["num_value_heads"].nunique() > 1:
+        u_heads = sorted(df["num_value_heads"].unique())
+        best_low = df[df["num_value_heads"] == u_heads[0]].sort_values("final_window_mean", ascending=False).iloc[0]
+        best_high = df[df["num_value_heads"] == u_heads[-1]].sort_values("final_window_mean", ascending=False).iloc[0]
+        comparisons.append((f"Best {u_heads[-1]}-Head", best_high["config"], "#00441b", "-"))
+        comparisons.append((f"Best {u_heads[0]}-Head", best_low["config"], "#b2182b", ":"))
+
+    # 3. Epochs comparison if varying
+    if "critic_epochs" in df.columns and df["critic_epochs"].nunique() > 1 and len(comparisons) < 4:
+        u_epochs = sorted(df["critic_epochs"].unique())
+        best_min_ep = df[df["critic_epochs"] == u_epochs[0]].sort_values("final_window_mean", ascending=False).iloc[0]
+        best_max_ep = df[df["critic_epochs"] == u_epochs[-1]].sort_values("final_window_mean", ascending=False).iloc[0]
+        comparisons.append((f"Best {u_epochs[-1]}-Epoch", best_max_ep["config"], "#1a73e8", "-."))
+        comparisons.append((f"Best {u_epochs[0]}-Epoch", best_min_ep["config"], "#ea4335", "--"))
+
+    # 4. Weight decay comparison if varying
+    if "weight_decay" in df.columns and df["weight_decay"].nunique() > 1 and len(comparisons) < 4:
+        u_wd = sorted(df["weight_decay"].unique())
+        best_low_wd = df[df["weight_decay"] == u_wd[0]].sort_values("final_window_mean", ascending=False).iloc[0]
+        best_high_wd = df[df["weight_decay"] == u_wd[-1]].sort_values("final_window_mean", ascending=False).iloc[0]
+        comparisons.append((f"Best {u_wd[-1]} WD", best_high_wd["config"], "#ff7f0e", "-"))
+        comparisons.append((f"Best {u_wd[0]} WD", best_low_wd["config"], "#1f77b4", ":"))
 
     if not comparisons:
         # Fallback: top 3 configs
