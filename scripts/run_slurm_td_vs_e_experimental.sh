@@ -28,27 +28,10 @@
 #   ./scripts/run_slurm_td_vs_e_experimental.sh MountainCarContinuous-v0  (Single env)
 # ==============================================================================
 
-# Working directory resolution
-# When run under SLURM sbatch, $SLURM_SUBMIT_DIR is set to where sbatch was called.
-# However, Open OnDemand (OOD) interactive shells may set SLURM_SUBMIT_DIR to /var/www/ood/...
-# which does not exist or does not contain this repository.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-CANDIDATE_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd)"
+# Ensure we are in the repo root
+[ -f "core/config.py" ] || cd "$(dirname "$0")/.."
 
-if [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/core/config.py" ]; then
-    cd "$SLURM_SUBMIT_DIR" || exit 1
-elif [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/../core/config.py" ]; then
-    cd "$SLURM_SUBMIT_DIR/.." || exit 1
-elif [ -n "$CANDIDATE_ROOT" ] && [ -f "$CANDIDATE_ROOT/core/config.py" ]; then
-    cd "$CANDIDATE_ROOT" || exit 1
-elif [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ]; then
-    cd "$SLURM_SUBMIT_DIR" || exit 1
-else
-    cd "$(dirname "$0")/.." 2>/dev/null || true
-fi
-
-REPO_ROOT="$(pwd)"
-export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 mkdir -p slurm
