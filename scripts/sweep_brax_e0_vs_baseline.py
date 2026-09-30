@@ -6,7 +6,7 @@ Executes a hyperparameter sweep on Brax continuous control environments comparin
 1. Symmetrized E0 (adjacent-state Dirichlet error minimization) over:
    - Critic Learning Rate: [1e-4, 3e-4, 1e-3]
    - Critic Epochs: [4, 8, 16]
-   (9 configurations total)
+   - Return Lambda: [0.9] (or customized via grid)
 2. Standard PPO (Fitted Value Iteration MSE) as a single un-swept reference baseline:
    - Critic Learning Rate: 3e-4
    - Critic Epochs: 4
@@ -79,6 +79,10 @@ def parse_args():
                         help="Critic learning rate grid for E0 (default: 1e-4 3e-4 1e-3)")
     parser.add_argument("--epochs-grid", type=int, nargs="+", default=[4, 8, 16],
                         help="Critic epochs grid for E0 (default: 4 8 16)")
+    parser.add_argument("--return-lambda-grid", type=float, nargs="+", default=[0.9],
+                        help="Return lambda grid for E0 targets (default: 0.9)")
+    parser.add_argument("--return-lambda", type=float, default=None,
+                        help="Single return lambda for E0 targets (overrides --return-lambda-grid if specified)")
 
     # Baseline PPO Settings
     parser.add_argument("--baseline-critic-lr", type=float, default=3e-4,
@@ -152,6 +156,8 @@ def main():
     out_dir = args.output_dir if args.output_dir else os.path.join("results/sweeps", sweep_id, args.env_name)
     os.makedirs(out_dir, exist_ok=True)
 
+    return_lambdas = [args.return_lambda] if args.return_lambda is not None else args.return_lambda_grid
+
     print("=" * 75)
     print(f"BRAX EXPERIMENT: E0 CRITIC SWEEP VS BASELINE PPO")
     print(f"  Suite / Sweep ID: {sweep_id}")
@@ -161,6 +167,7 @@ def main():
     print(f"  Rollout:          {args.num_envs} envs x {args.num_steps} steps (batch = {args.num_envs * args.num_steps:,})")
     print(f"  E0 LR Grid:       {args.critic_lr_grid}")
     print(f"  E0 Epochs Grid:   {args.epochs_grid}")
+    print(f"  E0 Ret Lam Grid:  {return_lambdas}")
     print(f"  Output Directory: {out_dir}")
     print("=" * 75)
 
@@ -227,18 +234,21 @@ def main():
     e0_all_metrics = {}
 
     if not args.skip_e0:
-        grid = list(itertools.product(args.critic_lr_grid, args.epochs_grid))
+        grid = list(itertools.product(args.critic_lr_grid, args.epochs_grid, return_lambdas))
         print(f"\n>>> [2/2] RUNNING E0 CRITIC SWEEP ({len(grid)} Configurations)...")
 
-        for idx, (clr, ep) in enumerate(grid, 1):
-            label = f"E0_clr{clr}_ep{ep}"
-            print(f"[{idx:02d}/{len(grid)}] Running E0 with CRITIC_LR={clr}, CRITIC_EPOCHS={ep} ...")
+        for idx, (clr, ep, ret_lam) in enumerate(grid, 1):
+            if len(return_lambdas) > 1:
+                label = f"E0_clr{clr}_ep{ep}_lam{ret_lam}"
+            else:
+                label = f"E0_clr{clr}_ep{ep}"
+            print(f"[{idx:02d}/{len(grid)}] Running E0 with CRITIC_LR={clr}, CRITIC_EPOCHS={ep}, RETURN_LAMBDA={ret_lam} ...")
 
             cfg = base_cfg.copy()
             cfg["CRITIC_TYPE"] = "e_0"
             cfg["CRITIC_LR"] = clr
             cfg["CRITIC_EPOCHS"] = ep
-            cfg["RETURN_LAMBDA"] = 1.0
+            cfg["RETURN_LAMBDA"] = ret_lam
             cfg["GAE_LAMBDA"] = 0.95
 
             t0 = time.time()
@@ -257,6 +267,7 @@ def main():
                 "sem": np.std(returns, axis=0, ddof=1) / np.sqrt(args.n_seeds) if args.n_seeds > 1 else np.zeros(returns.shape[1]),
                 "critic_lr": clr,
                 "critic_epochs": ep,
+                "return_lambda": ret_lam,
             }
 
             stats_dict = extract_scalar_summary(returns, args.window_size)
@@ -265,6 +276,7 @@ def main():
                 "label": label,
                 "critic_lr": clr,
                 "critic_epochs": ep,
+                "return_lambda": ret_lam,
                 "final_mean": stats_dict["final_mean"],
                 "final_sem": stats_dict["final_sem"],
                 "final_std": stats_dict["final_std"],
@@ -318,6 +330,7 @@ def main():
                 "label": r["label"],
                 "critic_lr": r["critic_lr"],
                 "critic_epochs": r["critic_epochs"],
+                "return_lambda": r["return_lambda"],
                 "e0_return": r["final_mean"],
                 "e0_sem": r["final_sem"],
                 "baseline_return": baseline_summary["final_mean"],
@@ -353,8 +366,9 @@ def main():
         best_label = best_r["label"]
         best_curve = e0_curves[best_label]
 
+        ret_lam_str = f", $\\lambda={best_r['return_lambda']}$" if best_r.get("return_lambda") is not None else ""
         ax1.plot(step_axis, best_curve["mean"], color="#1f77b4", lw=2.2,
-                 label=f"Best E0 ({best_r['critic_lr']}, ep={best_r['critic_epochs']})")
+                 label=f"Best E0 ({best_r['critic_lr']}, ep={best_r['critic_epochs']}{ret_lam_str})")
         ax1.fill_between(step_axis, best_curve["mean"] - best_curve["sem"],
                          best_curve["mean"] + best_curve["sem"], color="#1f77b4", alpha=0.2)
 
@@ -380,8 +394,9 @@ def main():
             ep = cinfo["critic_epochs"]
             color = colors.get(clr, "gray")
             ls = linestyles.get(ep, "-")
+            ret_lam_info = f" $\\lambda={cinfo['return_lambda']}$" if len(return_lambdas) > 1 else ""
             ax2.plot(step_axis, cinfo["mean"], color=color, linestyle=ls, lw=1.3,
-                     label=f"lr={clr} ep={ep}")
+                     label=f"lr={clr} ep={ep}{ret_lam_info}")
 
         if baseline_curve_mean is not None:
             ax2.plot(step_axis, baseline_curve_mean, color="#d62728", lw=2.0, linestyle="-.", label="Baseline PPO")
@@ -392,16 +407,21 @@ def main():
         ax2.legend(loc="lower right", fontsize=8, ncol=2, frameon=True)
         ax2.grid(True, alpha=0.3)
 
-        # Panel 3: Performance vs Critic Epochs stratified by Critic LR
+        # Panel 3: Performance vs Critic Epochs stratified by Critic LR (and return_lambda if multiple)
         ax3 = axes[1, 0]
         for clr in sorted(args.critic_lr_grid):
-            sub = [r for r in e0_results if r["critic_lr"] == clr]
-            sub.sort(key=lambda x: x["critic_epochs"])
-            x_eps = [s["critic_epochs"] for s in sub]
-            y_means = [s["final_mean"] for s in sub]
-            y_sems = [s["final_sem"] for s in sub]
-            ax3.errorbar(x_eps, y_means, yerr=y_sems, marker="o", lw=1.8, capsize=4,
-                         color=colors.get(clr, "#1f77b4"), label=f"Critic LR = {clr}")
+            for ret_lam in sorted(return_lambdas):
+                sub = [r for r in e0_results if r["critic_lr"] == clr and r["return_lambda"] == ret_lam]
+                if not sub:
+                    continue
+                sub.sort(key=lambda x: x["critic_epochs"])
+                x_eps = [s["critic_epochs"] for s in sub]
+                y_means = [s["final_mean"] for s in sub]
+                y_sems = [s["final_sem"] for s in sub]
+                lbl = f"Critic LR = {clr}" if len(return_lambdas) == 1 else f"LR={clr}, $\\lambda={ret_lam}$"
+                ls = "-" if ret_lam == sorted(return_lambdas)[0] else "--"
+                ax3.errorbar(x_eps, y_means, yerr=y_sems, marker="o", lw=1.8, capsize=4, linestyle=ls,
+                             color=colors.get(clr, "#1f77b4"), label=lbl)
 
         if baseline_summary is not None:
             ax3.axhline(baseline_summary["final_mean"], color="#d62728", linestyle="--", lw=1.8,
@@ -423,7 +443,10 @@ def main():
         for i, lr_val in enumerate(lrs):
             for j, ep_val in enumerate(epochs):
                 match = [r for r in e0_results if r["critic_lr"] == lr_val and r["critic_epochs"] == ep_val]
-                grid_matrix[i, j] = match[0]["final_mean"] if match else np.nan
+                if match:
+                    grid_matrix[i, j] = max([m["final_mean"] for m in match])
+                else:
+                    grid_matrix[i, j] = np.nan
 
         im = ax4.imshow(grid_matrix, cmap="viridis", aspect="auto")
         plt.colorbar(im, ax=ax4, label="Final Mean Return")
@@ -434,7 +457,8 @@ def main():
         ax4.set_yticklabels([str(x) for x in lrs])
         ax4.set_xlabel("Critic Epochs")
         ax4.set_ylabel("Critic Learning Rate")
-        ax4.set_title("D. E0 Hyperparameter Sensitivity Heatmap", fontweight="bold")
+        title_suffix = " (Best over $\\lambda$)" if len(return_lambdas) > 1 else f" ($\\lambda={return_lambdas[0]}$)"
+        ax4.set_title(f"D. E0 Hyperparameter Sensitivity Heatmap{title_suffix}", fontweight="bold")
 
         for i in range(len(lrs)):
             for j in range(len(epochs)):

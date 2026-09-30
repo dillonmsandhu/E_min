@@ -16,7 +16,8 @@
 # Grid:
 #   - Critic Learning Rate: [1e-4, 3e-4, 1e-3]
 #   - Critic Epochs:        [4, 8, 16]
-# Total: 9 configurations for E0 + 1 un-swept Baseline PPO reference per environment.
+#   - Return Lambda:        [0.9] (or customized via CUSTOM_RETURN_LAMBDAS / CUSTOM_RETURN_LAMBDA)
+# Total: 9 configurations for E0 (per return_lambda) + 1 un-swept Baseline PPO reference per environment.
 # Evaluated across independent random seeds (default: 5) using JAX vmap.
 #
 # Environments:
@@ -95,6 +96,7 @@ NUM_STEPS=${CUSTOM_NUM_STEPS:-128}
 
 CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0001 0.0003 0.001"}
 EPOCHS=${CUSTOM_EPOCHS:-"4 8 16"}
+RETURN_LAMBDAS=${CUSTOM_RETURN_LAMBDAS:-${CUSTOM_RETURN_LAMBDA:-"0.9"}}
 
 # Unified suite directory across all tasks in the SLURM array
 SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+brax_e0_${SLURM_ARRAY_JOB_ID}}}"
@@ -109,6 +111,7 @@ echo "  Seeds:          $N_SEEDS"
 echo "  Rollout:        $NUM_ENVS envs x $NUM_STEPS steps"
 echo "  E0 Critic LRs:  $CRITIC_LRS"
 echo "  E0 Epochs:      $EPOCHS"
+echo "  E0 Return Lam:  $RETURN_LAMBDAS"
 echo "  Python:         $PYTHON"
 echo "  Node / Host:    $(hostname)"
 echo "  Date:           $(date)"
@@ -122,7 +125,8 @@ $PYTHON scripts/sweep_brax_e0_vs_baseline.py \
     --num-envs "$NUM_ENVS" \
     --num-steps "$NUM_STEPS" \
     --critic-lr-grid $CRITIC_LRS \
-    --epochs-grid $EPOCHS
+    --epochs-grid $EPOCHS \
+    --return-lambda-grid $RETURN_LAMBDAS
 
 STATUS=$?
 if [ $STATUS -eq 0 ]; then

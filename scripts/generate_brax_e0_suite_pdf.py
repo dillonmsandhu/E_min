@@ -110,6 +110,7 @@ def main():
                 "best_e0_sem": best_row["e0_sem"],
                 "best_critic_lr": best_row["critic_lr"],
                 "best_critic_epochs": best_row["critic_epochs"],
+                "best_return_lambda": best_row.get("return_lambda", 1.0),
                 "delta": best_row["delta"],
                 "pct_gain": best_row["pct_gain"],
                 "p_value": best_row["p_value"],
@@ -129,6 +130,7 @@ def main():
                 "best_e0_sem": best_e0["final_sem"],
                 "best_critic_lr": best_e0["critic_lr"],
                 "best_critic_epochs": best_e0["critic_epochs"],
+                "best_return_lambda": best_e0.get("return_lambda", 1.0),
                 "delta": delta,
                 "pct_gain": pct,
                 "p_value": np.nan,
@@ -176,9 +178,9 @@ def main():
                 e0_curves = m.get("e0_curves", {})
                 if e0_results and e0_curves:
                     best_r = sorted(e0_results, key=lambda x: x["final_mean"], reverse=True)[0]
-                    best_c = e0_curves[best_r["label"]]
+                    lam_info = f", $\\lambda={best_r['return_lambda']}$" if "return_lambda" in best_r and best_r["return_lambda"] != 1.0 else ""
                     ax.plot(step_axis, best_c["mean"], color="#1f77b4", lw=2.0,
-                            label=f"Best E0 (lr={best_r['critic_lr']}, ep={best_r['critic_epochs']})")
+                            label=f"Best E0 (lr={best_r['critic_lr']}, ep={best_r['critic_epochs']}{lam_info})")
                     if best_c.get("sem") is not None:
                         ax.fill_between(step_axis, best_c["mean"] - best_c["sem"],
                                         best_c["mean"] + best_c["sem"], color="#1f77b4", alpha=0.2)
