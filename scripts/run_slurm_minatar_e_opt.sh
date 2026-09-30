@@ -69,29 +69,27 @@ fi
 
 TOTAL_TIMESTEPS=${TOTAL_TIMESTEPS:-10000000}
 N_SEEDS=${N_SEEDS:-8}
+NUM_ENVS=${NUM_ENVS:-64}
 CRITIC_LR=${CRITIC_LR:-0.001}
 ACTOR_LR=${ACTOR_LR:-0.003}
-CRITIC_LOSS_TYPE=${CRITIC_LOSS_TYPE:-mse}
-HUBER_DELTA=${HUBER_DELTA:-1.0}
-NUM_VALUE_HEADS=${NUM_VALUE_HEADS:-1}
+GRID_MODE=${GRID_MODE:-default}
 
 echo "======================================================================"
-echo "LAUNCHING MINATAR E OPTIMIZATION SWEEP"
+echo "LAUNCHING MINATAR E_EXPERIMENTAL MULTI-DIMENSIONAL SWEEP"
 echo "Environment: $ENV_NAME"
 echo "Python: $PYTHON"
-echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS"
-echo "Loss Type: $CRITIC_LOSS_TYPE (delta=$HUBER_DELTA) | Value Heads: $NUM_VALUE_HEADS"
-echo "Grid: NUM_ENVS=[64, 512] x EPOCHS=[4, 16] x WEIGHT_DECAY=[0.0, 0.01]"
+echo "Seeds: $N_SEEDS | Total Timesteps: $TOTAL_TIMESTEPS | Num Envs: $NUM_ENVS"
+echo "Grid Mode: $GRID_MODE (Critic Epochs=[4, 16] x WD=[0.001, 0.01] x Heads=[1, 4], Loss=MSE)"
+echo "Actor LR: $ACTOR_LR | Critic LR: $CRITIC_LR"
 echo "======================================================================"
 
-$PYTHON scripts/sweep_minatar_e_opt.py \
+$PYTHON scripts/sweep_gymnax_e_experimental.py \
     --env-name "$ENV_NAME" \
     --total-timesteps "$TOTAL_TIMESTEPS" \
     --n-seeds "$N_SEEDS" \
-    --critic-lr "$CRITIC_LR" \
+    --num-envs "$NUM_ENVS" \
     --actor-lr "$ACTOR_LR" \
-    --critic-loss-type "$CRITIC_LOSS_TYPE" \
-    --huber-delta "$HUBER_DELTA" \
-    --num-value-heads "$NUM_VALUE_HEADS"
+    --critic-lr "$CRITIC_LR" \
+    --grid-mode "$GRID_MODE"
 
 echo "Sweep completed for $ENV_NAME"
