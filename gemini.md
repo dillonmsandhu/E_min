@@ -19,11 +19,10 @@
 - Use standard Gymnax API conventions.
 - Vectorize environments and seeds using `jax.vmap` over leading axes.
 
-## 4. Sweeps & Experiment Pipeline
-- This repo follows an existing pipeline for running sweeps. Try to match it as 
-- Sweeps follow the structure in `core/sweep.py` and `scripts/sweep_pipeline.py`.
-- Sweep outputs (metrics, plots, CSV summaries) should always be written to `results/sweeps/<sweep_id>/`.
-close as possible
+- This repo follows an existing pipeline for running sweeps. Try to match it as closely as possible.
+- Sweep scripts are organized into modular folders under `scripts/` (e.g. `scripts/brax_e0/`, `scripts/td_vs_e_experimental/`, `scripts/td_vs_e_lambda/`, `scripts/pipeline/`).
+- Sweeps follow the structure in `core/sweep.py` and `scripts/pipeline/sweep_pipeline.py` (with a root shim at `scripts/sweep_pipeline.py`).
+- Sweep outputs (metrics, plots, CSV summaries) should always be written to `results/sweeps/<sweep_id>/` or `results/ppo/sweeps/<sweep_id>/`.
 
 ## 5. Coding & Style Rules
 - Type annotate core runner functions and JAX state containers (use `flax.struct.dataclass` / NamedTuples for step states).
