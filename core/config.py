@@ -35,6 +35,7 @@ config = {
     # PPO Hyperparameters
     "GAE_LAMBDA": 0.8,
     "VALUE_LAMBDA": 0.9,
+    "TD_LAMBDA": 0.0,
     "E_LAMBDA": 0.8,
     "RETURN_LAMBDA": 0.99,
     "RECOMPUTE_TARGETS_EACH_EPOCH": False,
