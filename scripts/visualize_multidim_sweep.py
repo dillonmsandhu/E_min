@@ -404,10 +404,17 @@ def generate_multidim_analysis_pdf(env_dir: str, output_pdf=None):
     """Compiles the full 5-panel multi-dimensional analysis into a publication-ready PDF and PNG."""
     summary_path = os.path.join(env_dir, "summary_e_experimental.csv")
     if not os.path.exists(summary_path):
+        summary_path = os.path.join(env_dir, "summary_td.csv")
+    if not os.path.exists(summary_path):
         summary_path = os.path.join(env_dir, "summary_e_opt.csv")
     if not os.path.exists(summary_path):
-        print(f"Warning: Summary CSV not found in {env_dir}")
-        return None
+        import glob
+        matches = glob.glob(os.path.join(env_dir, "summary_*.csv"))
+        if matches:
+            summary_path = matches[0]
+        else:
+            print(f"Warning: Summary CSV not found in {env_dir}")
+            return None
 
     df = pd.read_csv(summary_path)
     env_name = os.path.basename(os.path.normpath(env_dir))
@@ -470,6 +477,7 @@ def generate_suite_multidim_pdf(suite_dir: str, output_pdf=None):
     for item in sorted(os.listdir(suite_dir)):
         p = os.path.join(suite_dir, item)
         if os.path.isdir(p) and (os.path.exists(os.path.join(p, "summary_e_experimental.csv")) or
+                                 os.path.exists(os.path.join(p, "summary_td.csv")) or
                                  os.path.exists(os.path.join(p, "summary_e_opt.csv"))):
             env_dirs.append((item, p))
 
@@ -488,6 +496,8 @@ def generate_suite_multidim_pdf(suite_dir: str, output_pdf=None):
     dfs = []
     for env_name, env_path in env_dirs:
         csv_file = os.path.join(env_path, "summary_e_experimental.csv")
+        if not os.path.exists(csv_file):
+            csv_file = os.path.join(env_path, "summary_td.csv")
         if not os.path.exists(csv_file):
             csv_file = os.path.join(env_path, "summary_e_opt.csv")
         sub_df = pd.read_csv(csv_file).copy()
