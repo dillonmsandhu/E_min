@@ -2,7 +2,7 @@
 config = {
     "TOTAL_TIMESTEPS": 50_000_000,
     "NUM_ENVS": 1024,
-    "NUM_STEPS": 32,
+    "NUM_STEPS": 128,
     "GAMMA": 0.99,
     "CRITIC_TYPE": "fitted",
     "GAE_LAMBDA": 0.95,
