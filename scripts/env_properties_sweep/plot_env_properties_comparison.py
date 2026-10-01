@@ -47,6 +47,20 @@ ALGO_METADATA = {
 }
 
 
+def get_variant_headers(spec):
+    """Derives a prominent variant title and subtitle from the environment specification."""
+    dense = spec.get("dense_reward", False)
+    discrete = spec.get("discrete", False)
+    if not dense and not discrete:
+        return "Sparse Continuous", "Sparse Goal Reward • Continuous Actions"
+    elif dense and not discrete:
+        return "Dense Continuous", "Dense Shaped Reward • Continuous Actions"
+    elif dense and discrete:
+        return "Dense Discrete", "Dense Shaped Reward • Discrete Actions"
+    else:
+        return spec.get("display_name", "Variant"), ""
+
+
 def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
     """
     Constructs a 2x3 figure:
@@ -60,24 +74,37 @@ def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
     png_path = os.path.join(out_dir, f"{family_name}_env_properties.png")
 
     fig, axes = plt.subplots(2, 3, figsize=(16, 9), sharex=True, sharey=False)
-    plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.90, bottom=0.08, left=0.07, right=0.97)
+    # Generous top headroom (0.84) prevents any title overlapping
+    plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.84, bottom=0.08, left=0.08, right=0.97)
 
     variants = list(all_results.keys())  # [short_name_1, short_name_2, short_name_3]
-    conditions = [("clean", "Clean Dynamics", 0), ("noisy", "Noisy Dynamics (5% Slip)", 1)]
+    conditions = [("clean", "Clean Dynamics\n(Slip = 0%)", 0), ("noisy", "Noisy Dynamics\n(5% Slip + Noise)", 1)]
 
     pretty_family = "Mountain Car" if family_name == "mountain_car" else "Point Robot (Fully Observable MDP)"
+    
+    # 1. Main Title & Subtitle with dedicated vertical spacing
     fig.suptitle(
-        f"{pretty_family}: $E(0)$ vs. $TD(0)$ vs. $TD(\\lambda)$ (Fixed Epochs = 16)\n"
-        f"Ablating Reward Density, Action Discretization, and Stochastic Friction",
-        fontsize=14,
+        f"{pretty_family} — Environmental Properties Sweep",
+        fontsize=16,
         fontweight="bold",
-        y=0.97,
+        y=0.975,
     )
+    fig.text(
+        0.5, 0.938,
+        "Evaluating E(0) vs. TD(0) vs. TD(λ) Across Reward Density, Action Spaces, and Friction Noise (Fixed Epochs = 16)",
+        fontsize=11.5,
+        ha="center",
+        color="#444444",
+    )
+
+    legend_handles = []
+    legend_labels = []
 
     for col_idx, short_name in enumerate(variants):
         var_data = all_results[short_name]
         spec = var_data["spec"]
         env_title = spec["display_name"]
+        var_title, var_sub = get_variant_headers(spec)
 
         for cond_key, cond_title, row_idx in conditions:
             ax = axes[row_idx, col_idx]
@@ -90,8 +117,8 @@ def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
                     sem_c = entry["sem_curve"]
                     x_steps = np.arange(len(mean_c))
 
-                    label = f"{meta['label']} (Final: {entry['final_mean']:.1f})"
-                    ax.plot(
+                    label = f"{algo_key}: {entry['final_mean']:.1f} ± {entry['final_sem']:.1f}"
+                    line, = ax.plot(
                         x_steps,
                         mean_c,
                         label=label,
@@ -106,18 +133,49 @@ def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
                         color=meta["color"],
                         alpha=0.15,
                     )
+                    if col_idx == 0 and row_idx == 0:
+                        legend_handles.append(line)
+                        legend_labels.append(meta["label"])
 
-            # Titles and decorations
-            prefix = "Row 1 (Clean)" if row_idx == 0 else "Row 2 (Noisy)"
-            ax.set_title(f"{env_title}\n[{prefix}]", fontsize=11, fontweight="bold")
+            # 2. Prominent Column Headers exclusively on top row (no cluttered Row prefixes)
+            if row_idx == 0:
+                ax.set_title(
+                    f"{var_title}\n({var_sub})",
+                    fontsize=12,
+                    fontweight="bold",
+                    pad=12,
+                    color="#111111",
+                )
             ax.grid(True, linestyle=":", alpha=0.6)
 
+            # 3. Row conditions indicated on Y-axis
             if col_idx == 0:
-                ax.set_ylabel(f"{cond_title}\nEpisode Return", fontweight="bold")
+                ax.set_ylabel(f"{cond_title}\nEpisode Return", fontsize=10.5, fontweight="bold")
             if row_idx == 1:
-                ax.set_xlabel("Environment Steps (Updates)", fontweight="bold")
+                ax.set_xlabel("Environment Steps (Updates)", fontsize=10.5, fontweight="bold")
 
-            ax.legend(loc="lower right" if "PointRobot" in env_title else "best", fontsize=8.5, framealpha=0.92)
+            ax.legend(
+                loc="lower right" if "PointRobot" in env_title else "best",
+                fontsize=8.5,
+                framealpha=0.92,
+                title="Final Returns",
+                title_fontsize=8.5,
+            )
+
+    # 4. Global Algorithm Legend in the header region
+    if legend_handles:
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.908),
+            ncol=3,
+            fontsize=10.5,
+            frameon=True,
+            facecolor="white",
+            edgecolor="#d0d0d0",
+            framealpha=0.95,
+        )
 
     plt.savefig(pdf_path, dpi=300, bbox_inches="tight")
     plt.savefig(png_path, dpi=300, bbox_inches="tight")
