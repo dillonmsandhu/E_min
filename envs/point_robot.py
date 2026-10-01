@@ -32,6 +32,9 @@ class EnvParams(environment.EnvParams):
     normalize_time: bool = True  # Normalize timestep into [-1, 1]
     max_steps_in_episode: int = 100  # Steps in an episode (constant goal)
     fully_observable: bool = True  # If True (default), includes goal vector in observation (MDP)
+    # Potential-based reward shaping parameters
+    gamma: float = 0.99  # Discount factor for PBRS
+    potential_scale: float = 1.0  # Scale factor for PBRS
     # Stochastic / Noise parameters
     slip_prob: float = 0.0  # Probability of traction slip on each step
     slip_force_scale: float = 0.0  # Fraction of displacement transmitted during slip
@@ -43,7 +46,8 @@ class PointRobot(environment.Environment):
     """JAX implementation of 2D Semi-Circle Point Robot environment as in Dorfman et al.
     2021 https://openreview.net/pdf?id=IBdEfhLveS
 
-    Extended with fully observable MDP mode (default), tire/traction slip, and transition noise.
+    Extended with fully observable MDP mode (default), tire/traction slip, transition noise,
+    and Potential-Based Reward Shaping (PBRS).
     """
 
     def __init__(self, fully_observable: bool = True):
@@ -62,7 +66,7 @@ class PointRobot(environment.Environment):
         action: int | float | jax.Array,
         params: EnvParams,
     ) -> tuple[jax.Array, EnvState, jax.Array, jax.Array, dict[Any, Any]]:
-        """Perform single timestep state transition with optional slip and noise."""
+        """Perform single timestep state transition with optional slip, noise, and PBRS dense reward."""
         key_slip, key_trans, key_act, key_respawn = jax.random.split(key, 4)
 
         # 1. Action noise & clipping
@@ -75,10 +79,23 @@ class PointRobot(environment.Environment):
 
         # 3. Position update with transition noise
         pos = state.pos + effective_a + params.transition_noise_std * jax.random.normal(key_trans, shape=(2,))
-        goal_distance = jnp.linalg.norm(state.goal - state.pos)
+        goal_distance = jnp.linalg.norm(state.goal - pos)
         goal_reached = goal_distance <= params.goal_radius
-        # Dense reward - distance to goal, sparse reward - 1 if in radius
-        reward = jax.lax.select(params.dense_reward, -goal_distance, goal_reached * 1.0)
+        base_reward = goal_reached * 1.0
+
+        # Potential-Based Reward Shaping (PBRS):
+        # Potential Phi(s) = -norm(pos - goal), referenced at 0.0 when goal is reached
+        phi_cur = -jnp.linalg.norm(state.goal - state.pos)
+        phi_next_raw = -goal_distance
+        phi_next = jax.lax.select(goal_reached, 0.0, phi_next_raw)
+        shaping = params.gamma * phi_next - phi_cur
+
+        reward = jax.lax.select(
+            params.dense_reward,
+            base_reward + params.potential_scale * shaping,
+            base_reward,
+        )
+
         sampled_pos = sample_agent_position(
             key_respawn, params.circle_radius, params.center_init
         )

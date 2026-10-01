@@ -46,8 +46,12 @@ def make_env(config):
     elif env_name in ["PointRobot-misc", "PointRobot"]:
         from envs.point_robot import PointRobot, EnvParams as PointRobotParams
         env = PointRobot(fully_observable=config.get("FULLY_OBSERVABLE", True))
+        dense = config.get("DENSE_REWARD", False) and ("Sparse" not in env_name)
+        p_scale = config.get("POTENTIAL_SCALE", 1.0) if dense else 0.0
         env_params = PointRobotParams(
-            dense_reward=config.get("DENSE_REWARD", False),
+            dense_reward=dense,
+            gamma=config.get("GAMMA", 0.99),
+            potential_scale=p_scale,
             fully_observable=config.get("FULLY_OBSERVABLE", True),
             slip_prob=config.get("SLIP_PROB", 0.0),
             slip_force_scale=config.get("SLIP_FORCE_SCALE", 0.0),
@@ -57,8 +61,12 @@ def make_env(config):
     elif env_name in ["PointRobotDiscrete-misc", "PointRobotDiscrete"]:
         from envs.point_robot import PointRobotDiscrete, EnvParams as PointRobotParams
         env = PointRobotDiscrete(fully_observable=config.get("FULLY_OBSERVABLE", True))
+        dense = config.get("DENSE_REWARD", False) and ("Sparse" not in env_name)
+        p_scale = config.get("POTENTIAL_SCALE", 1.0) if dense else 0.0
         env_params = PointRobotParams(
-            dense_reward=config.get("DENSE_REWARD", False),
+            dense_reward=dense,
+            gamma=config.get("GAMMA", 0.99),
+            potential_scale=p_scale,
             fully_observable=config.get("FULLY_OBSERVABLE", True),
             slip_prob=config.get("SLIP_PROB", 0.0),
             slip_force_scale=config.get("SLIP_FORCE_SCALE", 0.0),
