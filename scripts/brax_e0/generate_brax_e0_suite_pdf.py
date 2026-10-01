@@ -178,12 +178,14 @@ def main():
                 e0_curves = m.get("e0_curves", {})
                 if e0_results and e0_curves:
                     best_r = sorted(e0_results, key=lambda x: x["final_mean"], reverse=True)[0]
-                    lam_info = f", $\\lambda={best_r['return_lambda']}$" if "return_lambda" in best_r and best_r["return_lambda"] != 1.0 else ""
-                    ax.plot(step_axis, best_c["mean"], color="#1f77b4", lw=2.0,
-                            label=f"Best E0 (lr={best_r['critic_lr']}, ep={best_r['critic_epochs']}{lam_info})")
-                    if best_c.get("sem") is not None:
-                        ax.fill_between(step_axis, best_c["mean"] - best_c["sem"],
-                                        best_c["mean"] + best_c["sem"], color="#1f77b4", alpha=0.2)
+                    best_c = e0_curves.get(best_r["label"])
+                    if best_c and "mean" in best_c:
+                        lam_info = f", $\\lambda={best_r['return_lambda']}$" if "return_lambda" in best_r and best_r["return_lambda"] != 1.0 else ""
+                        ax.plot(step_axis, best_c["mean"], color="#1f77b4", lw=2.0,
+                                label=f"Best E0 (lr={best_r['critic_lr']}, ep={best_r['critic_epochs']}{lam_info})")
+                        if best_c.get("sem") is not None:
+                            ax.fill_between(step_axis, best_c["mean"] - best_c["sem"],
+                                            best_c["mean"] + best_c["sem"], color="#1f77b4", alpha=0.2)
 
             ax.set_title(env_name.upper(), fontweight="bold")
             ax.set_xlabel("Steps (M)")
