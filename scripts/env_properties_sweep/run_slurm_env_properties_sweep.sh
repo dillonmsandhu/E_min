@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-1
+#SBATCH --array=0-2
 
 # ==============================================================================
 # Environmental Properties Sweep: E(0) vs. TD(0) vs. TD(lambda)
@@ -15,15 +15,17 @@
 # Array Tasks:
 #   0: MountainCar Family (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
 #   1: PointRobot Family  (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
+#   2: SpaceInvaders Family (Standard Lethal, Fixed Horizon (-1/Hit) x Clean, Sticky Actions)
 #
-# Both evaluated under:
+# Evaluated under:
 #   - Clean dynamics
-#   - Noisy dynamics (5% tire slip, 50% force scale, transition noise)
+#   - Noisy dynamics (5% tire slip for MC/PR; 25% sticky actions for SpaceInvaders)
 #
 # Usage:
 #   sbatch scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh
 #   ./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 0   # Run MountainCar locally
 #   ./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 1   # Run PointRobot locally
+#   ./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 2   # Run SpaceInvaders locally
 # ==============================================================================
 
 # Ensure we are in the repo root
@@ -51,7 +53,7 @@ fi
 # Determine Task ID
 TASK_ID="${1:-${SLURM_ARRAY_TASK_ID:-0}}"
 
-FAMILIES=("mountain_car" "point_robot")
+FAMILIES=("mountain_car" "point_robot" "space_invaders")
 SELECTED_FAMILY="${FAMILIES[$TASK_ID]}"
 
 # Unify Sweep ID to prevent divergent timestamp folders across nodes

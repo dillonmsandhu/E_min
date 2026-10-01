@@ -117,12 +117,35 @@ ENV_DEFINITIONS = {
             "short_name": "pr_dense_disc",
         },
     ],
+    "space_invaders": [
+        {
+            "env_id": "SpaceInvaders-MinAtar",
+            "display_name": "Standard SpaceInvaders",
+            "penalty_on_hit": False,
+            "dense_reward": False,
+            "discrete": True,
+            "short_name": "si_standard",
+            "var_title": "Standard SpaceInvaders",
+            "var_sub": "Lethal Hits (Sudden Death) • Episodic",
+        },
+        {
+            "env_id": "SpaceInvaders-Fixed-MinAtar",
+            "display_name": "Fixed Horizon SpaceInvaders",
+            "penalty_on_hit": True,
+            "dense_reward": False,
+            "discrete": True,
+            "short_name": "si_fixed_horizon",
+            "var_title": "Fixed Horizon (-1/Hit)",
+            "var_sub": "Fixed 1,000 Steps • -1 Point per Hit",
+        },
+    ],
 }
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Environmental Properties Sweep: E(0) vs TD(0) vs TD(lambda)")
-    parser.add_argument("--env-family", type=str, default="both", choices=["mountain_car", "point_robot", "both"],
+    parser.add_argument("--env-family", type=str, default="both",
+                        choices=["mountain_car", "point_robot", "space_invaders", "both", "all"],
                         help="Environment family to run (default: both)")
     parser.add_argument("--total-timesteps", type=int, default=2_048_000,
                         help="Total environment timesteps per run (default: 2,048,000)")
@@ -146,6 +169,10 @@ def parse_args():
                         help="Fraction of force delivered during slip (default: 0.5)")
     parser.add_argument("--transition-noise", type=float, default=0.001,
                         help="Additive Gaussian transition noise std (default: 0.001)")
+    parser.add_argument("--sticky-prob", type=float, default=0.25,
+                        help="Probability of repeating last action for SpaceInvaders sticky actions in noisy mode (default: 0.25)")
+    parser.add_argument("--hit-penalty", type=float, default=1.0,
+                        help="Penalty deducted when player is hit in Fixed Horizon SpaceInvaders (default: 1.0)")
     
     # Algorithm parameters
     parser.add_argument("--td-lambda", type=float, default=0.95,
@@ -167,7 +194,10 @@ def run_configuration(algo_type, env_spec, is_noisy, args):
     """
     cfg = default_config.copy()
     cfg["ENV_NAME"] = env_spec["env_id"]
-    cfg["DENSE_REWARD"] = env_spec["dense_reward"]
+    cfg["DENSE_REWARD"] = env_spec.get("dense_reward", False)
+    cfg["PENALTY_ON_HIT"] = env_spec.get("penalty_on_hit", False)
+    cfg["HIT_PENALTY"] = getattr(args, "hit_penalty", 1.0)
+    cfg["STICKY_ACTION_PROB"] = args.sticky_prob if is_noisy else 0.0
     cfg["FULLY_OBSERVABLE"] = True
     cfg["TOTAL_TIMESTEPS"] = args.total_timesteps
     cfg["NUM_ENVS"] = args.num_envs
@@ -248,7 +278,12 @@ def run_suite(args):
     base_out_dir = args.output_dir if args.output_dir else os.path.join("results/sweeps", sweep_id)
     os.makedirs(base_out_dir, exist_ok=True)
 
-    families = ["mountain_car", "point_robot"] if args.env_family == "both" else [args.env_family]
+    if args.env_family == "all":
+        families = ["mountain_car", "point_robot", "space_invaders"]
+    elif args.env_family == "both":
+        families = ["mountain_car", "point_robot"]
+    else:
+        families = [args.env_family]
     algos = ["E(0)", "TD(0)", f"TD(lambda)"]
 
     print("=" * 80)

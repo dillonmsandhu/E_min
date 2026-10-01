@@ -63,6 +63,140 @@ def get_variant_headers(spec):
         return spec.get("display_name", "Variant"), ""
 
 
+def plot_space_invaders_poster(all_results, out_dir, args=None):
+    """
+    Constructs a dedicated 2x4 figure for Space Invaders:
+      - Cols: The 4 requested variants shown prominently on the top row:
+          1. Standard SpaceInvaders (Clean Dynamics)
+          2. Standard SpaceInvaders (Sticky Actions)
+          3. Fixed-Horizon SpaceInvaders (Clean Dynamics)
+          4. Fixed-Horizon SpaceInvaders (Sticky Actions)
+      - Rows:
+          Row 0: Episode Return (Undiscounted Score)
+          Row 1: Episode Length (Survival Steps)
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    pdf_path = os.path.join(out_dir, "space_invaders_env_properties.pdf")
+    png_path = os.path.join(out_dir, "space_invaders_env_properties.png")
+
+    fig, axes = plt.subplots(2, 4, figsize=(20, 9), sharex=True, sharey=False)
+    plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.79, bottom=0.08, left=0.07, right=0.97)
+
+    fig.suptitle(
+        "Space Invaders (MinAtar) — Environmental Properties & Noise Sweep",
+        fontsize=16,
+        fontweight="bold",
+        y=0.975,
+    )
+    fig.text(
+        0.5, 0.938,
+        "Evaluating E(0) vs. TD(0) vs. TD(λ) Across Horizon Variance (-1/Hit vs. Sudden Death) and Action Noise (Sticky Actions)",
+        fontsize=11.5,
+        ha="center",
+        color="#444444",
+    )
+
+    col_configs = [
+        {
+            "var_key": "si_standard",
+            "cond_key": "clean",
+            "title": "Standard SpaceInvaders (Clean)",
+            "subtitle": "Lethal Hits • 0% Sticky Actions",
+        },
+        {
+            "var_key": "si_standard",
+            "cond_key": "noisy",
+            "title": "Standard SpaceInvaders (Noisy)",
+            "subtitle": "Lethal Hits • 25% Sticky Actions",
+        },
+        {
+            "var_key": "si_fixed_horizon",
+            "cond_key": "clean",
+            "title": "Fixed-Horizon SpaceInvaders (Clean)",
+            "subtitle": "Fixed 1,000 Steps (-1/Hit) • 0% Sticky",
+        },
+        {
+            "var_key": "si_fixed_horizon",
+            "cond_key": "noisy",
+            "title": "Fixed-Horizon SpaceInvaders (Noisy)",
+            "subtitle": "Fixed 1,000 Steps (-1/Hit) • 25% Sticky",
+        },
+    ]
+
+    legend_handles = []
+    legend_labels = []
+
+    for col_idx, col_cfg in enumerate(col_configs):
+        var_key = col_cfg["var_key"]
+        cond_key = col_cfg["cond_key"]
+        if var_key not in all_results or cond_key not in all_results[var_key]:
+            continue
+        cond_data = all_results[var_key][cond_key]
+
+        # Top row: Episode Return
+        ax_ret = axes[0, col_idx]
+        ax_ret.set_title(f"{col_cfg['title']}\n({col_cfg['subtitle']})", fontsize=11, fontweight="bold", pad=8, color="#111111")
+        ax_ret.grid(True, linestyle=":", alpha=0.6)
+
+        # Bottom row: Episode Length
+        ax_len = axes[1, col_idx]
+        ax_len.grid(True, linestyle=":", alpha=0.6)
+        ax_len.set_xlabel("Environment Steps (Updates)", fontsize=10.5, fontweight="bold")
+
+        if col_idx == 0:
+            ax_ret.set_ylabel("Episode Return\n(Undiscounted Score)", fontsize=10.5, fontweight="bold")
+            ax_len.set_ylabel("Episode Length\n(Survival Steps)", fontsize=10.5, fontweight="bold")
+
+        for algo_key, meta in ALGO_METADATA.items():
+            if algo_key in cond_data:
+                entry = cond_data[algo_key]
+                mean_ret = entry["mean_curve"]
+                sem_ret = entry["sem_curve"]
+                x_steps = np.arange(len(mean_ret))
+
+                # Plot Return on Row 0
+                line, = ax_ret.plot(
+                    x_steps, mean_ret,
+                    label=f"{algo_key}: {entry['final_mean']:.1f} ± {entry['final_sem']:.1f}",
+                    color=meta["color"], linestyle=meta["linestyle"], linewidth=meta["linewidth"]
+                )
+                ax_ret.fill_between(x_steps, mean_ret - sem_ret, mean_ret + sem_ret, color=meta["color"], alpha=0.15)
+
+                if col_idx == 0:
+                    legend_handles.append(line)
+                    legend_labels.append(meta["label"])
+
+                # Plot Length on Row 1
+                full_m = entry.get("metrics", {})
+                if "returned_episode_lengths" in full_m:
+                    len_tensor = full_m["returned_episode_lengths"]
+                    mean_len = len_tensor.mean(axis=0)
+                    sem_len = len_tensor.std(axis=0) / np.sqrt(max(1, len_tensor.shape[0]))
+                    ax_len.plot(x_steps, mean_len, color=meta["color"], linestyle=meta["linestyle"], linewidth=meta["linewidth"])
+                    ax_len.fill_between(x_steps, mean_len - sem_len, mean_len + sem_len, color=meta["color"], alpha=0.15)
+
+        ax_ret.legend(loc="best", fontsize=8.5, framealpha=0.92, title="Final Return", title_fontsize=8.5)
+
+    if legend_handles:
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.908),
+            ncol=3,
+            fontsize=10.5,
+            frameon=True,
+            facecolor="white",
+            edgecolor="#d0d0d0",
+            framealpha=0.95,
+        )
+
+    plt.savefig(pdf_path, dpi=300, bbox_inches="tight")
+    plt.savefig(png_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return pdf_path
+
+
 def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
     """
     Constructs a 2xN figure:
@@ -71,6 +205,9 @@ def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
         Row 1: Clean (Slip=0)
         Row 2: Noisy (Slip=5%, Force=0.5, Transition Noise=0.001)
     """
+    if family_name == "space_invaders":
+        return plot_space_invaders_poster(all_results, out_dir, args)
+
     os.makedirs(out_dir, exist_ok=True)
     pdf_path = os.path.join(out_dir, f"{family_name}_env_properties.pdf")
     png_path = os.path.join(out_dir, f"{family_name}_env_properties.png")
@@ -196,7 +333,7 @@ def main():
     parser.add_argument("--metrics-path", type=str, required=True,
                         help="Path to saved metrics_*.pkl file")
     parser.add_argument("--family", type=str, default="mountain_car",
-                        choices=["mountain_car", "point_robot"],
+                        choices=["mountain_car", "point_robot", "space_invaders"],
                         help="Environment family name")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Directory to save figures")

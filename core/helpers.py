@@ -73,6 +73,18 @@ def make_env(config):
             action_noise_std=config.get("ACTION_NOISE_STD", 0.0),
             transition_noise_std=config.get("TRANSITION_NOISE", 0.0),
         )
+    elif "SpaceInvaders" in env_name:
+        from envs.space_invaders import MinSpaceInvaders, EnvParams as SpaceInvadersParams
+        env = MinSpaceInvaders()
+        penalty_on_hit = config.get("PENALTY_ON_HIT", False) or ("Fixed" in env_name)
+        sticky_prob = config.get("STICKY_ACTION_PROB", 0.0)
+        env_params = SpaceInvadersParams(
+            penalty_on_hit=penalty_on_hit,
+            hit_penalty=config.get("HIT_PENALTY", 1.0),
+            sticky_action_prob=sticky_prob,
+            max_steps_in_episode=config.get("MAX_STEPS_IN_EPISODE", 1000),
+            instant_bullets=config.get("INSTANT_BULLETS", False),
+        )
     else:
         env, env_params = gymnax.make(env_name)
 

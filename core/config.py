@@ -11,6 +11,10 @@ config = {
     "TRANSITION_NOISE": 0.0,
     "DENSE_REWARD": False,
     "FULLY_OBSERVABLE": True,
+    "PENALTY_ON_HIT": False,
+    "HIT_PENALTY": 1.0,
+    "STICKY_ACTION_PROB": 0.0,
+    "INSTANT_BULLETS": False,
 
     # Network Architecture
     "NETWORK_TYPE": "mlp",

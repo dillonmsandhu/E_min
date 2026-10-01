@@ -22,57 +22,67 @@ Each environment family is evaluated across a complete $2 \times 2$ factorial ma
 ### Family 2: Point Robot (Fully Observable MDP)
 1. **Sparse Continuous**: `PointRobot-misc` (`DENSE_REWARD=False`)
 2. **Sparse Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=False`, 5 cardinal actions)
-3. **Dense Continuous**: `PointRobot-misc` (`DENSE_REWARD=True`)
-4. **Dense Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=True`, 5 cardinal actions)
+3. **Dense Continuous**: `PointRobot-misc` (`DENSE_REWARD=True`, Potential-Based Reward Shaping)
+4. **Dense Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=True`, Potential-Based Reward Shaping)
+
+### Family 3: Space Invaders (MinAtar)
+Tests credit assignment delay and return noise from sudden-death terminations:
+1. **Standard SpaceInvaders (Clean)**: Standard lethal bullet hits (episodic sudden death), deterministic actions
+2. **Standard SpaceInvaders (Noisy)**: Standard lethal bullet hits, 25% sticky actions
+3. **Fixed-Horizon SpaceInvaders (Clean)**: Fixed 1,000 steps, -1 penalty per enemy bullet or alien hit rather than termination
+4. **Fixed-Horizon SpaceInvaders (Noisy)**: Fixed 1,000 steps, -1 penalty per hit, 25% sticky actions
 
 ---
 
-## 2. Experimental Note: Dense Reward Failure in Point Robot
+## 2. Experimental Note: Dense Reward in Point Robot
 
-> [!WARNING]
-> **Why Dense Reward Failed in Point Robot:**
-> In `PointRobot`, the classical dense reward formulation is defined as $r_t = -\|\text{pos}_t - \text{goal}\|_2$ with zero positive goal bonus. Because reaching the target triggers a random re-spawn/teleportation far away from the goal ($r_{t+1} \approx -1.3$ to $-1.8$), entering the goal circle is severely penalized compared to simply hovering right outside the goal perimeter (where $r_t \approx -0.21$ continuously).
-> 
-> Without an episodic terminal state or a positive goal bonus, pure negative-distance reward shaping creates a perverse incentive to avoid the goal zone. In contrast, sparse reward provides $+1.0$ strictly upon goal arrival, successfully incentivizing the agent to visit the goal as many times as possible.
+> [!NOTE]
+> **Potential-Based Reward Shaping (PBRS) in Point Robot:**
+> Point Robot uses true Potential-Based Reward Shaping $\Phi(s) = -\|\text{pos} - \text{goal}\|_2$ (referenced to $0.0$ when goal is reached) with shaping reward $F(s, s') = \gamma \Phi(s') - \Phi(s)$. Approaching the goal yields $+0.1$/step progress rewards, reaching the goal awards the $+1.0$ base reward, and camping stationary earns zero progress reward ($s' = s \implies \Delta \Phi = 0$).
 
 ---
 
 ## 3. Experimental Conditions
 
-Each environment is evaluated in two regimes:
-1. **Clean**: Deterministic transition physics (`SLIP_PROB=0.0`, `TRANSITION_NOISE=0.0`).
-2. **Noisy**:
-   - `SLIP_PROB`: $0.05$ (5% chance of wheel/traction slip on each timestep)
-   - `SLIP_FORCE_SCALE`: $0.5$ (delivers 50% commanded drive force / displacement during slip)
-   - `TRANSITION_NOISE`: $0.001$ (additive Gaussian terrain jitter)
+1. **Mountain Car & Point Robot**:
+   - **Clean**: Deterministic transition physics (`SLIP_PROB=0.0`, `TRANSITION_NOISE=0.0`).
+   - **Noisy**: 5% chance of wheel/traction slip (`SLIP_PROB=0.05`, `SLIP_FORCE_SCALE=0.5`, `TRANSITION_NOISE=0.001`).
+2. **Space Invaders**:
+   - **Clean**: 0% sticky actions (`STICKY_ACTION_PROB=0.0`).
+   - **Noisy**: 25% sticky actions (`STICKY_ACTION_PROB=0.25`).
 
 ---
 
 ## 4. Visualizations
 
 Each environment family produces a self-contained publication figure ($2 \times 4$ grid):
-- **Row 1 (Clean)**: Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
-- **Row 2 (Noisy)**: Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
-- **Curves per subplot**: 3 curves ($E(0)$, $TD(0)$, $TD(\lambda)$) with shaded Mean $\pm$ 1 SEM over 8 independent seeds.
+- **Mountain Car & Point Robot**:
+  - Row 0 (Clean): Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
+  - Row 1 (Noisy): Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
+- **Space Invaders**:
+  - Row 0 (Episode Return): Standard (Clean) | Standard (Noisy) | Fixed-Horizon (Clean) | Fixed-Horizon (Noisy)
+  - Row 1 (Episode Length / Survival Steps): Standard (Clean) | Standard (Noisy) | Fixed-Horizon (Clean) | Fixed-Horizon (Noisy)
 
 Outputs generated:
 - `results/sweeps/<sweep_id>/mountain_car/mountain_car_env_properties.pdf` (and `.png`)
 - `results/sweeps/<sweep_id>/point_robot/point_robot_env_properties.pdf` (and `.png`)
+- `results/sweeps/<sweep_id>/space_invaders/space_invaders_env_properties.pdf` (and `.png`)
 - `summary_<family>.csv` and `metrics_<family>.pkl`
 
 ---
 
-## 4. Usage
+## 5. Usage
 
 ### Local Smoke Test
 ```bash
 python scripts/env_properties_sweep/sweep_env_properties.py \
-    --env-family mountain_car \
-    --total-timesteps 64 \
+    --env-family space_invaders \
+    --total-timesteps 256 \
     --num-envs 4 \
     --num-steps 16 \
     --minibatch-size 64 \
-    --n-seeds 2
+    --num-epochs 1 \
+    --n-seeds 1
 ```
 
 ### Full SLURM Cluster Execution
@@ -83,4 +93,5 @@ Or run individual tasks:
 ```bash
 ./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 0   # MountainCar
 ./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 1   # PointRobot
+./scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh 2   # SpaceInvaders
 ```
