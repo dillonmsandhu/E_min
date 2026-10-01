@@ -93,7 +93,7 @@ if [ -z "$ENV_NAME" ]; then
 fi
 
 TOTAL_TIMESTEPS=${CUSTOM_TIMESTEPS:-50000000}
-N_SEEDS=${CUSTOM_SEEDS:-5}
+N_SEEDS=${CUSTOM_SEEDS:-3}
 NUM_ENVS=${CUSTOM_NUM_ENVS:-1024}
 NUM_STEPS=${CUSTOM_NUM_STEPS:-128}
 
@@ -130,7 +130,7 @@ $PYTHON scripts/brax_e_lambda/sweep_brax_e_lambda_vs_baseline.py \
     --num-envs "$NUM_ENVS" \
     --num-steps "$NUM_STEPS" \
     --e-lambda "$E_LAMBDA" \
-    --return-lambda "$RETURN_LAMBDA" \
+    --return-lambda $RETURN_LAMBDA \
     --critic-lr-grid $CRITIC_LRS \
     --epochs-grid $EPOCHS
 
