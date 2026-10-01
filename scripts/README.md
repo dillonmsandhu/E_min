@@ -9,6 +9,7 @@ All hyperparameter sweeps, cluster submission scripts, and post-experiment analy
 | Folder | Focus / Workflow | Runner(s) | Analysis Tool(s) |
 | :--- | :--- | :--- | :--- |
 | [`brax_e0/`](file:///Users/dillonsandhu/Documents/Research/E_min/scripts/brax_e0/README.md) | **Brax Continuous Control**: Adjacent-state Dirichlet error minimization ($E_0$) vs. PPO baseline | `sweep_brax_e0_vs_baseline.py`<br>`run_slurm_brax_e0_sweep.sh` | `generate_brax_e0_suite_pdf.py` |
+| [`brax_e_lambda/`](file:///Users/dillonsandhu/Documents/Research/E_min/scripts/brax_e_lambda/README.md) | **Brax Continuous Control**: Geometric jump Dirichlet error minimization ($E(\lambda)$ with $\lambda=0.9$) vs. PPO baseline | `sweep_brax_e_lambda_vs_baseline.py`<br>`run_slurm_brax_e_lambda_sweep.sh` | `generate_brax_e_lambda_suite_pdf.py` |
 | [`td_vs_e_experimental/`](file:///Users/dillonsandhu/Documents/Research/E_min/scripts/td_vs_e_experimental/README.md) | **Classic TD vs. E_experimental**: 36-config head-to-head comparison grid across 16 Gymnax environments | `sweep_td_vs_e_experimental.py`<br>`run_slurm_td_vs_e_experimental.sh` | `compile_cmp_td_vs_e_master_pdf.py` |
 | [`td_vs_e_lambda/`](file:///Users/dillonsandhu/Documents/Research/E_min/scripts/td_vs_e_lambda/README.md) | **E(λ) vs. TD(λ)**: Head-to-head lambda comparison across $\lambda \in [0.0, 0.8, 0.95]$, epochs, and heads | `sweep_td_vs_e_lambda.py`<br>`run_slurm_td_vs_e_lambda.sh` | Automatic posters + `compile_cmp_td_vs_e_master_pdf.py` |
 | [`e_optimization/`](file:///Users/dillonsandhu/Documents/Research/E_min/scripts/e_optimization/README.md) | **E Optimization & Architecture Tuning**: Tuning critic epochs, weight decay, MSE vs. Huber loss, and value heads | `sweep_gymnax_e_experimental.py`<br>`sweep_minatar_e_opt.py`<br>`run_slurm_gymnax_e_experimental.sh`<br>`run_slurm_minatar_e_opt.sh` | `visualize_multidim_sweep.py` (Parallel coords, ANOVA, main effects, heatmaps) |
@@ -25,6 +26,9 @@ All hyperparameter sweeps, cluster submission scripts, and post-experiment analy
 ```bash
 # Submit Brax E0 sweep across all 9 environments
 sbatch scripts/brax_e0/run_slurm_brax_e0_sweep.sh
+
+# Submit Brax E(lambda=0.9) sweep across all 9 environments
+sbatch scripts/brax_e_lambda/run_slurm_brax_e_lambda_sweep.sh
 
 # Submit TD vs. E_experimental comparison across 16 Gymnax environments
 sbatch scripts/td_vs_e_experimental/run_slurm_td_vs_e_experimental.sh
