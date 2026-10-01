@@ -9,21 +9,35 @@ All runs hold **`NUM_EPOCHS = 16`** constant (along with learning rates and roll
 
 ---
 
-## 1. Environments Evaluated
+## 1. Environments Evaluated (2x2 Factorial Design)
+
+Each environment family is evaluated across a complete $2 \times 2$ factorial matrix of **Reward Density** (Sparse vs. Dense) $\times$ **Action Space** (Continuous vs. Discrete):
 
 ### Family 1: Mountain Car
-1. **Sparse Continuous**: `MountainCarContinuous-v0`
-2. **Dense Continuous**: `MountainCarDenseContinuous-v0` (Potential-Based Reward Shaping)
-3. **Dense Discrete**: `MountainCarDenseDiscrete-v0` (3-action discrete bang-bang control)
+1. **Sparse Continuous**: `MountainCarDenseContinuous-v0` (`DENSE_REWARD=False`)
+2. **Sparse Discrete**: `MountainCarDenseDiscrete-v0` (`DENSE_REWARD=False`, 3-action discrete bang-bang)
+3. **Dense Continuous**: `MountainCarDenseContinuous-v0` (`DENSE_REWARD=True`, Potential-Based Reward Shaping)
+4. **Dense Discrete**: `MountainCarDenseDiscrete-v0` (`DENSE_REWARD=True`, 3-action discrete bang-bang)
 
 ### Family 2: Point Robot (Fully Observable MDP)
 1. **Sparse Continuous**: `PointRobot-misc` (`DENSE_REWARD=False`)
-2. **Dense Continuous**: `PointRobot-misc` (`DENSE_REWARD=True`)
-3. **Dense Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=True`, 5 cardinal actions)
+2. **Sparse Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=False`, 5 cardinal actions)
+3. **Dense Continuous**: `PointRobot-misc` (`DENSE_REWARD=True`)
+4. **Dense Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=True`, 5 cardinal actions)
 
 ---
 
-## 2. Experimental Conditions
+## 2. Experimental Note: Dense Reward Failure in Point Robot
+
+> [!WARNING]
+> **Why Dense Reward Failed in Point Robot:**
+> In `PointRobot`, the classical dense reward formulation is defined as $r_t = -\|\text{pos}_t - \text{goal}\|_2$ with zero positive goal bonus. Because reaching the target triggers a random re-spawn/teleportation far away from the goal ($r_{t+1} \approx -1.3$ to $-1.8$), entering the goal circle is severely penalized compared to simply hovering right outside the goal perimeter (where $r_t \approx -0.21$ continuously).
+> 
+> Without an episodic terminal state or a positive goal bonus, pure negative-distance reward shaping creates a perverse incentive to avoid the goal zone. In contrast, sparse reward provides $+1.0$ strictly upon goal arrival, successfully incentivizing the agent to visit the goal as many times as possible.
+
+---
+
+## 3. Experimental Conditions
 
 Each environment is evaluated in two regimes:
 1. **Clean**: Deterministic transition physics (`SLIP_PROB=0.0`, `TRANSITION_NOISE=0.0`).
@@ -34,11 +48,11 @@ Each environment is evaluated in two regimes:
 
 ---
 
-## 3. Visualizations
+## 4. Visualizations
 
-Each environment family produces a self-contained publication figure ($2 \times 3$ grid):
-- **Row 1 (Clean)**: Sparse Continuous | Dense Continuous | Dense Discrete
-- **Row 2 (Noisy)**: Sparse Continuous | Dense Continuous | Dense Discrete
+Each environment family produces a self-contained publication figure ($2 \times 4$ grid):
+- **Row 1 (Clean)**: Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
+- **Row 2 (Noisy)**: Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
 - **Curves per subplot**: 3 curves ($E(0)$, $TD(0)$, $TD(\lambda)$) with shaded Mean $\pm$ 1 SEM over 8 independent seeds.
 
 Outputs generated:

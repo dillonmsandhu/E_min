@@ -53,6 +53,8 @@ def get_variant_headers(spec):
     discrete = spec.get("discrete", False)
     if not dense and not discrete:
         return "Sparse Continuous", "Sparse Goal Reward • Continuous Actions"
+    elif not dense and discrete:
+        return "Sparse Discrete", "Sparse Goal Reward • Discrete Actions"
     elif dense and not discrete:
         return "Dense Continuous", "Dense Shaped Reward • Continuous Actions"
     elif dense and discrete:
@@ -63,8 +65,8 @@ def get_variant_headers(spec):
 
 def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
     """
-    Constructs a 2x3 figure:
-      Cols: 3 environment variants (Sparse Cont, Dense Cont, Dense Disc)
+    Constructs a 2xN figure:
+      Cols: Environment variants (Sparse Cont, Sparse Disc, Dense Cont, Dense Disc)
       Rows:
         Row 1: Clean (Slip=0)
         Row 2: Noisy (Slip=5%, Force=0.5, Transition Noise=0.001)
@@ -73,11 +75,17 @@ def plot_suite_family_posters(all_results, family_name, out_dir, args=None):
     pdf_path = os.path.join(out_dir, f"{family_name}_env_properties.pdf")
     png_path = os.path.join(out_dir, f"{family_name}_env_properties.png")
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 9), sharex=True, sharey=False)
-    # Generous top headroom (0.84) prevents any title overlapping
-    plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.84, bottom=0.08, left=0.08, right=0.97)
+    variants = list(all_results.keys())  # e.g. [sparse_cont, sparse_disc, dense_cont, dense_disc]
+    n_cols = max(1, len(variants))
+    fig_width = max(16.0, 4.8 * n_cols)
 
-    variants = list(all_results.keys())  # [short_name_1, short_name_2, short_name_3]
+    fig, axes = plt.subplots(2, n_cols, figsize=(fig_width, 9), sharex=True, sharey=False)
+    axes = np.atleast_2d(axes)
+    if n_cols == 1:
+        axes = axes.T
+    # Generous top headroom (0.84) prevents any title overlapping
+    plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.84, bottom=0.08, left=0.07, right=0.97)
+
     conditions = [("clean", "Clean Dynamics\n(Slip = 0%)", 0), ("noisy", "Noisy Dynamics\n(5% Slip + Noise)", 1)]
 
     pretty_family = "Mountain Car" if family_name == "mountain_car" else "Point Robot (Fully Observable MDP)"

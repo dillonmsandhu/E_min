@@ -59,11 +59,18 @@ from scripts.env_properties_sweep.plot_env_properties_comparison import plot_sui
 ENV_DEFINITIONS = {
     "mountain_car": [
         {
-            "env_id": "MountainCarContinuous-v0",
+            "env_id": "MountainCarDenseContinuous-v0",
             "display_name": "MountainCar (Sparse Cont.)",
             "dense_reward": False,
             "discrete": False,
             "short_name": "mc_sparse_cont",
+        },
+        {
+            "env_id": "MountainCarDenseDiscrete-v0",
+            "display_name": "MountainCar (Sparse Disc.)",
+            "dense_reward": False,
+            "discrete": True,
+            "short_name": "mc_sparse_disc",
         },
         {
             "env_id": "MountainCarDenseContinuous-v0",
@@ -87,6 +94,13 @@ ENV_DEFINITIONS = {
             "dense_reward": False,
             "discrete": False,
             "short_name": "pr_sparse_cont",
+        },
+        {
+            "env_id": "PointRobotDiscrete-misc",
+            "display_name": "PointRobot (Sparse Disc.)",
+            "dense_reward": False,
+            "discrete": True,
+            "short_name": "pr_sparse_disc",
         },
         {
             "env_id": "PointRobot-misc",

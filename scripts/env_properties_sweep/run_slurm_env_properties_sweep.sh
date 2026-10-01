@@ -13,8 +13,8 @@
 # Environmental Properties Sweep: E(0) vs. TD(0) vs. TD(lambda)
 #
 # Array Tasks:
-#   0: MountainCar Family (Sparse Continuous, Dense Continuous, Dense Discrete)
-#   1: PointRobot Family  (Sparse Continuous, Dense Continuous, Dense Discrete)
+#   0: MountainCar Family (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
+#   1: PointRobot Family  (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
 #
 # Both evaluated under:
 #   - Clean dynamics

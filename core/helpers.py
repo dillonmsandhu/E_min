@@ -19,23 +19,25 @@ from envs.wrappers import (
 
 def make_env(config):
     env_name = config["ENV_NAME"]
-    if env_name in ["MountainCarDenseContinuous-v0", "MountainCarDenseContinuous", "continuous_mountain_car"]:
+    if env_name in ["MountainCarDenseContinuous-v0", "MountainCarDenseContinuous", "MountainCarSparseContinuous-v0", "MountainCarSparseContinuous", "continuous_mountain_car"]:
         from envs.continuous_mountain_car import MountainCarDenseContinuous, EnvParams as DenseEnvParams
         env = MountainCarDenseContinuous()
+        p_scale = 0.0 if ("Sparse" in env_name or not config.get("DENSE_REWARD", True)) else config.get("POTENTIAL_SCALE", 30.0)
         env_params = DenseEnvParams(
             gamma=config.get("GAMMA", 0.99),
-            potential_scale=config.get("POTENTIAL_SCALE", 30.0),
+            potential_scale=p_scale,
             slip_prob=config.get("SLIP_PROB", 0.0),
             slip_force_scale=config.get("SLIP_FORCE_SCALE", 0.0),
             action_noise_std=config.get("ACTION_NOISE_STD", 0.0),
             transition_noise_std=config.get("TRANSITION_NOISE", 0.0),
         )
-    elif env_name in ["MountainCarDenseDiscrete-v0", "MountainCarDenseDiscrete"]:
+    elif env_name in ["MountainCarDenseDiscrete-v0", "MountainCarDenseDiscrete", "MountainCarSparseDiscrete-v0", "MountainCarSparseDiscrete"]:
         from envs.continuous_mountain_car import MountainCarDenseDiscrete, EnvParams as DenseEnvParams
         env = MountainCarDenseDiscrete()
+        p_scale = 0.0 if ("Sparse" in env_name or not config.get("DENSE_REWARD", True)) else config.get("POTENTIAL_SCALE", 30.0)
         env_params = DenseEnvParams(
             gamma=config.get("GAMMA", 0.99),
-            potential_scale=config.get("POTENTIAL_SCALE", 30.0),
+            potential_scale=p_scale,
             slip_prob=config.get("SLIP_PROB", 0.0),
             slip_force_scale=config.get("SLIP_FORCE_SCALE", 0.0),
             action_noise_std=config.get("ACTION_NOISE_STD", 0.0),
