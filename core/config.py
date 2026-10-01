@@ -4,6 +4,13 @@ config = {
     "N_SEEDS": 1,
     "GAMMA": 0.99,
     "NORMALIZE_OBS": False,
+    "POTENTIAL_SCALE": 30.0,
+    "SLIP_PROB": 0.0,
+    "SLIP_FORCE_SCALE": 0.0,
+    "ACTION_NOISE_STD": 0.0,
+    "TRANSITION_NOISE": 0.0,
+    "DENSE_REWARD": False,
+    "FULLY_OBSERVABLE": True,
 
     # Network Architecture
     "NETWORK_TYPE": "mlp",
