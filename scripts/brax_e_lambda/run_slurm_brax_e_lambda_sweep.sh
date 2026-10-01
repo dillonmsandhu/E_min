@@ -13,14 +13,14 @@
 # Full Brax Continuous Control Suite Sweep:
 # Symmetrized E(lambda) (Dirichlet geometric jumps) vs. Baseline PPO
 #
-# Lambdas Fixed:
+# Lambdas:
 #   - E_LAMBDA:      0.9 (geometric lookahead jump Dirichlet error)
-#   - RETURN_LAMBDA: 0.9 (regression return target lambda)
+#   - RETURN_LAMBDA: [0.9, 0.99] (regression return target lambda grid)
 #
 # Critic Sweep Grid:
 #   - Critic Learning Rate: [1e-4, 3e-4, 1e-3]
 #   - Critic Epochs:        [4, 8, 16]
-# Total: 9 configurations for E(lambda) + 1 un-swept Baseline PPO reference per environment.
+# Total: 18 configurations for E(lambda) + 1 un-swept Baseline PPO reference per environment.
 # Evaluated across independent random seeds (default: 5) using JAX vmap.
 #
 # Environments:

@@ -9,20 +9,21 @@ This folder contains scripts for sweeping **Symmetrized E(lambda)** (geometric l
 | File | Type | Description |
 | :--- | :--- | :--- |
 | `run_slurm_brax_e_lambda_sweep.sh` | Shell / SLURM | SLURM batch array job launcher (tasks 0–8 across 9 Brax environments). |
-| `sweep_brax_e_lambda_vs_baseline.py` | Python Runner | Evaluates E(lambda) across critic learning rates and epochs with fixed $\lambda_{\text{dir}} = 0.9$ and $\lambda_{\text{ret}} = 0.9$ vs. baseline PPO. |
+| `sweep_brax_e_lambda_vs_baseline.py` | Python Runner | Evaluates E(lambda) across critic learning rates, epochs, and return lambdas ([0.9, 0.99]) with fixed $\lambda_{\text{dir}} = 0.9$ vs. baseline PPO. |
 | `generate_brax_e_lambda_suite_pdf.py` | Python Analysis | Aggregates all environment runs into a suite summary CSV and multi-page vector PDF report. |
 
 ---
 
 ## ⚙️ Configuration Contract
 
-- **Fixed Lambda Parameters**:
+- **Lambda Parameters**:
   - `E_LAMBDA = 0.9`: Geometric lookahead jump parameter for multi-step Dirichlet transition pairs $(s_t, s_{t+K})$.
-  - `RETURN_LAMBDA = 0.9` / `VALUE_LAMBDA = 0.9`: Target regression $\lambda$-return for value bootstrapping.
+  - `RETURN_LAMBDA = [0.9, 0.99]`: Target regression $\lambda$-return grid for value bootstrapping.
 - **Critic Sweep Grid**:
   - Critic Learning Rate: `[1e-4, 3e-4, 1e-3]`
   - Critic Epochs: `[4, 8, 16]`
-  (Total: 9 configurations for $E(\lambda)$ + 1 un-swept Baseline PPO reference per environment).
+  - Return Lambda: `[0.9, 0.99]`
+  (Total: 18 configurations for $E(\lambda)$ + 1 un-swept Baseline PPO reference per environment).
 - **Rollout**:
   - 1024 parallel environments $\times$ 128 rollout steps (131,072 transitions per policy update).
 
