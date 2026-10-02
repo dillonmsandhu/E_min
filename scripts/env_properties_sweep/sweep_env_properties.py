@@ -122,21 +122,34 @@ ENV_DEFINITIONS = {
             "env_id": "SpaceInvaders-MinAtar",
             "display_name": "Standard SpaceInvaders",
             "penalty_on_hit": False,
+            "instant_bullets": False,
             "dense_reward": False,
             "discrete": True,
             "short_name": "si_standard",
             "var_title": "Standard SpaceInvaders",
-            "var_sub": "Lethal Hits (Sudden Death) • Episodic",
+            "var_sub": "Lethal Hits • Projectile Bullets",
         },
         {
             "env_id": "SpaceInvaders-Fixed-MinAtar",
             "display_name": "Fixed Horizon SpaceInvaders",
             "penalty_on_hit": True,
+            "instant_bullets": False,
             "dense_reward": False,
             "discrete": True,
             "short_name": "si_fixed_horizon",
             "var_title": "Fixed Horizon (-1/Hit)",
             "var_sub": "Fixed 1,000 Steps • -1 Point per Hit",
+        },
+        {
+            "env_id": "SpaceInvaders-MinAtar",
+            "display_name": "Instant Bullets SpaceInvaders",
+            "penalty_on_hit": False,
+            "instant_bullets": True,
+            "dense_reward": False,
+            "discrete": True,
+            "short_name": "si_instant_bullets",
+            "var_title": "Instant Bullets (Hitscan)",
+            "var_sub": "Lethal Hits • 0 Flight Delay",
         },
     ],
 }
@@ -196,6 +209,7 @@ def run_configuration(algo_type, env_spec, is_noisy, args):
     cfg["ENV_NAME"] = env_spec["env_id"]
     cfg["DENSE_REWARD"] = env_spec.get("dense_reward", False)
     cfg["PENALTY_ON_HIT"] = env_spec.get("penalty_on_hit", False)
+    cfg["INSTANT_BULLETS"] = env_spec.get("instant_bullets", False)
     cfg["HIT_PENALTY"] = getattr(args, "hit_penalty", 1.0)
     cfg["STICKY_ACTION_PROB"] = args.sticky_prob if is_noisy else 0.0
     cfg["FULLY_OBSERVABLE"] = True
@@ -305,7 +319,8 @@ def run_suite(args):
         all_results = {}
         summary_rows = []
 
-        total_runs = len(env_specs) * 2 * len(algos)
+        conditions = [(False, "clean")] if family == "space_invaders" else [(False, "clean"), (True, "noisy")]
+        total_runs = len(env_specs) * len(conditions) * len(algos)
         run_count = 0
 
         for env_spec in env_specs:
@@ -313,7 +328,7 @@ def run_suite(args):
             short_name = env_spec["short_name"]
             all_results[short_name] = {"clean": {}, "noisy": {}, "spec": env_spec}
 
-            for is_noisy, condition in [(False, "clean"), (True, "noisy")]:
+            for is_noisy, condition in conditions:
                 cond_label = "Noisy" if is_noisy else "Clean"
                 print(f"\n--- [{family.upper()}] {env_name} | Condition: {cond_label} ---")
 

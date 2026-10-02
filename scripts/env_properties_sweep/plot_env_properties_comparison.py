@@ -79,18 +79,18 @@ def plot_space_invaders_poster(all_results, out_dir, args=None):
     pdf_path = os.path.join(out_dir, "space_invaders_env_properties.pdf")
     png_path = os.path.join(out_dir, "space_invaders_env_properties.png")
 
-    fig, axes = plt.subplots(2, 4, figsize=(20, 9), sharex=True, sharey=False)
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9), sharex=True, sharey=False)
     plt.subplots_adjust(hspace=0.28, wspace=0.22, top=0.79, bottom=0.08, left=0.07, right=0.97)
 
     fig.suptitle(
-        "Space Invaders (MinAtar) — Environmental Properties & Noise Sweep",
+        "Space Invaders (MinAtar) — Structural Properties Sweep (No Noise)",
         fontsize=16,
         fontweight="bold",
         y=0.975,
     )
     fig.text(
         0.5, 0.938,
-        "Evaluating E(0) vs. TD(0) vs. TD(λ) Across Horizon Variance (-1/Hit vs. Sudden Death) and Action Noise (Sticky Actions)",
+        "Evaluating E(0) vs. TD(0) vs. TD(λ) Across Horizon Variance (-1/Hit vs. Sudden Death) and Bullet Flight Delay (Hitscan vs. Projectile)",
         fontsize=11.5,
         ha="center",
         color="#444444",
@@ -100,26 +100,20 @@ def plot_space_invaders_poster(all_results, out_dir, args=None):
         {
             "var_key": "si_standard",
             "cond_key": "clean",
-            "title": "Standard SpaceInvaders (Clean)",
-            "subtitle": "Lethal Hits • 0% Sticky Actions",
-        },
-        {
-            "var_key": "si_standard",
-            "cond_key": "noisy",
-            "title": "Standard SpaceInvaders (Noisy)",
-            "subtitle": "Lethal Hits • 25% Sticky Actions",
+            "title": "Standard SpaceInvaders",
+            "subtitle": "Lethal Hits • Projectile Bullets",
         },
         {
             "var_key": "si_fixed_horizon",
             "cond_key": "clean",
-            "title": "Fixed-Horizon SpaceInvaders (Clean)",
-            "subtitle": "Fixed 1,000 Steps (-1/Hit) • 0% Sticky",
+            "title": "Fixed-Horizon SpaceInvaders",
+            "subtitle": "Fixed 1,000 Steps (-1/Hit) • Projectile",
         },
         {
-            "var_key": "si_fixed_horizon",
-            "cond_key": "noisy",
-            "title": "Fixed-Horizon SpaceInvaders (Noisy)",
-            "subtitle": "Fixed 1,000 Steps (-1/Hit) • 25% Sticky",
+            "var_key": "si_instant_bullets",
+            "cond_key": "clean",
+            "title": "Instant Bullets SpaceInvaders",
+            "subtitle": "Lethal Hits • Hitscan (0 Delay)",
         },
     ]
 

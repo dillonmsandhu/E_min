@@ -15,11 +15,11 @@
 # Array Tasks:
 #   0: MountainCar Family (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
 #   1: PointRobot Family  (Sparse Continuous, Sparse Discrete, Dense Continuous, Dense Discrete)
-#   2: SpaceInvaders Family (Standard Lethal, Fixed Horizon (-1/Hit) x Clean, Sticky Actions)
+#   2: SpaceInvaders Family (Standard Lethal, Fixed Horizon (-1/Hit), Instant Bullets (Hitscan) — No Noise)
 #
 # Evaluated under:
-#   - Clean dynamics
-#   - Noisy dynamics (5% tire slip for MC/PR; 25% sticky actions for SpaceInvaders)
+#   - Clean dynamics (No noise for SpaceInvaders; 0% slip for MC/PR)
+#   - Noisy dynamics (5% tire slip for MC/PR)
 #
 # Usage:
 #   sbatch scripts/env_properties_sweep/run_slurm_env_properties_sweep.sh

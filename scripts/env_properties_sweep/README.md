@@ -26,11 +26,10 @@ Each environment family is evaluated across a complete $2 \times 2$ factorial ma
 4. **Dense Discrete**: `PointRobotDiscrete-misc` (`DENSE_REWARD=True`, Potential-Based Reward Shaping)
 
 ### Family 3: Space Invaders (MinAtar)
-Tests credit assignment delay and return noise from sudden-death terminations:
-1. **Standard SpaceInvaders (Clean)**: Standard lethal bullet hits (episodic sudden death), deterministic actions
-2. **Standard SpaceInvaders (Noisy)**: Standard lethal bullet hits, 25% sticky actions
-3. **Fixed-Horizon SpaceInvaders (Clean)**: Fixed 1,000 steps, -1 penalty per enemy bullet or alien hit rather than termination
-4. **Fixed-Horizon SpaceInvaders (Noisy)**: Fixed 1,000 steps, -1 penalty per hit, 25% sticky actions
+Tests credit assignment delay and horizon variance (all with **no noise** / 0% sticky actions):
+1. **Standard SpaceInvaders**: Standard lethal bullet hits (episodic sudden death), projectile bullets with flight delay
+2. **Fixed-Horizon SpaceInvaders**: Fixed 1,000 steps, -1 penalty per enemy bullet or alien hit rather than termination
+3. **Instant-Bullets SpaceInvaders**: Standard lethal hits, hitscan bullets with 0 flight delay
 
 ---
 
@@ -48,20 +47,19 @@ Tests credit assignment delay and return noise from sudden-death terminations:
    - **Clean**: Deterministic transition physics (`SLIP_PROB=0.0`, `TRANSITION_NOISE=0.0`).
    - **Noisy**: 5% chance of wheel/traction slip (`SLIP_PROB=0.05`, `SLIP_FORCE_SCALE=0.5`, `TRANSITION_NOISE=0.001`).
 2. **Space Invaders**:
-   - **Clean**: 0% sticky actions (`STICKY_ACTION_PROB=0.0`).
-   - **Noisy**: 25% sticky actions (`STICKY_ACTION_PROB=0.25`).
+   - **No Noise**: 0% sticky actions (`STICKY_ACTION_PROB=0.0`).
 
 ---
 
 ## 4. Visualizations
 
-Each environment family produces a self-contained publication figure ($2 \times 4$ grid):
-- **Mountain Car & Point Robot**:
+Each environment family produces a self-contained publication figure:
+- **Mountain Car & Point Robot** ($2 \times 4$ grid):
   - Row 0 (Clean): Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
   - Row 1 (Noisy): Sparse Cont. | Sparse Disc. | Dense Cont. | Dense Disc.
-- **Space Invaders**:
-  - Row 0 (Episode Return): Standard (Clean) | Standard (Noisy) | Fixed-Horizon (Clean) | Fixed-Horizon (Noisy)
-  - Row 1 (Episode Length / Survival Steps): Standard (Clean) | Standard (Noisy) | Fixed-Horizon (Clean) | Fixed-Horizon (Noisy)
+- **Space Invaders** ($2 \times 3$ grid, No Noise):
+  - Row 0 (Episode Return): Standard | Fixed-Horizon (-1/Hit) | Instant Bullets (Hitscan)
+  - Row 1 (Episode Length / Survival Steps): Standard | Fixed-Horizon (-1/Hit) | Instant Bullets (Hitscan)
 
 Outputs generated:
 - `results/sweeps/<sweep_id>/mountain_car/mountain_car_env_properties.pdf` (and `.png`)
