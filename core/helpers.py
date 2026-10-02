@@ -171,14 +171,28 @@ def pi_loss_fn(params, network, traj_batch, gae, config):
 
 def ppo_clipped_v_loss(traj_batch, value_pred, targets, config):
     e = config.get("VF_CLIP", None)
+    if value_pred.ndim == 2 and targets.ndim == 1:
+        targets = targets[:, None]
+    agg = config.get("VALUE_HEAD_AGG", "sum")
+
     if e is None or e is False or (isinstance(e, (int, float)) and e <= 0):
-        return 0.5 * jnp.mean(jnp.square(value_pred - targets))
-    value_pred_clipped = traj_batch.value + (
-        value_pred - traj_batch.value
+        losses = 0.5 * jnp.square(value_pred - targets)
+        if value_pred.ndim == 2:
+            loss_per_head = jnp.mean(losses, axis=0)
+            return jnp.sum(loss_per_head) if agg == "sum" else jnp.mean(loss_per_head)
+        return jnp.mean(losses)
+
+    tb_val = traj_batch.value[:, None] if (value_pred.ndim == 2 and traj_batch.value.ndim == 1) else traj_batch.value
+    value_pred_clipped = tb_val + (
+        value_pred - tb_val
     ).clip(-e, e)
     value_losses = jnp.square(value_pred - targets)
     value_losses_clipped = jnp.square(value_pred_clipped - targets)
-    return 0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+    max_losses = 0.5 * jnp.maximum(value_losses, value_losses_clipped)
+    if value_pred.ndim == 2:
+        loss_per_head = jnp.mean(max_losses, axis=0)
+        return jnp.sum(loss_per_head) if agg == "sum" else jnp.mean(loss_per_head)
+    return jnp.mean(max_losses)
 
 
 def v_loss_fn(params, network, traj_batch, gae, targets, config):

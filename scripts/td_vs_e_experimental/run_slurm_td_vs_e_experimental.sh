@@ -8,14 +8,18 @@
 #SBATCH --array=0-15
 
 # ==============================================================================
-# Comprehensive Gymnax Suite Sweep: Classic TD vs. E_experimental
+# Comprehensive Gymnax Suite 4-Way Critic Comparison Sweep:
+#   1. E(0): Symmetrized 1-step E-minimization (algos/E_experimental.py)
+#   2. TD(0): Classic 1-step online TD learning (algos/td.py with td_lambda=0.0)
+#   3. E(lambda): Geometric jump sampled E(lambda) (algos/E_lambda_experimental.py, lambda=0.9)
+#   4. TD(lambda): Standard PPO fitted T^lambda regression (algos/td.py with td_lambda=0.9, fitted)
 #
-# Standard Head-to-Head Comparison over:
+# Swept over identical critic learning hyperparameters:
 #   - Critic Learning Rate: [0.0003, 0.001, 0.003]
 #   - Critic Epochs: [4, 16, 32]
 #   - Weight Decay: [0.001, 0.01]
 #   - Value Heads: [1, 4]
-# Total: 36 configurations per algorithm (72 total per environment) evaluated over 8 seeds.
+# Total: 36 configurations per algorithm (144 total per environment) evaluated over 8 seeds.
 #
 # Environments: 16 Gymnax Environments:
 #   Classic Control: CartPole-v1, Pendulum-v1, Acrobot-v1, MountainCar-v0, MountainCarContinuous-v0
@@ -98,17 +102,18 @@ fi
 
 N_SEEDS=${CUSTOM_SEEDS:-8}
 CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0003 0.001 0.003"}
-EPOCHS=${CUSTOM_EPOCHS:-"4 16"}
+EPOCHS=${CUSTOM_EPOCHS:-"4 16 32"}
 WDS=${CUSTOM_WDS:-"0.001 0.01"}
 HEADS=${CUSTOM_HEADS:-"1 4"}
-RETURN_LAMBDAS=${CUSTOM_RETURN_LAMBDAS:-"0.9 0.99"}
+LAMBDA_VAL=${CUSTOM_LAMBDA:-0.9}
+RETURN_LAMBDA=${CUSTOM_RETURN_LAMBDA:-0.99}
 
 # Unified suite directory: all tasks in the SLURM array share SLURM_ARRAY_JOB_ID
 SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+cmp_td_vs_e_${SLURM_ARRAY_JOB_ID}}}"
 SWEEP_ID="${SWEEP_ID:-cmp_td_vs_e_${SLURM_JOB_ID:-$(date +"%Y%m%d_%H%M%S")}}"
 
 echo "======================================================================"
-echo "LAUNCHING HEAD-TO-HEAD COMPARISON: TD vs E_EXPERIMENTAL"
+echo "LAUNCHING 4-WAY CRITIC COMPARISON: E(0), TD(0), E(lambda), TD(lambda)"
 echo "  Suite / Sweep:  $SWEEP_ID"
 echo "  Environment:    $ENV_NAME"
 echo "  Timesteps:      $TOTAL_TIMESTEPS"
@@ -117,7 +122,8 @@ echo "  Critic LRs:     $CRITIC_LRS"
 echo "  Critic Epochs:  $EPOCHS"
 echo "  Weight Decays:  $WDS"
 echo "  Value Heads:    $HEADS"
-echo "  Return Lambdas: $RETURN_LAMBDAS"
+echo "  Lambda (trace): $LAMBDA_VAL"
+echo "  Return Lambda:  $RETURN_LAMBDA"
 echo "  Python:         $PYTHON"
 echo "  Node / Host:    $(hostname)"
 echo "  Date:           $(date)"
@@ -132,7 +138,8 @@ $PYTHON scripts/td_vs_e_experimental/sweep_td_vs_e_experimental.py \
     --epochs-grid $EPOCHS \
     --wd-grid $WDS \
     --heads-grid $HEADS \
-    --return-lambda-grid $RETURN_LAMBDAS
+    --lambda-val "$LAMBDA_VAL" \
+    --return-lambda "$RETURN_LAMBDA"
 
 STATUS=$?
 if [ $STATUS -eq 0 ]; then

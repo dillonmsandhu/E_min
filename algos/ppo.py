@@ -29,7 +29,10 @@ def make_train(base_config):
     def train(rng, hparams=None):
         config = utils.merge_hparams(base_config, hparams)
         k = config.get('k', 32)
-        network, network_params = networks.initialize_network(rng, obs_shape, env, env_params, k, n_heads=2, layer_norm=config['LAYER_NORM'])
+        n_value_heads = config.get("NUM_VALUE_HEADS", 1)
+        network, network_params = networks.initialize_network(
+            rng, obs_shape, env, env_params, k, n_heads=2, layer_norm=config['LAYER_NORM'], n_value_heads=n_value_heads
+        )
         train_state = networks.initialize_flax_train_state(config, network, network_params)
         
         rng, _rng = jax.random.split(rng)
@@ -55,7 +58,7 @@ def make_train(base_config):
                     rng_step, env_state, action, env_params
                 )
                 true_next_obs = info['real_next_obs'].reshape(last_obs.shape)
-                next_val = network.apply(train_state.params, true_next_obs, method=network.value)
+                _, next_val = network.apply(train_state.params, true_next_obs)
 
                 clean_info = {k: v for k, v in info.items() if k not in ["real_next_obs", "real_next_state"]}
                 transition = Transition(
