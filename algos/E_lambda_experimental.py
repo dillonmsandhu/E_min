@@ -288,16 +288,19 @@ def make_train(base_config):
             )
 
             # Packaging losses for metrics tracking
-            val_loss_epoch, mag_loss_epoch, dir_loss_epoch = c_loss_epochs
-            act_loss_epoch, ent_epoch = a_loss_epochs
+            val_loss = c_loss_epochs[0].mean()
+            mag_loss = c_loss_epochs[1].mean()
+            dir_loss = c_loss_epochs[2].mean()
+            act_loss = a_loss_epochs[0].mean()
+            ent = a_loss_epochs[1].mean()
 
             loss_info = {
-                "value_loss": val_loss_epoch,
-                "magnitude_loss": mag_loss_epoch,
-                "dirichlet_loss": dir_loss_epoch,
-                "actor_loss": act_loss_epoch,
-                "entropy": ent_epoch,
-                "total_loss": val_loss_epoch + act_loss_epoch,
+                "total_loss": val_loss + act_loss,
+                "value_loss": val_loss,
+                "magnitude_loss": mag_loss,
+                "dirichlet_loss": dir_loss,
+                "actor_loss": act_loss,
+                "entropy": ent,
             }
 
             # 5. RUNTIME METRICS
