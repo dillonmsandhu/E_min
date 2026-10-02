@@ -148,13 +148,114 @@ def main():
             row["delta_Elam_vs_TDlam"] = best_cl["delta"]
             row["p_val_lambda"] = best_cl["p_value"]
 
+        # Also grab AUC if available from df_best
+        if df_best is not None and not df_best.empty and "auc" in df_best.columns:
+            for _, r in df_best.iterrows():
+                algo = r["algorithm"]
+                row[f"{algo}_auc"] = r["auc"]
+
         suite_rows.append(row)
 
     df_suite = pd.DataFrame(suite_rows)
     suite_csv = os.path.join(suite_dir, "suite_summary_best.csv")
     df_suite.to_csv(suite_csv, index=False)
     print(f"\nSaved suite summary table to: {suite_csv}")
-    print(df_suite.to_string(index=False))
+
+    # =========================================================================
+    # GENERATE MARKDOWN SUMMARY TABLE (like compile_cmp_td_vs_e_master_pdf.py)
+    # =========================================================================
+    md_lines = []
+    md_lines.append("# Brax Continuous Control Benchmark Suite: 4-Way Critic Comparison\n")
+    md_lines.append("Benchmark evaluating **TD(0)**, **E(0)**, **TD(λ=0.9)**, and **E(λ=0.9)** across all Brax continuous control environments.\n")
+    md_lines.append("| Environment | E(0) Return | TD(0) Return | Δ (E0 - TD0) | Winner (0) | E(λ=0.9) Return | TD(λ=0.9) Return | Δ (Eλ - TDλ) | Winner (λ) | Best Overall |")
+    md_lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+
+    e0_wins, td0_wins, el_wins, tdl_wins = 0, 0, 0, 0
+    e0_returns, td0_returns, el_returns, tdl_returns = [], [], [], []
+
+    for _, r in df_suite.iterrows():
+        env_name = r["environment"]
+        e0_ret = r.get("E_0_return", np.nan)
+        e0_sem = r.get("E_0_sem", np.nan)
+        td0_ret = r.get("TD_0_return", np.nan)
+        td0_sem = r.get("TD_0_sem", np.nan)
+
+        el_ret = r.get("E_lambda_return", np.nan)
+        el_sem = r.get("E_lambda_sem", np.nan)
+        tdl_ret = r.get("TD_lambda_return", np.nan)
+        tdl_sem = r.get("TD_lambda_sem", np.nan)
+
+        if not np.isnan(e0_ret):
+            e0_returns.append(e0_ret)
+        if not np.isnan(td0_ret):
+            td0_returns.append(td0_ret)
+        if not np.isnan(el_ret):
+            el_returns.append(el_ret)
+        if not np.isnan(tdl_ret):
+            tdl_returns.append(tdl_ret)
+
+        e0_str = f"{e0_ret:.1f} ± {e0_sem:.1f}" if not np.isnan(e0_ret) else "—"
+        td0_str = f"{td0_ret:.1f} ± {td0_sem:.1f}" if not np.isnan(td0_ret) else "—"
+
+        if not np.isnan(e0_ret) and not np.isnan(td0_ret):
+            d0 = e0_ret - td0_ret
+            d0_str = f"{d0:+.1f}"
+            if d0 > 0:
+                w0_str = "**E(0)**"
+                e0_wins += 1
+            elif d0 < 0:
+                w0_str = "**TD(0)**"
+                td0_wins += 1
+            else:
+                w0_str = "Tie"
+        else:
+            d0_str = "—"
+            w0_str = "—"
+
+        el_str = f"{el_ret:.1f} ± {el_sem:.1f}" if not np.isnan(el_ret) else "—"
+        tdl_str = f"{tdl_ret:.1f} ± {tdl_sem:.1f}" if not np.isnan(tdl_ret) else "—"
+
+        if not np.isnan(el_ret) and not np.isnan(tdl_ret):
+            dl = el_ret - tdl_ret
+            dl_str = f"{dl:+.1f}"
+            if dl > 0:
+                wl_str = "**E(λ)**"
+                el_wins += 1
+            elif dl < 0:
+                wl_str = "**TD(λ)**"
+                tdl_wins += 1
+            else:
+                wl_str = "Tie"
+        else:
+            dl_str = "—"
+            wl_str = "—"
+
+        best_algo = r.get("best_overall_algo", "—")
+        best_str = f"**{ALGO_PRETTY_NAMES.get(best_algo, best_algo)}**" if best_algo != "—" else "—"
+
+        md_lines.append(f"| `{env_name}` | {e0_str} | {td0_str} | {d0_str} | {w0_str} | {el_str} | {tdl_str} | {dl_str} | {wl_str} | {best_str} |")
+
+    # Summary Row
+    mean_e0_str = f"{np.mean(e0_returns):.1f}" if e0_returns else "—"
+    mean_td0_str = f"{np.mean(td0_returns):.1f}" if td0_returns else "—"
+    mean_d0_str = f"{np.mean(e0_returns) - np.mean(td0_returns):+.1f}" if (e0_returns and td0_returns) else "—"
+
+    mean_el_str = f"{np.mean(el_returns):.1f}" if el_returns else "—"
+    mean_tdl_str = f"{np.mean(tdl_returns):.1f}" if tdl_returns else "—"
+    mean_dl_str = f"{np.mean(el_returns) - np.mean(tdl_returns):+.1f}" if (el_returns and tdl_returns) else "—"
+
+    md_lines.append(f"| **SUITE MEAN** | **{mean_e0_str}** | **{mean_td0_str}** | **{mean_d0_str}** | — | **{mean_el_str}** | **{mean_tdl_str}** | **{mean_dl_str}** | — | — |")
+    md_lines.append(f"| **WIN TALLY** | **{e0_wins} Wins** | **{td0_wins} Wins** | — | — | **{el_wins} Wins** | **{tdl_wins} Wins** | — | — | — |\n")
+
+    md_content = "\n".join(md_lines)
+    suite_md = os.path.join(suite_dir, "suite_summary.md")
+    with open(suite_md, "w") as f:
+        f.write(md_content)
+
+    print("\n" + "=" * 80)
+    print(md_content)
+    print("=" * 80)
+    print(f"Saved suite markdown summary to: {suite_md}")
 
     # =========================================================================
     # 2. GENERATE MULTI-PAGE PUBLICATION PDF REPORT
