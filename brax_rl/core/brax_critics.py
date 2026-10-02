@@ -52,7 +52,7 @@ def get_critic_target_lambda(config: dict) -> float:
     """
     critic_type = config.get("CRITIC_TYPE", "fitted").lower()
     if critic_type in ["e_0", "e0", "e", "e_lambda", "elambda", "e_geometric"]:
-        return config.get("RETURN_LAMBDA", config.get("VALUE_LAMBDA", 1.0))
+        return config.get("RETURN_LAMBDA", 1.0)
     elif critic_type in ["td_0", "td", "td0"]:
         return config.get("TD_LAMBDA", 0.0)
     else:  # fitted / ppo
@@ -401,6 +401,7 @@ def td_0_loss_fn(params, network, traj_batch, gae, targets, config, ent_coef=Non
     # 3. Compute live 1-step TD(0) MSE value loss
     vf_clip = config.get("VF_CLIP", config.get("CLIP_EPS", None))
     gamma = config.get("GAMMA", 0.99)
+    value_head_agg = config.get("VALUE_HEAD_AGG", "mean")
     truncation = (
         traj_batch.info.get("truncation", traj_batch.info.get("is_timeout", None))
         if isinstance(traj_batch.info, dict) else None

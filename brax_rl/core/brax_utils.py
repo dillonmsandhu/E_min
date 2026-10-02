@@ -141,46 +141,6 @@ def scale_rms(x):
     
     return scaled_x
 
-def standardize_no_sign_flip(x):
-    standardized_x = (x - jnp.mean(x)) / (x.std() + 1e-8)
-    min_val = jnp.min(jnp.abs(standardized_x))
-    sign_flipped = jnp.sign(x) * jnp.sign(standardized_x) < 0
-    min_vals = jnp.sign(x) * min_val
-    return jnp.where(sign_flipped, min_vals, standardized_x)
-
-def center_preserve_sign(x):
-    centered_x = x - jnp.mean(x)
-    pos = centered_x > 0
-    neg = centered_x < 0
-    fallback = 1e-8
-
-    min_positive = jnp.where(
-        jnp.any(pos),
-        jnp.min(jnp.where(pos, centered_x, jnp.inf)),
-        fallback
-    )
-    max_negative = jnp.where(
-        jnp.any(neg),
-        jnp.max(jnp.where(neg, centered_x, -jnp.inf)),
-        -fallback
-    )
-
-    sign_flipped = jnp.sign(x) * jnp.sign(centered_x) < 0
-    pos_flipped_abs = jnp.where(jnp.logical_and(sign_flipped, x > 0), jnp.abs(x), 0.0)
-    neg_flipped_abs = jnp.where(jnp.logical_and(sign_flipped, x < 0), jnp.abs(x), 0.0)
-
-    scaling_factor = jnp.clip(jnp.std(x) / (jnp.max(jnp.abs(x)) + 1e-8), 0.01, 1.0)
-    largest_flipped_pos = jnp.maximum(jnp.max(pos_flipped_abs), fallback)
-    largest_flipped_neg = jnp.maximum(jnp.max(neg_flipped_abs), fallback)
-
-    replacement_values = jnp.where(
-        x > 0,
-        (x / largest_flipped_pos) * min_positive * scaling_factor,
-        (jnp.abs(x) / largest_flipped_neg) * max_negative * scaling_factor
-    )
-
-    return jnp.where(sign_flipped, replacement_values, centered_x)
-
 def warmup_and_reset_stats(rng, env, env_params, num_envs, warmup_steps = 1000):
     
     # 1. Standard Reset
