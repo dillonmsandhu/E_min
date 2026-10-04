@@ -261,13 +261,14 @@ def huber_loss(x, delta: float = 1.0):
 
 
 def e_experimental_critic_loss(
-    v_i, targets_i, v_j, targets_j, done, gamma: float, loss_type: str = "mse", delta: float = 1.0, agg: str = "sum"
+    v_i, targets_i, v_j, targets_j, done, gamma: float, is_timeout=None, loss_type: str = "mse", delta: float = 1.0, agg: str = "sum"
 ):
     """
     Sampled E-loss supporting Huber loss and multi-value head aggregation.
     - v_i, v_j: (B,) or (B, K) where K is the number of value heads.
     - targets_i, targets_j: (B,) or (B, 1)
-    - done: (B,) or (B, 1)
+    - done: (B,) or (B, 1) true terminal mask or done mask
+    - is_timeout: (B,) or (B, 1) bool mask for time truncation (Dirichlet loss masked to 0.0)
     - loss_type: 'mse' or 'huber'
     - delta: transition threshold for Huber loss
     - agg: 'sum' or 'mean' across value heads
@@ -280,16 +281,24 @@ def e_experimental_critic_loss(
         targets_j = targets_j[:, None]
     if done.ndim == 1:
         done = done[:, None]
+    if is_timeout is not None:
+        if is_timeout.ndim == 1:
+            is_timeout = is_timeout[:, None]
+        true_terminal = done & ~is_timeout
+        lap_mask = ~is_timeout
+    else:
+        true_terminal = done
+        lap_mask = jnp.ones_like(done, dtype=bool)
 
     e_i = targets_i - v_i
-    e_j = jnp.where(done, 0.0, targets_j - v_j)
+    e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
 
     if loss_type.lower() == "huber":
         mag_err = 2.0 * huber_loss(e_i, delta)
-        lap_err = 2.0 * huber_loss(e_i - e_j, delta)
+        lap_err = jnp.where(lap_mask, 2.0 * huber_loss(e_i - e_j, delta), 0.0)
     else:
         mag_err = e_i ** 2
-        lap_err = (e_i - e_j) ** 2
+        lap_err = jnp.where(lap_mask, (e_i - e_j) ** 2, 0.0)
 
     # Compute per-head losses along batch dimension
     mag_per_head = (1.0 - gamma) * jnp.mean(mag_err, axis=0)
@@ -450,6 +459,7 @@ def calculate_e_lambda_targets(
     true_terminal = traj_batch.done & ~is_timeout
     done_f = traj_batch.done.astype(jnp.float32)
     true_term_f = true_terminal.astype(jnp.float32)
+    is_timeout_f = is_timeout.astype(jnp.float32)
 
     # Continuation error at rollout buffer boundary step T
     if next_value_T is None:
@@ -460,10 +470,10 @@ def calculate_e_lambda_targets(
 
     # 2. Forward Trace: Accumulate future errors backwards in time
     def _backward_pass(forward_trace, transition):
-        done_t, true_term_t, e_nxt = transition
+        done_t, true_term_t, is_timeout_t, e_nxt = transition
         valid_future = 1.0 - done_t
         trace_t = jnp.where(
-            true_term_t > 0.5,
+            (true_term_t > 0.5) | (is_timeout_t > 0.5),
             0.0,
             e_nxt + gl * valid_future * forward_trace,
         )
@@ -473,7 +483,7 @@ def calculate_e_lambda_targets(
     _, forward_traces = jax.lax.scan(
         _backward_pass,
         init_forward,
-        (done_f, true_term_f, e_next),
+        (done_f, true_term_f, is_timeout_f, e_next),
         reverse=True,
     )
 
@@ -520,6 +530,7 @@ def e_lambda_differentiable_critic_loss(
     true_terminals=None,
     next_value_T=None,
     next_target_T=None,
+    is_timeouts=None,
 ):
     """
     Computes differentiable E(lambda) loss using backward moment traces (Method 2).
@@ -531,8 +542,7 @@ def e_lambda_differentiable_critic_loss(
       and bootstrapped target next_target_T (matching E.py), evaluating (e_{T-1} - e_T)^2.
     - True terminal transitions (true_terminals_t = 1): transitions to absorbing ground state
       with error e_infty = 0, evaluating dirichlet_t = (e_t - 0)^2 = e_t^2.
-    - Timeout transitions (is_timeout_t = 1): evaluates 1-step lookahead (e_t - e_{t+1})^2
-      without artificial absorbing state penalty, and cleanly severs multi-step future accumulation.
+    - Timeout transitions (is_timeout_t = 1): masked out (dirichlet_t = 0.0) since edge is incomplete.
 
     Args:
         values: (T, B) predicted values v(s_t) from network.apply(params, obs)
@@ -543,12 +553,15 @@ def e_lambda_differentiable_critic_loss(
         true_terminals: (T, B) bool array of true task terminations (done & ~is_timeout)
         next_value_T: (B,) predicted value v_theta(s_T) at chunk boundary
         next_target_T: (B,) bootstrapped return target G_T at chunk boundary
+        is_timeouts: (T, B) bool array of timeout truncations
 
     Returns:
         value_loss, magnitude_loss, dirichlet_loss
     """
     if true_terminals is None:
         true_terminals = dones
+    if is_timeouts is None:
+        is_timeouts = dones & ~true_terminals
     if next_value_T is None:
         next_value_T = jnp.zeros_like(values[0])
     if next_target_T is None:
@@ -558,6 +571,7 @@ def e_lambda_differentiable_critic_loss(
     gl = gamma * lmbda
     done_f = dones.astype(jnp.float32)
     true_term_f = true_terminals.astype(jnp.float32)
+    is_timeout_f = is_timeouts.astype(jnp.float32)
 
     # Continuation error at rollout buffer boundary step T
     e_T = jnp.where(true_terminals[-1], 0.0, next_target_T - next_value_T)
@@ -566,10 +580,10 @@ def e_lambda_differentiable_critic_loss(
 
     def _moment_step(traces, transition):
         w0_future, w1_future, w2_future = traces
-        done_t, true_term_t, e_curr, e_nxt = transition
+        done_t, true_term_t, is_timeout_t, e_curr, e_nxt = transition
 
         # If true terminal: absorbs to e=0, w0=1, w1=0, w2=0
-        # If timeout: 1-step lookahead to e_nxt, no future accumulation (w_future zeroed)
+        # If timeout: masked to 0.0 (incomplete edge)
         # If ongoing: 1-step lookahead to e_nxt + discounted future moments
         valid_future = 1.0 - done_t
 
@@ -578,7 +592,12 @@ def e_lambda_differentiable_critic_loss(
         w2_t = jnp.where(true_term_t > 0.5, 0.0, (e_nxt ** 2) + gl * valid_future * w2_future)
 
         # Dirichlet quadratic expansion: w0 * e_t^2 - 2 * w1 * e_t + w2
-        dirichlet_t = w0_t * (e_curr ** 2) - 2.0 * w1_t * e_curr + w2_t
+        # Masked to 0.0 on timeout
+        dirichlet_t = jnp.where(
+            is_timeout_t > 0.5,
+            0.0,
+            w0_t * (e_curr ** 2) - 2.0 * w1_t * e_curr + w2_t,
+        )
 
         # Traces passed backward to step t-1 are severed if episode ended (done_t == 1)
         valid_to_prev = 1.0 - done_t
@@ -596,7 +615,7 @@ def e_lambda_differentiable_critic_loss(
     _, dirichlet_terms = jax.lax.scan(
         _moment_step,
         init_traces,
-        (done_f, true_term_f, errors, e_next),
+        (done_f, true_term_f, is_timeout_f, errors, e_next),
         reverse=True,
     )
 
@@ -926,12 +945,12 @@ def prepare_geometric_jump_transitions(
 
     # 7. Valid jump mask:
     # - true terminal: absorbing (handled via is_absorbing)
-    # - timeout: valid iff jumps == 0
+    # - timeout: masked to False (incomplete edge, no future empirical return target exists)
     # - ongoing: valid iff no episode reset occurred between t and target
     valid_jump = jnp.where(
-        true_terminal,
+        true_terminal | is_timeout,
         False,
-        jnp.where(is_timeout, jumps == 0, ~has_reset_between),
+        ~has_reset_between,
     )
 
     return obs_jump, targets_jump, valid_jump, is_absorbing

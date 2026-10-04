@@ -122,7 +122,7 @@ def make_train(base_config):
             # 3. SPLIT OPTIMIZATION: CRITIC UPDATE PHASE (E-MINIMIZATION)
             def _critic_epoch(critic_state, unused):
                 def _critic_minibatch(train_state, mb):
-                    obs_mb, next_obs_mb, done_mb, next_target_mb, targets_mb = mb
+                    obs_mb, next_obs_mb, done_mb, is_timeout_mb, next_target_mb, targets_mb = mb
 
                     def _c_loss(critic_params):
                         full_params = {"params": {**train_state.actor.params, **critic_params}}
@@ -143,6 +143,7 @@ def make_train(base_config):
                             next_target_mb,
                             done_mb,
                             config["GAMMA"],
+                            is_timeout=is_timeout_mb,
                             loss_type=critic_loss_type,
                             delta=huber_delta,
                             agg=value_head_agg,
@@ -165,6 +166,7 @@ def make_train(base_config):
                 traj_batch.obs,
                 traj_batch.next_obs,
                 true_terminal,
+                is_timeout,
                 traj_batch.next_target,
                 targets,
             )
