@@ -68,6 +68,17 @@ ALGO_LINE_STYLES = {
 }
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f"Boolean value expected, got {v}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Brax 4-Way Critic Sweep: TD(0), E(0), TD(lambda), E(lambda)")
     parser.add_argument("--env-name", type=str, default="hopper",
@@ -94,12 +105,18 @@ def parse_args():
                         help="Critic learning rate grid (default: 1e-4 3e-4 1e-3)")
     parser.add_argument("--epochs-grid", type=int, nargs="+", default=[4, 8, 16],
                         help="Critic epochs grid (default: 4 8 16)")
+    parser.add_argument("--layer-norm-grid", type=str2bool, nargs="+", default=[False, True],
+                        help="Layer norm grid for policy and value networks (default: False True)")
+    parser.add_argument("--layer-norm", type=str2bool, default=None,
+                        help="Single layer norm boolean (overrides --layer-norm-grid if specified)")
 
     # Lambda parameters
     parser.add_argument("--lambda-val", type=float, default=0.9,
                         help="Fixed lambda for TD(lambda) and E(lambda) (default: 0.9)")
-    parser.add_argument("--return-lambda", type=float, default=0.9,
-                        help="Return target lambda for E(0) and E(lambda) (default: 0.9)")
+    parser.add_argument("--return-lambda-grid", type=float, nargs="+", default=[0.95, 1.0],
+                        help="Return target lambda grid for E(0) and E(lambda) (default: 0.95 1.0)")
+    parser.add_argument("--return-lambda", type=float, default=None,
+                        help="Single return target lambda (overrides --return-lambda-grid if specified)")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
                         help="GAE lambda for policy advantage estimation (default: 0.95)")
 
@@ -155,11 +172,12 @@ def extract_scalar_summary(returns_matrix, window_size=10):
     }
 
 
-def configure_algorithm(base_cfg, algo_name, clr, ep, lambda_val, return_lambda, gae_lambda):
+def configure_algorithm(base_cfg, algo_name, clr, ep, ln, lambda_val, return_lambda, gae_lambda):
     """Configures the specific algorithm parameters into a fresh config copy."""
     cfg = base_cfg.copy()
     cfg["CRITIC_LR"] = clr
     cfg["CRITIC_EPOCHS"] = ep
+    cfg["LAYER_NORM"] = ln
     cfg["GAE_LAMBDA"] = gae_lambda
 
     if algo_name == "TD_0":
@@ -275,7 +293,14 @@ def plot_4way_poster(best_results, curves_dict, all_results, args, out_dir, step
         if algo not in all_results:
             continue
         best_lr = best_results[algo]["critic_lr"]
-        sub = [r for r in all_results[algo] if r["critic_lr"] == best_lr]
+        best_rlam = best_results[algo].get("return_lambda")
+        best_ln = best_results[algo].get("layer_norm")
+        sub = [
+            r for r in all_results[algo]
+            if r["critic_lr"] == best_lr
+            and r.get("return_lambda") == best_rlam
+            and r.get("layer_norm") == best_ln
+        ]
         sub.sort(key=lambda x: x["critic_epochs"])
 
         x_eps = [r["critic_epochs"] for r in sub]
@@ -357,8 +382,9 @@ def main():
     print(f"  Rollout:          {args.num_envs} envs x {args.num_steps} steps (batch = {args.num_envs * args.num_steps:,})")
     print(f"  Critic LR Grid:   {args.critic_lr_grid}")
     print(f"  Critic Ep Grid:   {args.epochs_grid}")
+    print(f"  Layer Norm Grid:  {args.layer_norm_grid if args.layer_norm is None else [args.layer_norm]}")
     print(f"  Lambda Val:       {args.lambda_val} (for TD_lambda & E_lambda)")
-    print(f"  Return Lambda:    {args.return_lambda} (for E_0 & E_lambda)")
+    print(f"  Return Lambda Grid: {args.return_lambda_grid if args.return_lambda is None else [args.return_lambda]} (for E_0 & E_lambda)")
     print(f"  GAE Lambda:       {args.gae_lambda}")
     print(f"  Algorithms:       {args.algos}")
     print(f"  Output Directory: {out_dir}")
@@ -382,27 +408,46 @@ def main():
     curves_dict = {}
     best_results = {}
     all_metrics = {}
-    grid = list(itertools.product(args.critic_lr_grid, args.epochs_grid))
+    ret_lambda_list = [args.return_lambda] if args.return_lambda is not None else args.return_lambda_grid
+    ln_list = [args.layer_norm] if args.layer_norm is not None else args.layer_norm_grid
 
     for algo_idx, algo_name in enumerate(args.algos, 1):
         disp_name = ALGO_PRETTY_NAMES.get(algo_name, algo_name)
-        print(f"\n>>> [{algo_idx}/{len(args.algos)}] RUNNING SWEEP FOR {disp_name} ({len(grid)} Configurations)...")
+        if algo_name in ["E_0", "E_lambda"]:
+            algo_grid = [
+                (clr, ep, ln, rlam)
+                for (clr, ep, ln), rlam in itertools.product(
+                    itertools.product(args.critic_lr_grid, args.epochs_grid, ln_list), ret_lambda_list
+                )
+            ]
+        else:
+            algo_grid = [
+                (clr, ep, ln, None)
+                for clr, ep, ln in itertools.product(args.critic_lr_grid, args.epochs_grid, ln_list)
+            ]
+
+        print(f"\n>>> [{algo_idx}/{len(args.algos)}] RUNNING SWEEP FOR {disp_name} ({len(algo_grid)} Configurations)...")
 
         algo_rows = []
         curves_dict[algo_name] = {}
         all_metrics[algo_name] = {}
 
-        for cfg_idx, (clr, ep) in enumerate(grid, 1):
-            label = f"{algo_name}_clr{clr}_ep{ep}"
-            print(f"  [{cfg_idx:02d}/{len(grid)}] {algo_name} | LR={clr}, Epochs={ep} ...")
+        for cfg_idx, (clr, ep, ln, rlam) in enumerate(algo_grid, 1):
+            if rlam is not None:
+                label = f"{algo_name}_clr{clr}_ep{ep}_ln{ln}_rlam{rlam}"
+                print(f"  [{cfg_idx:02d}/{len(algo_grid)}] {algo_name} | LR={clr}, Epochs={ep}, LN={ln}, ReturnLambda={rlam} ...")
+            else:
+                label = f"{algo_name}_clr{clr}_ep{ep}_ln{ln}"
+                print(f"  [{cfg_idx:02d}/{len(algo_grid)}] {algo_name} | LR={clr}, Epochs={ep}, LN={ln} ...")
 
             cfg = configure_algorithm(
                 base_cfg=base_cfg,
                 algo_name=algo_name,
                 clr=clr,
                 ep=ep,
+                ln=ln,
                 lambda_val=args.lambda_val,
-                return_lambda=args.return_lambda,
+                return_lambda=rlam if rlam is not None else 1.0,
                 gae_lambda=args.gae_lambda,
             )
 
@@ -416,6 +461,7 @@ def main():
                 "sem": np.std(returns, axis=0, ddof=1) / np.sqrt(args.n_seeds) if args.n_seeds > 1 else np.zeros(returns.shape[1]),
                 "critic_lr": clr,
                 "critic_epochs": ep,
+                "layer_norm": ln,
             }
             all_metrics[algo_name][label] = {
                 "returns": returns,
@@ -430,8 +476,9 @@ def main():
                 "label": label,
                 "critic_lr": clr,
                 "critic_epochs": ep,
+                "layer_norm": ln,
                 "lambda_val": args.lambda_val if "lambda" in algo_name else None,
-                "return_lambda": args.return_lambda if algo_name.startswith("E") else None,
+                "return_lambda": rlam,
                 "final_mean": stats_dict["final_mean"],
                 "final_sem": stats_dict["final_sem"],
                 "final_std": stats_dict["final_std"],
@@ -471,7 +518,12 @@ def main():
         if algo_a in best_results and algo_b in best_results:
             rows = []
             for r_a in all_results[algo_a]:
-                matching_b = [r for r in all_results[algo_b] if r["critic_lr"] == r_a["critic_lr"] and r["critic_epochs"] == r_a["critic_epochs"]]
+                matching_b = [
+                    r for r in all_results[algo_b]
+                    if r["critic_lr"] == r_a["critic_lr"]
+                    and r["critic_epochs"] == r_a["critic_epochs"]
+                    and r["layer_norm"] == r_a["layer_norm"]
+                ]
                 if matching_b:
                     r_b = matching_b[0]
                     seeds_a = r_a["_seed_finals"]
@@ -491,6 +543,7 @@ def main():
                         "env_name": args.env_name,
                         "critic_lr": r_a["critic_lr"],
                         "critic_epochs": r_a["critic_epochs"],
+                        "layer_norm": r_a["layer_norm"],
                         f"{algo_a}_return": r_a["final_mean"],
                         f"{algo_a}_sem": r_a["final_sem"],
                         f"{algo_b}_return": r_b["final_mean"],

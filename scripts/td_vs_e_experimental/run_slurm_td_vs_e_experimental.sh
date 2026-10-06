@@ -101,14 +101,15 @@ else
 fi
 
 N_SEEDS=${CUSTOM_SEEDS:-6}
-NUM_ENVS=${CUSTOM_NUM_ENVS:-64}
+NUM_ENVS=${CUSTOM_NUM_ENVS:-256}
 NUM_STEPS=${CUSTOM_NUM_STEPS:-256}
 CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0003 0.001 0.003"}
 EPOCHS=${CUSTOM_EPOCHS:-"4 16"}
 WDS=${CUSTOM_WDS:-"0.001 0.01"}
 HEADS=${CUSTOM_HEADS:-"1 4"}
+LAYER_NORMS=${CUSTOM_LAYER_NORMS:-"False True"}
 LAMBDA_VAL=${CUSTOM_LAMBDA:-0.9}
-RETURN_LAMBDA=${CUSTOM_RETURN_LAMBDA:-1.0}
+RETURN_LAMBDAS=${CUSTOM_RETURN_LAMBDAS:-"0.95 1.0"}
 
 # Unified suite directory: all tasks in the SLURM array share SLURM_ARRAY_JOB_ID
 SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+cmp_td_vs_e_${SLURM_ARRAY_JOB_ID}}}"
@@ -125,8 +126,9 @@ echo "  Critic LRs:     $CRITIC_LRS"
 echo "  Critic Epochs:  $EPOCHS"
 echo "  Weight Decays:  $WDS"
 echo "  Value Heads:    $HEADS"
+echo "  Layer Norms:    $LAYER_NORMS"
 echo "  Lambda (trace): $LAMBDA_VAL"
-echo "  Return Lambda:  $RETURN_LAMBDA"
+echo "  Return Lambdas: $RETURN_LAMBDAS (for E)"
 echo "  Python:         $PYTHON"
 echo "  Node / Host:    $(hostname)"
 echo "  Date:           $(date)"
@@ -143,8 +145,9 @@ $PYTHON scripts/td_vs_e_experimental/sweep_td_vs_e_experimental.py \
     --epochs-grid $EPOCHS \
     --wd-grid $WDS \
     --heads-grid $HEADS \
+    --layer-norm-grid $LAYER_NORMS \
     --lambda-val "$LAMBDA_VAL" \
-    --return-lambda "$RETURN_LAMBDA"
+    --return-lambda-grid $RETURN_LAMBDAS
 
 STATUS=$?
 if [ $STATUS -eq 0 ]; then

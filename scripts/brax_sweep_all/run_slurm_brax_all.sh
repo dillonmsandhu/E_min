@@ -110,8 +110,9 @@ NUM_STEPS=${CUSTOM_NUM_STEPS:-128}
 
 CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0001 0.0003 0.001"}
 EPOCHS=${CUSTOM_EPOCHS:-"4 16"}
+LAYER_NORMS=${CUSTOM_LAYER_NORMS:-"False True"}
 LAMBDA_VAL=${CUSTOM_LAMBDA:-0.9}
-RETURN_LAMBDA=${CUSTOM_RETURN_LAMBDA:-1.0}
+RETURN_LAMBDAS=${CUSTOM_RETURN_LAMBDAS:-"0.95 1.0"}
 ALGOS=${CUSTOM_ALGOS:-"TD_0 E_0 TD_lambda E_lambda"}
 
 # Unified suite directory across all tasks in the SLURM array
@@ -127,8 +128,9 @@ echo "  Seeds:          $N_SEEDS"
 echo "  Rollout:        $NUM_ENVS envs x $NUM_STEPS steps"
 echo "  Critic LRs:     $CRITIC_LRS"
 echo "  Critic Epochs:  $EPOCHS"
+echo "  Layer Norms:    $LAYER_NORMS"
 echo "  Lambda (trace): $LAMBDA_VAL"
-echo "  Return Lambda:  $RETURN_LAMBDA"
+echo "  Return Lambdas: $RETURN_LAMBDAS (for E)"
 echo "  Algorithms:     $ALGOS"
 echo "  Python:         $PYTHON"
 echo "  Node / Host:    $(hostname)"
@@ -144,8 +146,9 @@ $PYTHON scripts/brax_sweep_all/sweep_brax_all.py \
     --num-steps "$NUM_STEPS" \
     --critic-lr-grid $CRITIC_LRS \
     --epochs-grid $EPOCHS \
+    --layer-norm-grid $LAYER_NORMS \
     --lambda-val "$LAMBDA_VAL" \
-    --return-lambda "$RETURN_LAMBDA" \
+    --return-lambda-grid $RETURN_LAMBDAS \
     --algos $ALGOS
 
 STATUS=$?

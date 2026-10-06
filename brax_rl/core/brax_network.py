@@ -12,17 +12,23 @@ class ActorCritic(nn.Module):
     activation: str = "tanh"
     log_std_init: float = -0.5
     n_value_heads: int = 1
+    layer_norm: bool = False
 
     def setup(self):
         activation = nn.relu if self.activation == "relu" else nn.tanh
 
-        self.actor_mean = nn.Sequential([
+        actor_layers = [
             nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
-            activation,
-            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
-            activation,
-            nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)),
-        ])
+        ]
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(activation)
+        actor_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(activation)
+        actor_layers.append(nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)))
+        self.actor_mean = nn.Sequential(actor_layers)
 
         self.actor_logstd = self.param(
             "log_std",
@@ -30,13 +36,18 @@ class ActorCritic(nn.Module):
             (self.action_dim,),
         )
 
-        self.critic = nn.Sequential([
+        critic_layers = [
             nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
-            activation,
-            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
-            activation,
-            nn.Dense(self.n_value_heads, kernel_init=orthogonal(1.0), bias_init=constant(0.0)),
-        ])
+        ]
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(activation)
+        critic_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(activation)
+        critic_layers.append(nn.Dense(self.n_value_heads, kernel_init=orthogonal(1.0), bias_init=constant(0.0)))
+        self.critic = nn.Sequential(critic_layers)
 
     def __call__(self, x):
         actor_mean = self.actor_mean(x)

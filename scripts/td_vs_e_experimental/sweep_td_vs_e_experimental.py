@@ -90,6 +90,17 @@ ALGO_PRETTY_NAMES = {
 }
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f"Boolean value expected, got {v}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Comprehensive 4-way comparison sweep: E(0), TD(0), E(lambda), and TD(lambda)"
@@ -103,7 +114,7 @@ def parse_args():
     parser.add_argument("--num-envs", type=int, default=64,
                         help="Number of parallel environments (default: 64)")
     parser.add_argument("--num-steps", type=int, default=256,
-                        help="Number of rollout steps per env (default: 64)")
+                        help="Number of rollout steps per env (default: 256)")
     parser.add_argument("--minibatch-size", type=int, default=1024,
                         help="Minibatch size for SGD updates (default: 1024)")
     parser.add_argument("--actor-lr", type=float, default=0.0003,
@@ -120,12 +131,18 @@ def parse_args():
                         help="Critic weight decay grid (default: 0.001 0.01)")
     parser.add_argument("--heads-grid", type=int, nargs="+", default=[1, 4],
                         help="Value heads grid (default: 1 4)")
+    parser.add_argument("--layer-norm-grid", type=str2bool, nargs="+", default=[False, True],
+                        help="Layer norm grid for policy and value networks (default: False True)")
+    parser.add_argument("--layer-norm", type=str2bool, default=None,
+                        help="Single layer norm boolean (overrides --layer-norm-grid if specified)")
 
     # Algorithm hyperparameters
     parser.add_argument("--lambda-val", type=float, default=0.9,
                         help="Fixed lambda parameter for E(lambda) and TD(lambda) (default: 0.9)")
-    parser.add_argument("--return-lambda", type=float, default=1.0,
-                        help="Return anchor lambda parameter for E(0) and E(lambda) (default: 0.99)")
+    parser.add_argument("--return-lambda-grid", type=float, nargs="+", default=[0.95, 1.0],
+                        help="Return anchor lambda grid for E(0) and E(lambda) (default: 0.95 1.0)")
+    parser.add_argument("--return-lambda", type=float, default=None,
+                        help="Single return anchor lambda parameter (overrides --return-lambda-grid if specified)")
     parser.add_argument("--critic-loss-type", type=str, default="mse",
                         help="Critic loss type for all algorithms (default: mse)")
 
@@ -148,32 +165,50 @@ def parse_args():
 
 def build_algo_grid(algo_name, args):
     """
-    Builds the Cartesian product grid of (critic_lr, critic_epochs, weight_decay, num_value_heads).
-    All 4 algorithms evaluate the exact same 36 learning hyperparameter combinations.
+    Builds the hyperparameter grid for an algorithm.
+    - For E(0) and E(lambda): sweeps over (critic_lr, critic_epochs, weight_decay, num_value_heads, layer_norm, return_lambda).
+    - For TD(0) and TD(lambda): sweeps over (critic_lr, critic_epochs, weight_decay, num_value_heads, layer_norm).
     """
     grid = []
-    for clr, ep, wd, heads in itertools.product(
-        args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid
-    ):
-        label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}"
-        item = {
-            "label": label,
-            "critic_lr": clr,
-            "critic_epochs": ep,
-            "weight_decay": wd,
-            "num_value_heads": heads,
-        }
-        if algo_name == "E_0":
-            item["return_lambda"] = args.return_lambda
-        elif algo_name == "TD_0":
-            item["td_lambda"] = 0.0
-        elif algo_name == "E_lambda":
-            item["e_lambda"] = args.lambda_val
-            item["value_lambda"] = args.lambda_val
-            item["return_lambda"] = args.return_lambda
-        elif algo_name == "TD_lambda":
-            item["value_lambda"] = args.lambda_val
-        grid.append(item)
+    ret_lambda_list = [args.return_lambda] if args.return_lambda is not None else args.return_lambda_grid
+    ln_list = [args.layer_norm] if args.layer_norm is not None else args.layer_norm_grid
+
+    if algo_name in ["E_0", "E_lambda"]:
+        for clr, ep, wd, heads, ln, ret_lam in itertools.product(
+            args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid, ln_list, ret_lambda_list
+        ):
+            label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}_ln={ln}_rlam={ret_lam}"
+            item = {
+                "label": label,
+                "critic_lr": clr,
+                "critic_epochs": ep,
+                "weight_decay": wd,
+                "num_value_heads": heads,
+                "layer_norm": ln,
+                "return_lambda": ret_lam,
+            }
+            if algo_name == "E_lambda":
+                item["e_lambda"] = args.lambda_val
+                item["value_lambda"] = args.lambda_val
+            grid.append(item)
+    else:
+        for clr, ep, wd, heads, ln in itertools.product(
+            args.critic_lr_grid, args.epochs_grid, args.wd_grid, args.heads_grid, ln_list
+        ):
+            label = f"lr={clr}_ep={ep}_wd={wd}_heads={heads}_ln={ln}"
+            item = {
+                "label": label,
+                "critic_lr": clr,
+                "critic_epochs": ep,
+                "weight_decay": wd,
+                "num_value_heads": heads,
+                "layer_norm": ln,
+            }
+            if algo_name == "TD_0":
+                item["td_lambda"] = 0.0
+            elif algo_name == "TD_lambda":
+                item["value_lambda"] = args.lambda_val
+            grid.append(item)
     return grid
 
 
@@ -218,6 +253,7 @@ def run_single_algo_sweep(algo_name, make_train_fn, grid, args, out_algo_dir):
         cfg["ACTOR_LR"] = args.actor_lr
         cfg["LR"] = clr
         cfg["CRITIC_LR"] = clr
+        cfg["LAYER_NORM"] = item.get("layer_norm", False)
 
         if "td_lambda" in item:
             cfg["TD_LAMBDA"] = item["td_lambda"]
@@ -271,6 +307,7 @@ def run_single_algo_sweep(algo_name, make_train_fn, grid, args, out_algo_dir):
             "critic_epochs": ep,
             "weight_decay": wd,
             "num_value_heads": heads,
+            "layer_norm": item.get("layer_norm", False),
             "auc": auc,
             "final_window_mean": final_mean,
             "final_window_sem": final_sem,
@@ -307,7 +344,7 @@ def compute_pairwise_comparison(df_e, df_td, label_e="E", label_td="TD"):
     Computes matched-pair comparison between E and TD across identical configuration labels.
     Returns merged DataFrame and summary stats dictionary.
     """
-    merge_cols = ["critic_lr", "critic_epochs", "weight_decay", "num_value_heads"]
+    merge_cols = ["critic_lr", "critic_epochs", "weight_decay", "num_value_heads", "layer_norm"]
     merged = pd.merge(df_e, df_td, on=merge_cols, suffixes=("_e", "_td"))
 
     y_e_final = merged["final_window_mean_e"].values

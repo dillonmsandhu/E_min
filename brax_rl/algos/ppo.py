@@ -78,6 +78,7 @@ def make_train(config):
             action_dim=env.action_space(env_params).shape[0],
             activation=net_cfg.get("ACTIVATION", "tanh"),
             n_value_heads=n_value_heads,
+            layer_norm=config.get("LAYER_NORM", False),
         )
         rng, _rng = jax.random.split(rng)
         init_x = jnp.zeros(env.observation_space(env_params).shape)

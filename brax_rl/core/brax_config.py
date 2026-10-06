@@ -14,6 +14,7 @@ config = {
     "VF_CLIP": 1e6,
     "ENT_COEF": 0.001,
     "ENV_NAME": "hopper",
+    "LAYER_NORM": False,
     "NUM_VALUE_HEADS": 1,
     "VALUE_HEAD_AGG": "mean",
     "ACTOR_LR": 3e-4,
