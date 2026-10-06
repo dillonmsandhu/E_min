@@ -207,6 +207,7 @@ def build_algo_grid(algo_name, args):
             if algo_name == "TD_0":
                 item["td_lambda"] = 0.0
             elif algo_name == "TD_lambda":
+                item["td_lambda"] = args.lambda_val
                 item["value_lambda"] = args.lambda_val
             grid.append(item)
     return grid
@@ -693,7 +694,7 @@ def main():
         "E_0": (make_train_e_0, "E_0"),
         "TD_0": (make_train_td, "TD_0"),
         "E_lambda": (make_train_e_lambda, "E_lambda"),
-        "TD_lambda": (make_train_ppo, "TD_lambda"),
+        "TD_lambda": (make_train_td, "TD_lambda"),
     }
 
     results_dict = {}

@@ -118,7 +118,9 @@ def make_train(base_config):
         critic_loss_type = config.get("CRITIC_LOSS_TYPE", "mse")
         huber_delta = config.get("HUBER_DELTA", 1.0)
         value_head_agg = config.get("VALUE_HEAD_AGG", "sum")
-        td_lambda = config.get("TD_LAMBDA", 0.0)
+        td_lambda = config.get("TD_LAMBDA")
+        if td_lambda is None:
+            td_lambda = config.get("VALUE_LAMBDA", 0.0)
 
         def _update_step(runner_state, unused):
             train_state, env_state, last_obs, rng, idx = runner_state
@@ -222,12 +224,75 @@ def make_train(base_config):
                     _critic_epoch_1step, c_init_state, None, critic_epochs
                 )
             else:
-                # --- TD(lambda): Recomputes full-trajectory delta and targets per EPOCH ---
-                def _critic_epoch_td_lambda(critic_state, unused):
-                    train_state, rng = critic_state
+                # --- TD(lambda): Fitted Value Iteration (like PPO) vs Recomputing ---
+                recompute_targets = config.get("RECOMPUTE_TARGETS_EACH_EPOCH", False)
 
+                def _critic_minibatch_td_lambda(train_state, mb):
+                    obs_mb, targets_mb = mb
+
+                    def _c_loss(critic_params):
+                        c_full = {"params": {**train_state.actor.params, **critic_params}}
+                        v_s = network.apply(c_full, obs_mb, method=network.value)
+                        if v_s.ndim == 1:
+                            v_s = v_s[:, None]
+
+                        delta = targets_mb - v_s
+
+                        if critic_loss_type == "mse":
+                            loss_per_sample = 0.5 * (v_s - targets_mb) ** 2
+                        else:
+                            loss_per_sample = helpers.huber_loss(v_s - targets_mb, delta=huber_delta)
+
+                        loss_per_head = jnp.mean(loss_per_sample, axis=0)
+
+                        if value_head_agg == "sum":
+                            val_loss = jnp.sum(loss_per_head)
+                        else:
+                            val_loss = jnp.mean(loss_per_head)
+
+                        scaled_loss = config.get("VF_COEF", 0.5) * val_loss
+                        return scaled_loss, (val_loss, jnp.abs(delta).mean())
+
+                    grad_fn = jax.value_and_grad(_c_loss, has_aux=True)
+                    (_, (val_loss, delta_mag)), grads = grad_fn(train_state.critic.params)
+                    train_state = train_state.apply_critic_gradients(grads=grads)
+                    return train_state, (val_loss, delta_mag)
+
+                if recompute_targets:
+                    # Dynamically recomputes full-trajectory delta and targets per EPOCH
+                    def _critic_epoch_td_lambda(critic_state, unused):
+                        train_state, rng = critic_state
+
+                        full_params = {"params": {**train_state.actor.params, **train_state.critic.params}}
+                        v_traj = network.apply(full_params, traj_batch.obs, method=network.value)
+                        v_next_traj = network.apply(full_params, traj_batch.next_obs, method=network.value)
+
+                        if v_traj.ndim == 2:
+                            v_traj = v_traj[..., None]
+                            v_next_traj = v_next_traj[..., None]
+
+                        r_exp = traj_batch.reward[..., None]
+                        d_exp = traj_batch.done[..., None]
+                        to_exp = is_timeout[..., None]
+
+                        recomputed_targets = calculate_recomputed_td_lambda_targets(
+                            v_traj, v_next_traj, r_exp, d_exp, to_exp, config["GAMMA"], td_lambda
+                        )
+                        critic_batch = (traj_batch.obs, recomputed_targets)
+
+                        rng, _rng = jax.random.split(rng)
+                        minibatches = helpers.shuffle_and_batch(_rng, critic_batch, config["NUM_MINIBATCHES"])
+                        train_state, c_losses = jax.lax.scan(_critic_minibatch_td_lambda, train_state, minibatches)
+                        return (train_state, rng), c_losses
+
+                    rng, _rng = jax.random.split(rng)
+                    c_init_state = (train_state, _rng)
+                    (train_state, rng), c_loss_epochs = jax.lax.scan(
+                        _critic_epoch_td_lambda, c_init_state, None, critic_epochs
+                    )
+                else:
+                    # Static targets evaluated once at rollout time (standard PPO fitted value iteration, no GAE recomputation)
                     full_params = {"params": {**train_state.actor.params, **train_state.critic.params}}
-                    # Re-evaluate all heads on the full trajectory with current critic weights
                     v_traj = network.apply(full_params, traj_batch.obs, method=network.value)
                     v_next_traj = network.apply(full_params, traj_batch.next_obs, method=network.value)
 
@@ -239,54 +304,23 @@ def make_train(base_config):
                     d_exp = traj_batch.done[..., None]
                     to_exp = is_timeout[..., None]
 
-                    # Recompute fresh TD(lambda) targets for each head
-                    recomputed_targets = calculate_recomputed_td_lambda_targets(
+                    static_targets = calculate_recomputed_td_lambda_targets(
                         v_traj, v_next_traj, r_exp, d_exp, to_exp, config["GAMMA"], td_lambda
                     )
+                    critic_batch = (traj_batch.obs, static_targets)
 
-                    critic_batch = (traj_batch.obs, recomputed_targets)
-
-                    def _critic_minibatch_td_lambda(train_state, mb):
-                        obs_mb, targets_mb = mb
-
-                        def _c_loss(critic_params):
-                            c_full = {"params": {**train_state.actor.params, **critic_params}}
-                            v_s = network.apply(c_full, obs_mb, method=network.value)
-                            if v_s.ndim == 1:
-                                v_s = v_s[:, None]
-
-                            delta = targets_mb - v_s
-
-                            if critic_loss_type == "mse":
-                                loss_per_sample = 0.5 * (v_s - targets_mb) ** 2
-                            else:
-                                loss_per_sample = helpers.huber_loss(v_s - targets_mb, delta=huber_delta)
-
-                            loss_per_head = jnp.mean(loss_per_sample, axis=0)
-
-                            if value_head_agg == "sum":
-                                val_loss = jnp.sum(loss_per_head)
-                            else:
-                                val_loss = jnp.mean(loss_per_head)
-
-                            scaled_loss = config.get("VF_COEF", 0.5) * val_loss
-                            return scaled_loss, (val_loss, jnp.abs(delta).mean())
-
-                        grad_fn = jax.value_and_grad(_c_loss, has_aux=True)
-                        (_, (val_loss, delta_mag)), grads = grad_fn(train_state.critic.params)
-                        train_state = train_state.apply_critic_gradients(grads=grads)
-                        return train_state, (val_loss, delta_mag)
+                    def _critic_epoch_static(critic_state, unused):
+                        train_state, critic_batch, rng = critic_state
+                        rng, _rng = jax.random.split(rng)
+                        minibatches = helpers.shuffle_and_batch(_rng, critic_batch, config["NUM_MINIBATCHES"])
+                        train_state, c_losses = jax.lax.scan(_critic_minibatch_td_lambda, train_state, minibatches)
+                        return (train_state, critic_batch, rng), c_losses
 
                     rng, _rng = jax.random.split(rng)
-                    minibatches = helpers.shuffle_and_batch(_rng, critic_batch, config["NUM_MINIBATCHES"])
-                    train_state, c_losses = jax.lax.scan(_critic_minibatch_td_lambda, train_state, minibatches)
-                    return (train_state, rng), c_losses
-
-                rng, _rng = jax.random.split(rng)
-                c_init_state = (train_state, _rng)
-                (train_state, rng), c_loss_epochs = jax.lax.scan(
-                    _critic_epoch_td_lambda, c_init_state, None, critic_epochs
-                )
+                    c_init_state = (train_state, critic_batch, _rng)
+                    (train_state, _, rng), c_loss_epochs = jax.lax.scan(
+                        _critic_epoch_static, c_init_state, None, critic_epochs
+                    )
 
             # 4. SPLIT OPTIMIZATION: ACTOR UPDATE PHASE (PPO CLIPPED SURROGATE)
             def _actor_epoch(actor_state, unused):
