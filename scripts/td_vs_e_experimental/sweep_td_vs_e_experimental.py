@@ -102,7 +102,7 @@ def parse_args():
                         help="Number of independent random seeds (default: 8)")
     parser.add_argument("--num-envs", type=int, default=64,
                         help="Number of parallel environments (default: 64)")
-    parser.add_argument("--num-steps", type=int, default=64,
+    parser.add_argument("--num-steps", type=int, default=256,
                         help="Number of rollout steps per env (default: 64)")
     parser.add_argument("--minibatch-size", type=int, default=1024,
                         help="Minibatch size for SGD updates (default: 1024)")
@@ -124,7 +124,7 @@ def parse_args():
     # Algorithm hyperparameters
     parser.add_argument("--lambda-val", type=float, default=0.9,
                         help="Fixed lambda parameter for E(lambda) and TD(lambda) (default: 0.9)")
-    parser.add_argument("--return-lambda", type=float, default=0.99,
+    parser.add_argument("--return-lambda", type=float, default=1.0,
                         help="Return anchor lambda parameter for E(0) and E(lambda) (default: 0.99)")
     parser.add_argument("--critic-loss-type", type=str, default="mse",
                         help="Critic loss type for all algorithms (default: mse)")

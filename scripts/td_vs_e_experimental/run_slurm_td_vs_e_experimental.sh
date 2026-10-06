@@ -101,12 +101,14 @@ else
 fi
 
 N_SEEDS=${CUSTOM_SEEDS:-6}
+NUM_ENVS=${CUSTOM_NUM_ENVS:-64}
+NUM_STEPS=${CUSTOM_NUM_STEPS:-256}
 CRITIC_LRS=${CUSTOM_CRITIC_LRS:-"0.0003 0.001 0.003"}
 EPOCHS=${CUSTOM_EPOCHS:-"4 16"}
 WDS=${CUSTOM_WDS:-"0.001 0.01"}
 HEADS=${CUSTOM_HEADS:-"1 4"}
 LAMBDA_VAL=${CUSTOM_LAMBDA:-0.9}
-RETURN_LAMBDA=${CUSTOM_RETURN_LAMBDA:-0.99}
+RETURN_LAMBDA=${CUSTOM_RETURN_LAMBDA:-1.0}
 
 # Unified suite directory: all tasks in the SLURM array share SLURM_ARRAY_JOB_ID
 SWEEP_ID="${SWEEP_ID:-${SLURM_ARRAY_JOB_ID:+cmp_td_vs_e_${SLURM_ARRAY_JOB_ID}}}"
@@ -118,6 +120,7 @@ echo "  Suite / Sweep:  $SWEEP_ID"
 echo "  Environment:    $ENV_NAME"
 echo "  Timesteps:      $TOTAL_TIMESTEPS"
 echo "  Seeds:          $N_SEEDS"
+echo "  Rollout:        $NUM_ENVS envs x $NUM_STEPS steps"
 echo "  Critic LRs:     $CRITIC_LRS"
 echo "  Critic Epochs:  $EPOCHS"
 echo "  Weight Decays:  $WDS"
@@ -134,6 +137,8 @@ $PYTHON scripts/td_vs_e_experimental/sweep_td_vs_e_experimental.py \
     --sweep-id "$SWEEP_ID" \
     --total-timesteps "$TOTAL_TIMESTEPS" \
     --n-seeds "$N_SEEDS" \
+    --num-envs "$NUM_ENVS" \
+    --num-steps "$NUM_STEPS" \
     --critic-lr-grid $CRITIC_LRS \
     --epochs-grid $EPOCHS \
     --wd-grid $WDS \
