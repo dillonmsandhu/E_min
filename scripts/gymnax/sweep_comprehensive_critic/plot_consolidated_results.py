@@ -33,7 +33,7 @@ sys.path = [_repo_root, _scripts_dir] + [
 ]
 
 try:
-    from scripts.sweep_comprehensive_critics import generate_diagnostics_and_plots
+    from scripts.gymnax.sweep_comprehensive_critic.sweep_comprehensive_critics import generate_diagnostics_and_plots
 except ImportError:
     from sweep_comprehensive_critics import generate_diagnostics_and_plots
 
