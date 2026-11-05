@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import json
 import optax
 import distrax
-from typing import NamedTuple
+from typing import NamedTuple, Any, Optional
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -19,7 +19,13 @@ class Transition(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     next_obs: jnp.ndarray
-    info: jnp.ndarray
+    info: Any
+    is_start: jnp.ndarray
+    is_timeout: jnp.ndarray
+    next_value: Optional[jnp.ndarray] = None
+    targets: Optional[jnp.ndarray] = None
+    next_targets: Optional[jnp.ndarray] = None
+    aux_targets: Optional[jnp.ndarray] = None
 
 def load_config_dict(file_path: str) -> dict:
     import importlib.util

@@ -3,25 +3,46 @@ import jax.numpy as jnp
 from brax_rl.core.brax_utils import scale_rms
 
 
-def calculate_gae(traj_batch, last_val, gamma: float = 0.99, gae_lambda: float = 0.95):
+def calculate_gae(traj_batch, next_value, gamma: float = 0.99, gae_lambda: float = 0.95):
     """
     Computes Generalized Advantage Estimation (GAE) and value targets.
+    Bootstraps through timeouts using true continuation next_value,
+    and severs GAE accumulation at episode boundaries (done=True).
+    Supports either:
+      - 2D next_value of shape (T, B) with exact continuation values (including timeouts)
+      - 1D last_val of shape (B,) for backward compatibility
     """
-    def _get_advantages(gae_and_next_value, transition):
-        gae, next_value = gae_and_next_value
-        done, value, reward = (
-            transition.done,
-            transition.value,
-            transition.reward,
-        )
-        delta = reward + gamma * next_value * (1.0 - done) - value
-        gae = delta + gamma * gae_lambda * (1.0 - done) * gae
-        return (gae, value), gae
+    if next_value.ndim == 1:
+        regular_next = jnp.concatenate([traj_batch.value[1:], next_value[None]], axis=0)
+        next_val_arr = getattr(traj_batch, "next_value", None)
+        if next_val_arr is None:
+            next_val_arr = regular_next
+    else:
+        next_val_arr = next_value
 
+    def _get_advantages(gae, data):
+        done, is_timeout, reward, value, next_val = data
+        true_terminal = done & ~is_timeout
+
+        bootstrap_mask = 1.0 - true_terminal
+        boundary_mask = 1.0 - done
+
+        delta = reward + gamma * next_val * bootstrap_mask - value
+        gae = delta + (gamma * gae_lambda * boundary_mask * gae)
+        return gae, gae
+
+    initial_accs = jnp.zeros_like(traj_batch.value[0])
+    scan_data = (
+        traj_batch.done,
+        traj_batch.is_timeout,
+        traj_batch.reward,
+        traj_batch.value,
+        next_val_arr,
+    )
     _, advantages = jax.lax.scan(
         _get_advantages,
-        (jnp.zeros_like(last_val), last_val),
-        traj_batch,
+        initial_accs,
+        scan_data,
         reverse=True,
         unroll=16,
     )
@@ -29,14 +50,13 @@ def calculate_gae(traj_batch, last_val, gamma: float = 0.99, gae_lambda: float =
     return advantages, targets
 
 
-def calculate_targets(traj_batch, last_val, gamma: float = 0.99, target_lambda: float = 1.0):
+def calculate_targets(traj_batch, next_value, gamma: float = 0.99, target_lambda: float = 1.0):
     """
-    Computes value regression targets (or empirical returns) using generalized lambda-returns.
-    When target_lambda=1.0, this computes empirical Monte Carlo returns on the rollout.
+    Computes value regression targets using generalized lambda-returns.
+    target_lambda=1.0 computes empirical Monte Carlo rollout returns.
     """
-    _, targets = calculate_gae(traj_batch, last_val, gamma=gamma, gae_lambda=target_lambda)
+    _, targets = calculate_gae(traj_batch, next_value, gamma=gamma, gae_lambda=target_lambda)
     return targets
-
 
 # Aliases
 get_return = calculate_targets
@@ -228,29 +248,11 @@ def prepare_critic_transitions(
     rng: jax.Array,
 ):
     """
-    Attaches jump transition data (obs_jump, targets_jump, valid_jump, is_absorbing)
-    into traj_batch.info for E0 or E(lambda) critics before PyTree shuffling.
-    For fitted and TD critics, returns traj_batch unmodified.
+    Attaches jump transition data into traj_batch for E(lambda) critics before PyTree shuffling.
+    For fitted, TD, and E(0) critics, returns traj_batch unmodified (targets and masks are first-class fields).
     """
     key = critic_type.lower()
-    if key in ["e_0", "e0", "e"]:
-        obs_jump, targets_jump, valid_jump, is_absorbing = prepare_geometric_jump_transitions(
-            traj_batch=traj_batch,
-            targets=targets,
-            gamma=gamma,
-            lmbda=0.0,
-            rng=rng,
-            last_val=last_val,
-        )
-        new_info = {
-            **traj_batch.info,
-            "obs_jump": obs_jump,
-            "targets_jump": targets_jump,
-            "valid_jump": valid_jump,
-            "is_absorbing": is_absorbing,
-        }
-        return traj_batch._replace(info=new_info)
-    elif key in ["e_lambda", "elambda", "e_geometric"]:
+    if key in ["e_lambda", "elambda", "e_geometric"]:
         obs_jump, targets_jump, valid_jump, is_absorbing = prepare_geometric_jump_transitions(
             traj_batch=traj_batch,
             targets=targets,
@@ -629,15 +631,109 @@ def e_lambda_geometric_critic_loss_fn(critic_params, actor_params, network, traj
     }
 
 
-def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
     """
-    E(0) adjacent-state Dirichlet MSE critic loss. Differentiates strictly w.r.t. critic_params.
+    Basic / biased 1-sample E(0) critic loss (without auxiliary critic V_aux).
+    Smooths v(s_t) directly against v(s_{t+1}) with magnitude anchoring:
+      L = (1 - gamma) * E[(targets - v(s_t))^2] + 0.5 * gamma * E[((targets - v(s_t)) - (next_targets - v(s_{t+1})))^2]
+    On true terminal states, the absorbing error is 0.
     """
-    config_e0 = {**config, "E_LAMBDA": 0.0}
-    return e_lambda_geometric_critic_loss_fn(
-        critic_params, actor_params, network, traj_batch, targets, config_e0
-    )
+    full_params = {"params": {**actor_params, **critic_params}}
+    v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+    v_j = network.apply(full_params, traj_batch.next_obs, method=network.value)
 
+    targets_i = targets if targets is not None else traj_batch.targets
+    targets_j = traj_batch.next_targets
+    is_timeout = traj_batch.is_timeout
+    true_terminal = traj_batch.done & ~is_timeout
+
+    gamma = config["GAMMA"]
+
+    e_i = targets_i - v_i
+    e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
+
+    weight_mc = 1.0 - gamma
+    weight_dir = 0.5 * gamma
+
+    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
+    laplacian_loss = weight_dir * jnp.mean((e_i - e_j) ** 2)
+
+    value_loss = magnitude_loss + laplacian_loss
+    scaled_loss = config.get("VF_COEF", 0.5) * value_loss
+
+    delta_mag = jnp.abs(targets_i - v_i).mean()
+    aux_info = {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": laplacian_loss,
+        "delta_mag": delta_mag,
+    }
+    return scaled_loss, aux_info
+
+
+def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    if not config.get("USES_AUX", config.get("SURGICAL_V_AUX", True)):
+        return e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config)
+    """
+    Surgical auxiliary E(0) critic loss matching bellman_error/ppo/sampled_E.py.
+    - Uses v_aux for the backwards branch of the Dirichlet loss.
+    - Forward branch uses sample returns G_t, G_{t+1}.
+    - Corrected start-state anchor 0.5 * gamma * E_{s0}[e(s0)^2] and timeout boundary correction.
+    - Trains v_aux towards self-bootstrapped return targets.
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+
+    # Evaluate main value head and auxiliary head
+    v_i, v_aux_i = network.apply(full_params, traj_batch.obs, method=network.both)
+    v_j, v_aux_j = network.apply(full_params, traj_batch.next_obs, method=network.both)
+
+    # First-class attributes on Transition
+    targets_i = targets if targets is not None else traj_batch.targets
+    targets_j = traj_batch.next_targets
+    aux_targets = traj_batch.aux_targets
+    is_timeout = traj_batch.is_timeout
+    true_terminal = traj_batch.done & ~is_timeout
+    is_start = traj_batch.is_start
+
+    gamma = config["GAMMA"]
+    aux_coef = config.get("AUX_VF_COEF", 1.0)
+
+    # Empirical MC errors
+    e_i = targets_i - v_i
+    e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
+
+    # Auxiliary head loss and errors
+    aux_mc_loss = aux_coef * 0.5 * jnp.mean((sg(aux_targets) - v_aux_i) ** 2)
+    e_tilde_i = sg(v_aux_i) - v_i
+    e_tilde_j = jnp.where(true_terminal, 0.0, sg(v_aux_j) - v_j)
+
+    # Surgical Dirichlet loss:
+    # Forward branch (v_i): main error e_i, auxiliary error e_tilde_j
+    branch_v_i = (e_i - sg(e_tilde_j)) ** 2
+    # Backward branch (v_j): auxiliary error e_tilde_i, main error e_j
+    branch_v_j = (1.0 - true_terminal) * (sg(e_tilde_i) - e_j) ** 2
+
+    dirichlet_loss = 0.5 * gamma * jnp.mean(branch_v_i + branch_v_j)
+
+    # Corrected start-state anchor and timeout boundary
+    start_loss = 0.5 * gamma * jnp.mean(jnp.where(is_start, e_i ** 2, 0.0))
+    timeout_loss = -0.5 * gamma * jnp.mean(jnp.where(is_timeout, e_j ** 2, 0.0))
+
+    total_loss = dirichlet_loss + start_loss + timeout_loss + aux_mc_loss
+
+    aux_metrics = {
+        "val_loss": total_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "start_loss": start_loss,
+        "timeout_loss": timeout_loss,
+        "aux_mc_loss": aux_mc_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
+    }
+    return total_loss, aux_metrics
+
+
+mc_critic_loss_fn = ppo_critic_loss_fn
 
 SPLIT_CRITIC_LOSS_FNS = {
     "fitted": ppo_critic_loss_fn,
@@ -645,12 +741,22 @@ SPLIT_CRITIC_LOSS_FNS = {
     "td": td_0_critic_loss_fn,
     "td_0": td_0_critic_loss_fn,
     "td0": td_0_critic_loss_fn,
+    "classic_td": td_0_critic_loss_fn,
     "e_0": e_0_critic_loss_fn,
+    "e_0_basic": e_0_basic_critic_loss_fn,
+    "e_basic": e_0_basic_critic_loss_fn,
+    "e_0_biased": e_0_basic_critic_loss_fn,
+    "e_biased": e_0_basic_critic_loss_fn,
     "e0": e_0_critic_loss_fn,
     "e": e_0_critic_loss_fn,
+    "sampled_e": e_0_critic_loss_fn,
+    "surgical_v_aux": e_0_critic_loss_fn,
+    "surgical": e_0_critic_loss_fn,
     "e_lambda": e_lambda_geometric_critic_loss_fn,
     "e_geometric": e_lambda_geometric_critic_loss_fn,
     "elambda": e_lambda_geometric_critic_loss_fn,
+    "mc": mc_critic_loss_fn,
+    "sampled_mc": mc_critic_loss_fn,
 }
 
 

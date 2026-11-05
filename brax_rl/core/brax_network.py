@@ -76,6 +76,97 @@ class ActorCritic(nn.Module):
         return policy.sample(seed=key).squeeze()
 
 
+class ActorCriticDualCritic(nn.Module):
+    """
+    Continuous ActorCritic with dual value heads (v and v_aux) for surgical E(0) and E(lambda).
+    Supports shared or independent torsos for critic and auxiliary heads.
+    """
+    action_dim: int
+    activation: str = "tanh"
+    log_std_init: float = -0.5
+    layer_norm: bool = False
+    shared_torso: bool = True
+
+    def setup(self):
+        activation = nn.relu if self.activation == "relu" else nn.tanh
+
+        actor_layers = [
+            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+        ]
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(activation)
+        actor_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(activation)
+        actor_layers.append(nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)))
+        self.actor_mean = nn.Sequential(actor_layers)
+
+        self.actor_logstd = self.param(
+            "log_std",
+            lambda key, shape: jnp.full(shape, self.log_std_init),
+            (self.action_dim,),
+        )
+
+        critic_layers = [
+            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+        ]
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(activation)
+        critic_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(activation)
+        self.critic_torso = nn.Sequential(critic_layers)
+        self.critic_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+
+        if not self.shared_torso:
+            aux_layers = [
+                nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+            ]
+            if self.layer_norm:
+                aux_layers.append(nn.LayerNorm())
+            aux_layers.append(activation)
+            aux_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+            if self.layer_norm:
+                aux_layers.append(nn.LayerNorm())
+            aux_layers.append(activation)
+            self.aux_torso = nn.Sequential(aux_layers)
+
+        self.aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+
+    def __call__(self, x):
+        v, _ = self.both(x)
+        pi = self.policy(x)
+        return pi, v
+
+    def policy(self, x):
+        actor_mean = self.actor_mean(x)
+        clamped_logstd = jnp.clip(self.actor_logstd, a_min=-5.0, a_max=2.0)
+        return distrax.MultivariateNormalDiag(actor_mean, jnp.exp(clamped_logstd))
+
+    def value(self, x):
+        v, _ = self.both(x)
+        return v
+
+    def v_aux(self, x):
+        _, v_aux = self.both(x)
+        return v_aux
+
+    def both(self, x):
+        phi_v = self.critic_torso(x)
+        v = self.critic_head(phi_v).squeeze(-1)
+        phi_aux = phi_v if self.shared_torso else self.aux_torso(x)
+        v_aux = self.aux_head(phi_aux).squeeze(-1)
+        return v, v_aux
+
+    def act(self, x, key):
+        policy = self.policy(x)
+        return policy.sample(seed=key).squeeze()
+
+
 class DualTrainState(NamedTuple):
     actor: TrainState
     critic: TrainState
@@ -98,7 +189,7 @@ def initialize_split_train_state(config, network, network_params):
     """
     p = network_params.get("params", network_params)
     actor_params = {k: v for k, v in p.items() if k in ["actor_mean", "log_std"]}
-    critic_params = {k: v for k, v in p.items() if k == "critic"}
+    critic_params = {k: v for k, v in p.items() if k not in ["actor_mean", "log_std"]}
 
     batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]
     n_updates = config["TOTAL_TIMESTEPS"] // batch_size

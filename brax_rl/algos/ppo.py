@@ -1,3 +1,4 @@
+from brax_rl.core.brax_config import config as base_default_config
 import os
 import sys
 
@@ -22,7 +23,11 @@ from brax_rl.core.brax_wrappers import (
     NormalizeVecObservation,
     NormalizeVecReward,
 )
-from brax_rl.core.brax_network import ActorCritic, initialize_split_train_state
+from brax_rl.core.brax_network import (
+    ActorCritic,
+    ActorCriticDualCritic,
+    initialize_split_train_state,
+)
 from brax_rl.core.brax_critics import (
     get_critic_loss_fn,
     calculate_gae,
@@ -34,6 +39,9 @@ from brax_rl.core.brax_critics import (
 
 
 def make_train(config):
+    cfg = base_default_config.copy()
+    cfg.update(config)
+    config = cfg
     batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]
     config["MAX_NUM_POLICIES"] = config["TOTAL_TIMESTEPS"] // batch_size
     config["NUM_UPDATES"] = config["TOTAL_TIMESTEPS"] // batch_size
@@ -43,8 +51,7 @@ def make_train(config):
     # Decoupled Actor settings
     actor_epochs = config.get("ACTOR_EPOCHS", net_cfg.get("NUM_EPOCHS", 4))
     actor_minibatch_size = config.get("ACTOR_MINIBATCH_SIZE", net_cfg.get("MINIBATCH_SIZE", 1024))
-    if actor_minibatch_size > batch_size:
-        actor_minibatch_size = batch_size
+    actor_minibatch_size = min(batch_size, actor_minibatch_size)
     config["ACTOR_EPOCHS"] = actor_epochs
     config["ACTOR_MINIBATCH_SIZE"] = actor_minibatch_size
     config["ACTOR_NUM_MINIBATCHES"] = max(1, batch_size // actor_minibatch_size)
@@ -52,8 +59,7 @@ def make_train(config):
     # Decoupled Critic settings
     critic_epochs = config.get("CRITIC_EPOCHS", net_cfg.get("NUM_EPOCHS", 4))
     critic_minibatch_size = config.get("CRITIC_MINIBATCH_SIZE", net_cfg.get("MINIBATCH_SIZE", 1024))
-    if critic_minibatch_size > batch_size:
-        critic_minibatch_size = batch_size
+    critic_minibatch_size = min(batch_size, critic_minibatch_size)
     config["CRITIC_EPOCHS"] = critic_epochs
     config["CRITIC_MINIBATCH_SIZE"] = critic_minibatch_size
     config["CRITIC_NUM_MINIBATCHES"] = max(1, batch_size // critic_minibatch_size)
@@ -66,39 +72,53 @@ def make_train(config):
         env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
 
-    critic_loss_fn = get_critic_loss_fn(config.get("CRITIC_TYPE", "fitted"), split=True)
-    actor_loss_fn = ppo_actor_loss_fn
-
-    gae_lambda = config.get("GAE_LAMBDA", 0.95)
-    target_lambda = get_critic_target_lambda(config)
-
     def train(rng):
-        n_value_heads = config.get("NUM_VALUE_HEADS", 1)
-        network = ActorCritic(
-            action_dim=env.action_space(env_params).shape[0],
-            activation=net_cfg.get("ACTIVATION", "tanh"),
-            n_value_heads=n_value_heads,
-            layer_norm=config.get("LAYER_NORM", False),
-        )
+        c_type = config.get("CRITIC_TYPE", "fitted").lower()
+        critic_loss_fn = get_critic_loss_fn(c_type, split=True)
+        actor_loss_fn = ppo_actor_loss_fn
+
+        gae_lambda = config.get("GAE_LAMBDA", 0.95)
+        target_lambda = get_critic_target_lambda(config)
+        uses_aux = config.get("USES_AUX", c_type in ["e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical"])
+
+        # INIT NETWORK
+        if uses_aux:
+            network = ActorCriticDualCritic(
+                action_dim=env.action_space(env_params).shape[0],
+                activation=net_cfg.get("ACTIVATION", "tanh"),
+                layer_norm=config.get("LAYER_NORM", False),
+                shared_torso=config.get("SHARED_TORSO", True),
+            )
+        else:
+            network = ActorCritic(
+                action_dim=env.action_space(env_params).shape[0],
+                activation=net_cfg.get("ACTIVATION", "tanh"),
+                n_value_heads=config.get("NUM_VALUE_HEADS", 1),
+                layer_norm=config.get("LAYER_NORM", False),
+            )
+
         rng, _rng = jax.random.split(rng)
         init_x = jnp.zeros(env.observation_space(env_params).shape)
         network_params = network.init(_rng, init_x)
 
-        # Independent TrainStates for Actor and Critic with separate LR and schedules
+        # Independent TrainStates for Actor and Critic
         train_state = initialize_split_train_state(config, network, network_params)
 
         # INIT ENV
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = env.reset(reset_rng, env_params)
+        last_true_terminal = jnp.zeros(config["NUM_ENVS"], dtype=bool)
 
         # TRAIN LOOP
         def _update_step(runner_state, unused):
-            # COLLECT TRAJECTORIES
-            def _env_step(runner_state, unused):
-                train_state, env_state, last_obs, rng, idx = runner_state
+            train_state, env_state, last_obs, last_true_terminal, rng, idx = runner_state
 
-                # SELECT ACTION
+            # 1. COLLECT TRAJECTORIES
+            def _env_step(env_scan_state, unused):
+                train_state, env_state, last_obs, last_true_terminal, rng = env_scan_state
+
+                # SELECT ACTION & VALUE
                 rng, _rng = jax.random.split(rng)
                 pi, value = network.apply(train_state.params, last_obs)
                 action = pi.sample(seed=_rng)
@@ -108,23 +128,42 @@ def make_train(config):
                 rng, _rng = jax.random.split(rng)
                 rng_step = jax.random.split(_rng, config["NUM_ENVS"])
                 obsv, env_state, reward, done, info = env.step(rng_step, env_state, action, env_params)
-                true_next_obs = info["real_next_obs"] if isinstance(info, dict) and "real_next_obs" in info else obsv
+
+                next_obs = info["real_next_obs"]
+                is_timeout = info["is_timeout"]
+                true_terminal = done & ~is_timeout
+                is_start = last_true_terminal
+
                 transition = Transition(
-                    done, action, value, reward, log_prob, last_obs, true_next_obs, info
+                    done=done,
+                    action=action,
+                    value=value,
+                    reward=reward,
+                    log_prob=log_prob,
+                    obs=last_obs,
+                    next_obs=next_obs,
+                    info=info,
+                    is_start=is_start,
+                    is_timeout=is_timeout,
                 )
-                runner_state = (train_state, env_state, obsv, rng, idx)
-                return runner_state, transition
+                return (train_state, env_state, obsv, true_terminal, rng), transition
 
-            runner_state, traj_batch = jax.lax.scan(
-                _env_step, runner_state, None, config["NUM_STEPS"]
+            env_step_state = (train_state, env_state, last_obs, last_true_terminal, rng)
+            (_, env_state, last_obs, last_true_terminal, rng), traj_batch = jax.lax.scan(
+                _env_step, env_step_state, None, config["NUM_STEPS"]
             )
-            train_state, env_state, last_obs, rng, idx = runner_state
 
-            # CALCULATE ADVANTAGE & TARGETS
+            # 2. CALCULATE ADVANTAGES & TARGETS
             _, last_val = network.apply(train_state.params, last_obs)
+            regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val[None]], axis=0)
+            timeout_next_val = network.apply(train_state.params, traj_batch.next_obs, method=network.value)
+            if timeout_next_val.ndim > regular_next_val.ndim:
+                timeout_next_val = timeout_next_val.squeeze(-1)
+            next_value = jnp.where(traj_batch.is_timeout, timeout_next_val, regular_next_val)
+
             advantages, gae_targets = calculate_gae(
                 traj_batch,
-                last_val,
+                next_value,
                 gamma=config["GAMMA"],
                 gae_lambda=gae_lambda,
             )
@@ -133,16 +172,51 @@ def make_train(config):
             else:
                 targets = calculate_targets(
                     traj_batch,
-                    last_val,
+                    next_value,
                     gamma=config["GAMMA"],
                     target_lambda=target_lambda,
                 )
 
-            # PREPARE CRITIC TRANSITIONS (e.g. geometric lookahead jumps for E0 / E(lambda))
-            critic_type = config.get("CRITIC_TYPE", "fitted").lower()
+            # AUXILIARY TARGETS (Self-bootstrapped via v_aux matching ppo/sampled_E.py)
+            if uses_aux:
+                final_next_aux_val = network.apply(
+                    train_state.params, traj_batch.next_obs[-1], method=network.v_aux
+                )
+                if final_next_aux_val.ndim > 1:
+                    final_next_aux_val = final_next_aux_val.squeeze(-1)
+                regular_aux_next = jnp.concatenate([traj_batch.value[1:], final_next_aux_val[None]], axis=0)
+                timeout_aux_next = network.apply(train_state.params, traj_batch.next_obs, method=network.v_aux)
+                if timeout_aux_next.ndim > regular_aux_next.ndim:
+                    timeout_aux_next = timeout_aux_next.squeeze(-1)
+                aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
+                aux_lambda = config.get("AUX_LAMBDA", 1.0)
+                _, aux_targets = calculate_gae(
+                    traj_batch,
+                    aux_next_value,
+                    gamma=config["GAMMA"],
+                    gae_lambda=aux_lambda,
+                )
+            else:
+                aux_targets = targets
+
+            # Align next targets G_{t+1} matching ppo/sampled_E.py
+            true_terminal = traj_batch.done & ~traj_batch.is_timeout
+            next_targets = jnp.roll(targets, shift=-1, axis=0)
+            next_targets = next_targets.at[-1].set(last_val)
+            next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
+            next_targets = jnp.where(true_terminal, 0.0, next_targets)
+
+            traj_batch = traj_batch._replace(
+                next_value=next_value,
+                targets=targets,
+                next_targets=next_targets,
+                aux_targets=aux_targets,
+            )
+
+            # 3. PREPARE CRITIC TRANSITIONS (e.g. geometric lookahead jumps for E(lambda))
             rng, _rng = jax.random.split(rng)
             traj_batch = prepare_critic_transitions(
-                critic_type=critic_type,
+                critic_type=c_type,
                 traj_batch=traj_batch,
                 targets=targets,
                 last_val=last_val,
@@ -151,80 +225,93 @@ def make_train(config):
                 rng=_rng,
             )
 
-            # 1. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
+            # 4. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
             def _critic_epoch(critic_state, unused):
                 def _critic_minibatch(train_state, mb):
-                    traj_mb, targets_mb = mb
+                    traj_mb = mb
 
                     def _loss_fn(critic_params):
                         return critic_loss_fn(
-                            critic_params, train_state.actor.params, network, traj_mb, targets_mb, config
+                            critic_params,
+                            train_state.actor.params,
+                            network,
+                            traj_mb,
+                            traj_mb.targets,
+                            config,
                         )
 
                     (loss, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(train_state.critic.params)
                     train_state = train_state.apply_critic_gradients(grads)
                     return train_state, aux
 
-                train_state, traj_batch, targets, rng = critic_state
+                train_state, critic_batch, rng = critic_state
                 rng, _rng = jax.random.split(rng)
-                critic_batch = (traj_batch, targets)
                 minibatches = shuffle_and_batch(_rng, critic_batch, config["CRITIC_NUM_MINIBATCHES"])
                 train_state, critic_metrics = jax.lax.scan(
                     _critic_minibatch, train_state, minibatches
                 )
-                return (train_state, traj_batch, targets, rng), critic_metrics
+                return (train_state, critic_batch, rng), critic_metrics
 
-            critic_state = (train_state, traj_batch, targets, rng)
-            (train_state, _, _, rng), critic_loss_info = jax.lax.scan(
+            critic_batch = traj_batch
+            rng, _rng = jax.random.split(rng)
+            critic_state = (train_state, critic_batch, _rng)
+            (train_state, _, rng), critic_loss_info = jax.lax.scan(
                 _critic_epoch, critic_state, None, config["CRITIC_EPOCHS"]
             )
 
-            # 2. ACTOR UPDATE PHASE (Separate epochs, minibatches, optimizer)
+            # 5. ACTOR UPDATE PHASE (Separate epochs, minibatches, optimizer)
             def _actor_epoch(actor_state, unused):
                 def _actor_minibatch(train_state, mb):
                     traj_mb, adv_mb = mb
 
                     def _loss_fn(actor_params):
                         return actor_loss_fn(
-                            actor_params, train_state.critic.params, network, traj_mb, adv_mb, config
+                            actor_params,
+                            train_state.critic.params,
+                            network,
+                            traj_mb,
+                            adv_mb,
+                            config,
                         )
 
                     (loss, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(train_state.actor.params)
                     train_state = train_state.apply_actor_gradients(grads)
                     return train_state, aux
 
-                train_state, traj_batch, advantages, rng = actor_state
+                train_state, actor_batch, rng = actor_state
                 rng, _rng = jax.random.split(rng)
-                actor_batch = (traj_batch, advantages)
                 minibatches = shuffle_and_batch(_rng, actor_batch, config["ACTOR_NUM_MINIBATCHES"])
                 train_state, actor_metrics = jax.lax.scan(
                     _actor_minibatch, train_state, minibatches
                 )
-                return (train_state, traj_batch, advantages, rng), actor_metrics
+                return (train_state, actor_batch, rng), actor_metrics
 
-            actor_state = (train_state, traj_batch, advantages, rng)
-            (train_state, _, _, rng), actor_loss_info = jax.lax.scan(
+            actor_batch = (traj_batch, advantages)
+            rng, _rng = jax.random.split(rng)
+            actor_state = (train_state, actor_batch, _rng)
+            (train_state, _, rng), actor_loss_info = jax.lax.scan(
                 _actor_epoch, actor_state, None, config["ACTOR_EPOCHS"]
             )
 
-            # METRICS COLLECTION
+            # 6. RUNTIME METRICS
+            combined_loss_info = {**critic_loss_info, **actor_loss_info}
             metric = {
                 "pi_idx": idx,
                 "pi_num": idx,
                 "advantage": advantages.mean(),
             }
-            metric.update({k: v.mean() for k, v in critic_loss_info.items()})
-            metric.update({k: v.mean() for k, v in actor_loss_info.items()})
+            metric.update({k: v.mean() for k, v in combined_loss_info.items()})
             metric.update({
                 k: v.mean() for k, v in traj_batch.info.items()
                 if k not in ["real_next_obs", "obs_jump", "targets_jump", "valid_jump", "is_absorbing"]
                 and hasattr(v, "mean") and v.ndim <= 2
             })
-            runner_state = (train_state, env_state, last_obs, rng, idx + 1)
+
+            runner_state = (train_state, env_state, last_obs, last_true_terminal, rng, idx + 1)
             return runner_state, metric
 
         rng, _rng = jax.random.split(rng)
-        runner_state = (train_state, env_state, obsv, _rng, 0)
+        runner_state = (train_state, env_state, obsv, last_true_terminal, _rng, 1)
         runner_state, metrics = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )

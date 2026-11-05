@@ -25,6 +25,7 @@ class AutoResetWrapper(BraxWrapper):
         state.info["first_pipeline_state"] = state.pipeline_state
         state.info["first_obs"] = state.obs
         state.info["real_next_obs"] = state.obs
+        state.info["is_timeout"] = jnp.zeros((), dtype=bool)
         return state
 
     def step(self, state: BraxState, action: jax.Array) -> BraxState:
@@ -47,6 +48,7 @@ class AutoResetWrapper(BraxWrapper):
         obs = where_done(next_state.info["first_obs"], next_state.obs)
 
         next_state.info["real_next_obs"] = true_next_obs
+        next_state.info["is_timeout"] = (next_state.info["truncation"] > 0.5)
         return next_state.replace(pipeline_state=pipeline_state, obs=obs)
 
 
