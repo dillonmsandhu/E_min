@@ -1,0 +1,486 @@
+%%%%%%%% ICML 2026 EXAMPLE LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs} % for professional tables
+\usepackage{bm}
+% hyperref makes hyperlinks in the resulting PDF.
+% If your build breaks (sometimes temporarily if a hyperlink spans a page)
+% please comment out the following usepackage line and replace
+% \usepackage{icml2026} with \usepackage[nohyperref]{icml2026} above.
+\usepackage{hyperref}
+
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+\usepackage{icml2026}
+
+% For preprint, use
+% \usepackage[preprint]{icml2026}
+
+% If accepted, instead use the following line for the camera-ready submission:
+% \usepackage[accepted]{icml2026}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Todonotes is useful during development; simply uncomment the next line
+%    and comment out the line below the next line to turn off comments
+% \usepackage[disable,textsize=tiny]{todonotes}
+\usepackage[textsize=tiny]{todonotes}
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Bellman-Smoothed Regression for Value Function Estimation}
+
+\begin{document}
+
+\twocolumn[
+  \icmltitle{Bellman-Smoothed Regression for Value Function Estimation}
+
+  % It is OKAY to include author information, even for blind submissions: the
+  % style file will automatically remove it for you unless you've provided
+  % the [accepted] option to the icml2026 package.
+
+  % List of affiliations: The first argument should be a (short) identifier you
+  % will use later to specify author affiliations Academic affiliations
+  % should list Department, University, City, Region, Country Industry
+  % affiliations should list Company, City, Region, Country
+
+  % You can specify symbols, otherwise they are numbered in order. Ideally, you
+  % should not use this facility. Affiliations will be numbered in order of
+  % appearance and this is the preferred way.
+  \icmlsetsymbol{equal}{*}
+
+  \begin{icmlauthorlist}
+    \icmlauthor{Dillon Sandhu}{sch}
+    \icmlauthor{Ronald Parr}{sch}
+  \end{icmlauthorlist}
+
+
+  \icmlaffiliation{sch}{Department of Computer Science, Duke University, Durham, North Carolina, USA}
+
+  \icmlcorrespondingauthor{Dillon Sandhu}{dillon.sandhu@duke.edu}
+  \icmlcorrespondingauthor{Ronald Parr}{parr.cs@duke.edu}
+
+  % You may provide any keywords that you find helpful for describing your
+  % paper; these are used to populate the "keywords" metadata in the PDF but
+  % will not be shown in the document
+  \icmlkeywords{Reinforcement Learning}
+
+  \vskip 0.3in
+]
+
+% this must go after the closing bracket ] following \twocolumn[ ...
+
+% This command actually creates the footnote in the first column listing the
+% affiliations and the copyright notice. The command takes one argument, which
+% is text to display at the start of the footnote. The \icmlEqualContribution
+% command is standard text for equal contribution. Remove it (just {}) if you
+% do not need this facility.
+
+% Use ONE of the following lines. DO NOT remove the command.
+% If you have no special notice, KEEP empty braces:
+\printAffiliationsAndNotice{}  % no special notice (required even if empty)
+% Or, if applicable, use the standard equal contribution text:
+% \printAffiliationsAndNotice{\icmlEqualContribution}
+
+\begin{abstract}
+  Value function estimation is a core problem in Reinforcement Learning.
+  Monte-Carlo methods compute an unbiased estimate of the value function, but can suffer variance 
+  related to the length and noisiness of the task.
+  Temporal differences methods (TD Learning) are popular in part because they reduce variance, and in part because they induce local Bellman-consistency of the learned value function. 
+  However, TD learning can fail to converge when using non-linear function approximation.
+  We study a new learning rule based on the minimization of a convex Bellman-smoothed value loss.
+  We extend previous results that show when TD learning succeeds at lowering the Bellman-smoothed value loss. 
+  Our main contribution is using this loss for value function learning in deep RL. 
+  We first show how to estimate the new objective in an unbiased fashion from trajectory data -- with strictly lower variance than Monte Carlo.
+  We show that in expectation, the learned value function leads to stronger policy improvement than classical TD learning.
+  Moreover, we show that the new objective has strictly lower variance than Monte Carlo. 
+  We experiment on RL tasks, including continuous control, showing that our value function loss improves the performance of PPO.
+\end{abstract}
+
+\section{Introduction}
+\section{Preliminaries}
+\begin{align}
+  \bm{\mu}^\intercal P = \bm{\mu} \label{def:mu} \\
+  D \doteq \text{diag}(\bm{\mu}) \label{def:D}
+\end{align}
+\begin{align}
+  A \doteq D(I-\gamma P) \label{def:A}
+\end{align}
+A is positive definite (T&V 1997). We make use of the labels $S$ and $K$ for its symmetric and skew symmetric components respectively.
+
+\begin{align}
+  A &= \frac{1}{2} (A + A^\intercal) + \frac{1}{2}(A - A^\intercal) \\
+    &= S + K \label{def:SK}
+\end{align}
+
+The objective is to train a differentiable value estimate $v_\theta$, with $|\theta|=k$.  
+Writing the estimate at each state gives the estimated value vector $\bm{v}$. 
+The value error vector is given by
+\begin{align}
+  \bm{e} \doteq (\bm{V}-\bm{v}).
+\end{align}
+
+The fundamental goal of policy evaluation is to improve the policy. The instrumental goal is to minimize the following error, called the MSE or Monte Carlo loss. 
+\begin{align}
+  \mathcal{L}_{MC} \doteq \|\bm{e}\|_D^2. \label{eq:mc_loss}
+\end{align}
+
+The gradient of $\bm{v}$ at each state can be expressed with the $N \times k$ Jacobian $J_\theta$, which places the gradient at each state along the rows. 
+
+\begin{align}
+  J_\theta
+  &\doteq
+  \begin{bmatrix}
+    \nabla v_\theta(s_1)^\top \\
+    \nabla v_\theta(s_2)^\top \\
+    \vdots \\
+    \nabla v_\theta(s_N)^\top
+  \end{bmatrix}
+  \in \mathbb{R}^{N \times k}.
+\end{align}
+In expectation, the TD update and loss are
+
+\begin{align}
+\bm{\theta} &\gets \bm{\theta} + \alpha  J_\theta^\intercal D \bm{\delta} \label{eq:td_update_expected} \\
+\mathcal{L}_{TD} &\doteq  \|\bm{R} + P\overline{\bm{v}} - \bm{v}\|_D^2 
+\end{align}
+where $\overline{v_\theta}$ is the stop gradient operator on $\theta$.
+
+Finally, the Bellman-Smoothed value error from \cite{tang2023towards} is given by:
+\begin{equation}
+  E \doteq  \|\bm{V} - \bm{v}\|_S^2 = \bm{e}^\intercal A \bm{e} = \bm{e}^\intercal S \bm{e}.
+\end{equation}
+Note that $A$ is positive definite when on-policy, meaning that $\bm{x}^\intercal A \bm{x}$ is positive for any vector $\mb{x}$ (\cite{Tsitsiklis1997Analysis}, \cite{Sutton2016Emphatic}). 
+
+\section{Related Work}
+\todo{tange and munos, Tsistiklis and Van Roy, Sutton 2016, }
+
+\section{Policy Optimization Bellman-Smoothed Value Error}
+\todo{Theory}
+
+\textbf{Experiment: Comparing Expected Versions of the Algorithms}
+We study the behavior of $E$ and its relationship with $\mathcal{L}_TD$ and on nine environments:
+
+\begin{itemize}
+  \item \textbf{Four Rooms (Sparse)}: 104 states (105 including terminal). A classic sparse reward navigation task on a $13 \times 13$ grid with 104 traversable cells partitioned into four rooms.
+  \item \textbf{Four Rooms + Mines (Sparse and Dense)}: The same as above, except with the addition of mines which terminate the agent's life. Dense versions of navigation tasks use potential-based reward shaping based on distance to the goal.
+  \item \textbf{Eight Rooms (Sparse and Dense)}: 210 states (211 including terminal). An extended navigation task on a $25 \times 13$ grid with eight rooms.
+  \item \textbf{Mountain Car (Sparse and Dense)}: A continuous state space (discreteized for exact solvers). The dense version uses the height for potential-based reward shaping.
+  \item \textbf{Space Invaders}: 700 states (701 including terminal). A tabular 2-alien version of Space Invaders, with termination only on death.
+\end{itemize}
+
+Because the above environments are small enough to be solved exactly, we can directly compute the expected TD update in \eqref{eq:td_update_expected}. as well as the MSE loss \eqref{eq:mc_loss}. 
+
+In Figure \ref{fig:alignment_vs_skew_symmetry}, the skew symmetry is shown for each environment (averaged over the Markov Chains encountered during policy optimization). This depends on the dynamics of the environment moreso than their size. Against this measure, we plot the cosine-similarity of the expected gradient due to TD and $E$-minimization. One would expect an inverse correlation, but that is not the case. Figure \ref{fig:three_way_alignment} takes a deeper look, plotting pairwise cosine similarities for MC, TD, and E-minimization. On some environments, updates from TD and MC are highly correlated during learning. As expected, E-minimization usually leads to a gradient that is more correlated with TD and MC than they are with each other. 
+
+% ------------------------------------------------------------------------------
+% Figure: Alignment
+% ------------------------------------------------------------------------------
+\begin{figure*}[th]
+  \centering
+  \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_alignment_relative_spectral_norm.pdf}
+  \caption{\textbf{Alignmnent vs. Skew Symmetry}  Environments charted by their alignment based on the ratio of the norm of $K$ to the norm of $S$ and the cosine similarity between the expected gradient update for TD and E-Minimization $\rho(g^*, g_{TD}^*)$. We see that Space Invaders is the most asymmetric environment, yet retains high  $\rho(g^*, g_{TD}^*)$.}
+  \label{fig:alignment_vs_skew_symmetry}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------------------------------------------------------------
+
+
+% ------------------------------------------------------------------------------
+% Figure: three_way_alignment
+% ------------------------------------------------------------------------------
+\begin{figure*}[th]
+  \centering
+  \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_three_way_alignment.pdf}
+  \caption{\textbf{Alignmnent of Different Methods' Gradients During Learning}  Cosine similarity between the expected gradients due to MC, TD, and E minimization during learning. Some environments have strong similarity between the Monte Carlo update and TD learning. When this fails, we see that E minimzation gives a gradient more similar to both than they are to each other.}
+  \label{fig:three_way_alignment}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------------------------------------------------------------
+
+
+% ------------------------------------------------------------------------------
+% Figure: Space Invaders
+% ------------------------------------------------------------------------------
+\begin{figure*}[th]
+  \centering
+  \includegraphics[width=\textwidth]{expected_layernorm/SpaceInvadersExactValue/SpaceInvadersExactValue_expected_layernorm_comparison.pdf}
+  \caption{\textbf{Learning Curves on Space Invaders} On Space Invaders, TD and MC have highly correlated gradients. E minimization hurts performance. Adding a layer norm seems to mitigate this issue.}
+  \label{fig:space_invaders}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------------------------------------------------------------
+
+We show performance during learning for PPO in expectation in \ref{fig:space_invaders} - an environment where E-minimzation creates a worse critic for policy optimization.
+
+\section{Sampling the Bellman-Smoothed Value Error}
+\begin{theorem} \label{thm:sampledE}
+  The Bellman-Smoothed Value Error can be written as
+\begin{align}
+  E &= (1-\gamma) \|\bm{e}\|_D^2 + \gamma \mathcal{E},
+\end{align}
+where the energy, $\mathcal{E}$, is given by the following.
+\begin{align}
+  \mathcal{E}
+  &= \frac{1}{2} \sum_{ij}\mu_i p_{ij}
+  (e_i - e_j)^2 \label{def:energy} \nonumber
+  \\
+  &= \frac{1}{2} \sum_{ij}\mu_i p_{ij}
+  (\underbrace{r_i + \gamma v(s_j) - v(s_i)}_{=\delta_i}
+    + (1-\gamma)e_j)^2 \label{eq:energytdform}
+\end{align}
+\end{theorem}
+
+Equation \ref{eq:energytdform} emphasizes that the energy $\mathcal{E}$ is the sum of
+squared terms, each of which can be estimated on-policy. 
+Each squared term is the sum of the sampled TD error and \textit{next state} Monte-Carlo error. Notice that the total weight on Monte-Carlo terms is $O((1-\gamma)^{-1})$, reducing their variance.
+
+
+\begin{proposition}
+The Bellman-Smoothed Value Error is equal to the 
+$D$-weighted inner product of the value error and the TD-error.
+\begin{align}
+  E = \bm{e}^\intercal D \bm{\delta}
+\end{align}
+\end{proposition}
+
+\begin{corollary}
+  The magnitude of $E$ is bounded by the magnitude of the Monte-Carlo and TD losses.
+  \begin{align}
+  E = \langle \bm{e}, \bm{\delta} \rangle_D \le \|\bm{e}\|_D \|\bm{\delta}\|_D
+  \end{align}
+\end{corollary}
+
+One can obtain an unbiased sample of $e_i$ using the discounted return $G_i \doteq \sum_{t\geq 0} \gamma^t r_t$. \todo{add detail}
+
+\textbf{Truncation Bias}
+When sampling $E$ using truncated rollouts of length $T$ rather than episodic episodes, 
+one can use the $T$-step bootstrapped return, leading to the following approximation of $e_i$ 
+\begin{equation}
+  G^T_i &= \sum_{t=0}^{T-1} \gamma^t r_t + \gamma^T \overline{v}(s_T) | s_0=s_i \\
+  e_i &\approx \delta^T_i &= G^T_i - \overline{v}(s_i) \label{eq:approxewithdelta}
+\end{equation}
+
+The quality of the approximation in Equation \ref{eq:approxewithdelta} improves with $T$, becoming exact as $T \rightarrow \infty$. 
+
+We call the bias in estimating the the Bellman Smoothed Value Error with $\delta^T_i$ instead of $e_i$ \textit{truncation bias}. Using the Generalized Advantage Estimation (GAE) with $\lambda=1$ on fixed-length rollouts will result in truncation bias increasing with the position in the rollout, finally resulting in $e_T$ being approximated by $\delta_t$. Examining the energy for this final transition:
+
+\begin{align}
+  \mathcal{E}_T &\approx \frac{1}{2} (G_T - v(s_T) - G_{T+1} + v(s_{T+1}) )^2 \\
+  &\approx \frac{1}{2} (r_T + \gamma \overline v(s_{T+1}) - v(s_T) - (v(s_{T+1}) - v(s_{T+1}) ))^2 \\
+  &\approx \frac{1}{2} (r_T + \gamma \overline v(s_{T+1}) - v(s_T))^2
+\end{align}
+
+That is, the estimate of $E$ obtained at the final step in the batch reverts to $\mathcal{L}_{TD}$. 
+
+\textbf{Experiment: Truncation Bias}
+We examine how truncation bias scales on small environments. We run PPO on each environment. PPO's update step first collects $B$ parallel trajectories of length $T$, and then updates the actor and critic for a number of gradient steps. At each update step, we compute the expectation of the gradient $\bm{g}^* = \mathbb{E}_\mu \nabla_\theta E$, and the estimate on the sampled data $\hat{\bm{g}} = \frac{1}{TB}\sum_{b=1}^B \sum_{t=1}^T \nabla_\theta l_e(s_{b,t}, s_{b,t+1}, G^T_{b,t}, G^T_{b, t+1})$. Both $\hat{\bm{g}}$ and $\bm{g}^*$ are length $k$ vectors in paramter space. The MSE $\|\hat{\bm{g}} - \bm{g}^*\|_2^2$ is the sum of the squared truncation bias and variance.
+
+% ------------------------------------------------------------------------------
+% Figure: Performance on Tasks with T
+% ------------------------------------------------------------------------------
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_policy_returns_all_T.pdf}
+  \caption{\textbf{Performance of PPO using E-Based Critic by Horizon} 
+  Performance of PPO with value learning due to the (sampled) Bellman Smoothed Value Loss for different horizon values $T$. Each horizon still has the same number of samples and gradient steps per update.}
+  \label{fig:small_ppo_performance_by_T}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------
+
+Figure \ref{fig:small_ppo_performance_by_T} shows performance during learning for each considered rollout length $T$, demonstrating that performance generally improved with $T$. 
+
+Figure \ref{fig:squared_error_trajectories} shows estimated $\text{Bias}^2$ and Variance, finding that generally the bias decreases with $T$, while variance increases. 
+
+Figure \ref{fig:squared_error_trajectories} shows the mean squared error of the gradient $\|\hat{\bm{g}} - \bm{g}^*\|_2^2$ during learning. 
+
+% Figure \ref{fig:final_return_vs_T} shows final performance as a function of $T$.
+------------------------------------------------------
+
+% ------------------------------------------------------------------------------
+% Figure 1: Main Bias-Variance Decomposition across Horizons T
+% ------------------------------------------------------------------------------
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_bias_variance_summary.pdf}
+  \caption{\textbf{Bias-Variance Trade-off in Bellman Error Gradient Estimation ($N = B \times T = 16{,}384$).} 
+  Decomposition of the total gradient mean squared error $\|\hat{\bm{g}} - \bm{g}^*\|_2^2 = \text{Bias}^2 + \text{Variance}$ across rollout horizons $T \in \{8, 64, 128, 512, 1024\}$. As the rollout horizon $T$ increases, truncation bias strictly decreases as the $T$-step return approximation $\delta_i^T \to e_i$ becomes exact. Concurrently, sample variance increases due to the reduced number of parallel trajectory rollouts $B = N / T$ under a fixed computational budget. Note that there is bias in the estimate of $\text{Bias}^2$ itself, preventing it from going to zero.}
+  \label{fig:truncation_bias_variance}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
+% Figure 2: Learning Curves (Gradient MSE Trajectories & Final Return vs T)
+% ------------------------------------------------------------------------------
+\begin{figure*}[t]
+  \centering
+  % Top panel: Full page width
+  \begin{subfigure}[b]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_squared_error_trajectories.pdf}
+    \caption{Gradient Squared Error $\|\hat{\bm{g}} - \bm{g}^*\|_2^2$ Across Learning Updates (Log Scale)}
+    \label{fig:squared_error_trajectories}
+  \end{subfigure}
+  
+  \vspace{0.8em} % Spacing between panels
+  
+  % Bottom panel: Full page width
+  \begin{subfigure}[b]{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{truncation_bias_sweep/consolidated_plots/cross_env_final_return_vs_T.pdf}
+    \caption{Asymptotic Policy Performance $V^\pi(s_0)$ as a Function of Rollout Horizon $T$}
+    \label{fig:final_return_vs_T}
+  \end{subfigure}
+  
+  \caption{\textbf{Gradient Error and Policy Performance by Rollout Length.} 
+  \textbf{(a)} The empirical gradient MSE $\|\hat{\bm{g}} - \bm{g}^*\|_2^2$ over policy updates across 7 environments. Shorter horizons suffer from persistent truncation bias floors, while longer horizons ($T \ge 512$) drive gradient error orders of magnitude lower. 
+  \textbf{(b)} Final policy return $V^\pi(s_0)$ vs. horizon $T$, demonstrating that reducing truncation bias usually improves downstream policy optimization.}
+  \label{fig:error_and_return_curves}
+\end{figure*}
+% ------------------------------------------------------------------------------
+% End Figure
+% ------------------------------------------------------------------------------
+
+
+\section{Deep RL Experiments}
+
+\begin{figure*}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{experiment_figs/td0_vs_e_gymnax.pdf}
+  \caption{\textbf{Gymnax TD(0) vs E(0).} 
+  Decomposition of the total gradient mean squared error $\|\hat{\bm{g}} - \bm{g}^*\|_2^2 = \text{Bias}^2 + \text{Variance}$ across rollout horizons $T \in \{8, 64, 128, 512, 1024\}$. As the rollout horizon $T$ increases, truncation bias strictly decreases as the $T$-step return approximation $\delta_i^T \to e_i$ becomes exact. Concurrently, sample variance increases due to the reduced number of parallel trajectory rollouts $B = N / T$ under a fixed computational budget. Note that there is bias in the estimate of $\text{Bias}^2$ itself, preventing it from going to zero.}
+  \label{fig:gymnaxetd}
+\end{figure*}
+
+
+\textbf{Comparison of TD(0) and E Minimization on Gymnax}
+We test on the MDPs in Gymnax. This includes PointRobot, which is not an MDP by default, since the observation does not specify a goal, with an augmented obesrvation space. We sweep both algorithms over the critic learning hyperparamters: learning rate, number of epochs per policy update (proportional to the replay ratio), and number of critic heads (an idea to prevent $E$-minimization from converging on a constant prediction). Results are shown in Figure \ref{fig:gymnaxetd}. Generally $E(0)$ outperforms $TD(0)$, except on the MinAtar tasks, which are more complex, and which also terminate on death.
+
+
+
+
+\bibliography{example_paper}
+\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% APPENDIX
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+\onecolumn
+
+
+\subsection*{Bias-Variance Decomposition of Gradient Estimates}
+
+Let $\bm{g}^* = \mathbb{E}_{\mu^\pi}[\nabla_\theta \mathcal{E}]$ denote the exact expected Bellman error gradient in parameter space $\mathbb{R}^k$, and let $\hat{\bm{g}} \in \mathbb{R}^k$ denote the empirical gradient computed from a batch of $B$ rollout trajectories of horizon $T$. 
+
+\subsubsection*{1. Population Bias-Variance Decomposition}
+Defining the population expectation of the sampled gradient as $\bm{\mu}_{\hat{\bm{g}}} \triangleq \mathbb{E}[\hat{\bm{g}}]$, the total Mean Squared Error (MSE) decomposes into the squared truncation bias and the trace of the gradient covariance matrix:
+\begin{align}
+  \mathrm{MSE}(\hat{\bm{g}}) 
+  &\triangleq \mathbb{E}\left[ \|\hat{\bm{g}} - \bm{g}^*\|_2^2 \right] \nonumber \\
+  &= \mathbb{E}\left[ \|\left(\hat{\bm{g}} - \bm{\mu}_{\hat{\bm{g}}}\right) + \left(\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\right)\|_2^2 \right] \nonumber \\
+  &= \|\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\|_2^2 
+     + \mathbb{E}\left[ \|\hat{\bm{g}} - \bm{\mu}_{\hat{\bm{g}}}\|_2^2 \right] 
+     + 2\,\underbrace{\mathbb{E}\left[\hat{\bm{g}} - \bm{\mu}_{\hat{\bm{g}}}\right]^\top}_{=\,\bm{0}} \left(\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\right) \nonumber \\
+  &= \underbrace{\|\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\|_2^2}_{\text{Truncation Bias}^2} 
+     + \underbrace{\vphantom{\|\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\|_2^2} \operatorname{Tr}\left(\operatorname{Cov}(\hat{\bm{g}})\right)}_{\text{Sample Variance}}. \label{eq:pop_bias_var}
+\end{align}
+
+\subsubsection*{2. Empirical Sample-Level Decomposition}
+In empirical experiments, we evaluate $M$ independent stochastic runs (seeds) $\{\hat{\bm{g}}^{(m)}\}_{m=1}^M$ under identical policy parameters, and compute the sample mean gradient:
+\begin{equation}
+  \bar{\bm{g}} = \frac{1}{M} \sum_{m=1}^M \hat{\bm{g}}^{(m)}.
+\end{equation}
+By Huygens' sum-of-squares identity, the total empirical MSE partitions exactly into two non-negative terms:
+\begin{align}
+  \underbrace{\frac{1}{M} \sum_{m=1}^M \|\hat{\bm{g}}^{(m)} - \bm{g}^*\|_2^2}_{\widehat{\mathrm{MSE}}} 
+  &= \underbrace{\|\bar{\bm{g}} - \bm{g}^*\|_2^2}_{\widehat{\mathrm{Bias}}^2_{\mathrm{sample}}} 
+   + \underbrace{\frac{1}{M} \sum_{m=1}^M \|\hat{\bm{g}}^{(m)} - \bar{\bm{g}}\|_2^2}_{\widehat{\mathrm{Var}}_{\mathrm{sample}}}. \label{eq:sample_bias_var}
+\end{align}
+This algebraic identity guarantees that $\widehat{\mathrm{MSE}} \equiv \widehat{\mathrm{Bias}}^2_{\mathrm{sample}} + \widehat{\mathrm{Var}}_{\mathrm{sample}}$ strictly holds across all seeds and horizons without leaving an unassigned residual or generating negative quantities on logarithmic plots.
+
+\subsubsection*{3. Finite-Sample Expectation of the Estimator}
+Taking the expectation of the empirical plug-in bias estimator $\widehat{\mathrm{Bias}}^2_{\mathrm{sample}}$ reveals that it is a biased estimator of the true population squared bias $\|\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\|_2^2$:
+\begin{align}
+  \mathbb{E}\left[ \widehat{\mathrm{Bias}}^2_{\mathrm{sample}} \right] 
+  &= \mathbb{E}\left[ \|\bar{\bm{g}} - \bm{g}^*\|_2^2 \right] \nonumber \\
+  &= \mathbb{E}\left[ \|\left(\bar{\bm{g}} - \bm{\mu}_{\hat{\bm{g}}}\right) + \left(\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\right)\|_2^2 \right] \nonumber \\
+  &= \|\bm{\mu}_{\hat{\bm{g}}} - \bm{g}^*\|_2^2 + \mathbb{E}\left[ \|\bar{\bm{g}} - \bm{\mu}_{\hat{\bm{g}}}\|_2^2 \right] \nonumber \\
+  &= \|\text{Bias}(\hat{\bm{g}})\|_2^2 + \frac{1}{M} \operatorname{Tr}\left(\operatorname{Cov}(\hat{\bm{g}})\right). \label{eq:bias_floor}
+\end{align}
+Consequently, due to the convexity of the $L_2$ norm (Jensen's inequality), $\widehat{\mathrm{Bias}}^2_{\mathrm{sample}}$ carries an unavoidable additive variance penalty of $\frac{1}{M}\mathrm{Var}(\hat{\bm{g}})$. Even in the asymptotic limit where truncation bias vanishes ($\bm{\mu}_{\hat{\bm{g}}} \to \bm{g}^*$ as $T \to \infty$), the empirical sample bias hits a noise floor of $\frac{1}{M}\mathrm{Var}(\hat{\bm{g}}) > 0$.
+
+An unbiased estimator of population squared bias is given by:
+\begin{equation}
+  \widehat{\mathrm{Bias}}^2_{\mathrm{unbiased}} = \|\bar{\bm{g}} - \bm{g}^*\|_2^2 - \frac{1}{M-1}\widehat{\mathrm{Var}}_{\mathrm{sample}},
+\end{equation}
+which subtracts the finite-sample variance penalty at the expense of potentially admitting negative values under finite sample noise when the true bias is negligible.
+
+\section{You \emph{can} have an appendix here.}
+
+You can have as much text here as you want. The main body must be at most $8$
+pages long. For the final version, one more page can be added. If you want, you
+can use an appendix like this one.
+
+The $\mathtt{\backslash onecolumn}$ command above can be kept in place if you
+prefer a one-column appendix, or can be removed if you prefer a two-column
+appendix.  Apart from this possible change, the style (font size, spacing,
+margins, page numbering, etc.) should be kept the same as the main body.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}
+
+% This document was modified from the file originally made available by
+% Pat Langley and Andrea Danyluk for ICML-2K. This version was created
+% by Iain Murray in 2018, and modified by Alexandre Bouchard in
+% 2019 and 2021 and by Csaba Szepesvari, Gang Niu and Sivan Sabato in 2022.
+% Modified again in 2023 and 2024 by Sivan Sabato and Jonathan Scarlett.
+% Previous contributors include Dan Roy, Lise Getoor and Tobias
+% Scheffer, which was slightly modified from the 2010 version by
+% Thorsten Joachims & Johannes Fuernkranz, slightly modified from the
+% 2009 version by Kiri Wagstaff and Sam Roweis's 2008 version, which is
+% slightly modified from Prasad Tadepalli's 2007 version which is a
+% lightly changed version of the previous year's version by Andrew
+% Moore, which was in turn edited from those of Kristian Kersting and
+% Codrina Lauth. Alex Smola contributed to the algorithmic style files.
+
