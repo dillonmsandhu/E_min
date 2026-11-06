@@ -71,7 +71,7 @@ def get_critic_target_lambda(config: dict) -> float:
     - MC: 1.0
     """
     critic_type = config.get("CRITIC_TYPE", "fitted").lower()
-    if critic_type in ["e_0", "e0", "e", "e_lambda", "elambda", "e_geometric", "sampled_e", "surgical_v_aux", "surgical", "e_0_q", "e_lambda_q"]:
+    if critic_type in ["e_0", "e0", "e", "e_0_basic", "e_basic", "e_lambda", "elambda", "e_geometric", "sampled_e", "surgical_v_aux", "surgical", "e_0_q", "e_lambda_q"]:
         return config.get("RETURN_LAMBDA", 1.0)
     elif critic_type in ["td_0", "td", "td0", "classic_td"]:
         return config.get("TD_LAMBDA", 0.0)

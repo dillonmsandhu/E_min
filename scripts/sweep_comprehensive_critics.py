@@ -546,8 +546,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     auc_matrix = []
     env_terminations_summary = []
 
-    alg_names = ["E(λ*)", "TD(λ*)", "E(0)", "MC"]
-    colors = {"E(λ*)": "#2ca02c", "TD(λ*)": "#d62728", "E(0)": "#1f77b4", "MC": "#9467bd"}
+    alg_names = ["E(λ*)", "TD(λ*)", "E(0)", "E(0) Naive Sampling", "MC"]
+    colors = {"E(λ*)": "#2ca02c", "TD(λ*)": "#d62728", "E(0)": "#1f77b4", "E(0) Naive Sampling": "#9467bd", "MC": "#7f7f7f"}
 
     for idx, env in enumerate(envs):
         ax = axes[0, idx]
@@ -566,7 +566,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         env_curves["E(0)_std"] = all_runs[env]["E(0)_v_aux"][best_lr_e0]["returned_episode_returns"].std(axis=0)
         env_aucs["E(0)"] = compute_auc(env_curves["E(0)"])
 
-        # 3. Best TD(lambda) (across critic_lrs and lambdas)
+        # 3. Best E(0) Naive Sampling without V_aux (across critic_lrs)
+        best_lr_e0_no = max(critic_lrs, key=lambda lr: compute_auc(all_runs[env]["E(0)_no_v_aux"][lr]["returned_episode_returns"].mean(axis=0)))
+        env_curves["E(0) Naive Sampling"] = all_runs[env]["E(0)_no_v_aux"][best_lr_e0_no]["returned_episode_returns"].mean(axis=0)
+        env_curves["E(0) Naive Sampling_std"] = all_runs[env]["E(0)_no_v_aux"][best_lr_e0_no]["returned_episode_returns"].std(axis=0)
+        env_aucs["E(0) Naive Sampling"] = compute_auc(env_curves["E(0) Naive Sampling"])
+
+        # 4. Best TD(lambda) (across critic_lrs and lambdas)
         best_lr_td = None
         best_lmb_td = None
         best_auc_td = -1e9
@@ -581,7 +587,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         env_curves["TD(λ*)_std"] = all_runs[env]["TD(lambda)"][best_lr_td][best_lmb_td]["returned_episode_returns"].std(axis=0)
         env_aucs["TD(λ*)"] = best_auc_td
 
-        # 4. Best E(lambda) (across critic_lrs and lambdas)
+        # 5. Best E(lambda) (across critic_lrs and lambdas)
         best_lr_el = None
         best_lmb_el = None
         best_auc_el = -1e9
@@ -625,6 +631,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             "Best E(λ) AUC": best_auc_el,
             "Best TD(λ) AUC": best_auc_td,
             "E(0) AUC": env_aucs["E(0)"],
+            "E(0) Naive Sampling AUC": env_aucs["E(0) Naive Sampling"],
             "MC AUC": env_aucs["MC"],
         })
 

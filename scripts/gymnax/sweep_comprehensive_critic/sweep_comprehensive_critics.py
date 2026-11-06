@@ -6,15 +6,16 @@ Comprehensive Critic Comparison Sweep & Diagnostic Suite:
 1. E(lambda) with geometric lookahead jumps (sweeping lambda, selecting best)
 2. TD(lambda) fitted value iteration (sweeping lambda, selecting best)
 3. E(0) via algos/E.py (with V_aux)
-4. MC via algos/mc.py (Monte Carlo rollout return regression)
-5. V_aux Regularization Ablations for a single lambda:
+4. E(0) Naive Sampling (without V_aux, double sampling)
+5. MC via algos/mc.py (Monte Carlo rollout return regression)
+6. V_aux Regularization Ablations for a single lambda (in dedicated diagnostic suite):
    - Baseline (MSE)
    - + Huber Loss (delta=10.0)
    - + Trust Region Regularization (beta=1.0)
    - + Both Combined (Huber + Trust)
 
 Visualizations (Modeled after sampled_lambda_sweep):
-- main_comparison_learning_curves: Clean multi-panel grid comparing the key algorithms.
+- main_comparison_learning_curves: Clean multi-panel grid comparing MC, E(0), E(0) Naive Sampling, TD(λ*), and E(λ*) Baseline.
 - v_aux_ablations_learning_curves: Multi-panel grid comparing V_aux regularizations against TD(lambda) converged performance.
 - main_comparison_auc_table: Publication-grade table with heatmap coloring for AUC.
 - main_comparison_final_return_table: Publication-grade table with heatmap coloring for final returns.
@@ -226,6 +227,10 @@ def run_sweep(args):
                     "ACTOR_LR": actor_lr,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "e_0",
+                    "USES_AUX": True,
+                    "SURGICAL_V_AUX": True,
+                    "RETURN_LAMBDA": 1.0,
+                    "VALUE_LAMBDA": 1.0,
                     "GAE_LAMBDA": 0.8,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
@@ -242,16 +247,20 @@ def run_sweep(args):
                 all_runs[env_name]["E(0)_v_aux"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # 3. E(0) without V_aux
+        # 3. E(0) without V_aux (Naive Sampling)
         for lr in critic_lrs:
             if lr not in all_runs[env_name]["E(0)_no_v_aux"]:
-                print(f"[E(0) Basic No V_aux] env={env_name}, critic_lr={lr}...")
+                print(f"[E(0) Naive Sampling (No V_aux)] env={env_name}, critic_lr={lr}...")
                 cfg = {
                     "ENV_NAME": env_name,
                     "LR": actor_lr,
                     "ACTOR_LR": actor_lr,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "e_0_basic",
+                    "USES_AUX": False,
+                    "SURGICAL_V_AUX": False,
+                    "RETURN_LAMBDA": 1.0,
+                    "VALUE_LAMBDA": 1.0,
                     "GAE_LAMBDA": 0.8,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
@@ -538,20 +547,20 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
     axes_flat = axes.flatten()
 
-    alg_names = ["MC", "E(0)", "TD(λ*)", "E(λ*) Baseline", "E(λ*) + Huber + Trust"]
+    alg_names = ["MC", "E(0)", "E(0) Naive Sampling", "TD(λ*)", "E(λ*) Baseline"]
     colors = {
         "MC": "#7f7f7f",
         "E(0)": "#1f77b4",
+        "E(0) Naive Sampling": "#9467bd",
         "TD(λ*)": "#e6550d",
-        "E(λ*) Baseline": "#74c476",
-        "E(λ*) + Huber + Trust": "#005a32",
+        "E(λ*) Baseline": "#2ca02c",
     }
     linestyles = {
         "MC": "-",
         "E(0)": "-",
+        "E(0) Naive Sampling": "--",
         "TD(λ*)": "--",
-        "E(λ*) Baseline": "--",
-        "E(λ*) + Huber + Trust": "-",
+        "E(λ*) Baseline": "-",
     }
 
     auc_means_dict = {alg: [] for alg in alg_names}
@@ -577,7 +586,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_means_dict["MC"].append(env_curves["MC"][-1])
         final_stds_dict["MC"].append(env_stds["MC"][-1])
 
-        # 2. E(0) (best lr)
+        # 2. E(0) (with V_aux, best lr)
         best_lr_e0 = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)_v_aux"][lr]["returned_episode_returns"]))
         e0_data = all_runs[env]["E(0)_v_aux"][best_lr_e0]["returned_episode_returns"]
         env_curves["E(0)"] = e0_data.mean(axis=0)
@@ -587,7 +596,17 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_means_dict["E(0)"].append(env_curves["E(0)"][-1])
         final_stds_dict["E(0)"].append(env_stds["E(0)"][-1])
 
-        # 3. TD(lambda*) (best lr and lambda)
+        # 3. E(0) Naive Sampling (without V_aux, best lr)
+        best_lr_e0_naive = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)_no_v_aux"][lr]["returned_episode_returns"]))
+        e0_naive_data = all_runs[env]["E(0)_no_v_aux"][best_lr_e0_naive]["returned_episode_returns"]
+        env_curves["E(0) Naive Sampling"] = e0_naive_data.mean(axis=0)
+        env_stds["E(0) Naive Sampling"] = e0_naive_data.std(axis=0)
+        auc_means_dict["E(0) Naive Sampling"].append(compute_auc(env_curves["E(0) Naive Sampling"]))
+        auc_stds_dict["E(0) Naive Sampling"].append(np.mean(env_stds["E(0) Naive Sampling"]))
+        final_means_dict["E(0) Naive Sampling"].append(env_curves["E(0) Naive Sampling"][-1])
+        final_stds_dict["E(0) Naive Sampling"].append(env_stds["E(0) Naive Sampling"][-1])
+
+        # 4. TD(lambda*) (best lr and lambda)
         best_lr_td, best_lmb_td, best_auc_td = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
@@ -604,7 +623,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_means_dict["TD(λ*)"].append(env_curves["TD(λ*)"][-1])
         final_stds_dict["TD(λ*)"].append(env_stds["TD(λ*)"][-1])
 
-        # 4. E(lambda*) Baseline (best lr and lambda)
+        # 5. E(lambda*) Baseline (best lr and lambda)
         best_lr_el, best_lmb_el, best_auc_el = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
@@ -621,22 +640,12 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_means_dict["E(λ*) Baseline"].append(env_curves["E(λ*) Baseline"][-1])
         final_stds_dict["E(λ*) Baseline"].append(env_stds["E(λ*) Baseline"][-1])
 
-        # 5. E(lambda) + Huber + Trust Region (best lr at ablation_lambda)
-        best_lr_both = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(lambda)_both"][lr]["returned_episode_returns"]))
-        both_data = all_runs[env]["E(lambda)_both"][best_lr_both]["returned_episode_returns"]
-        env_curves["E(λ*) + Huber + Trust"] = both_data.mean(axis=0)
-        env_stds["E(λ*) + Huber + Trust"] = both_data.std(axis=0)
-        auc_means_dict["E(λ*) + Huber + Trust"].append(compute_auc(env_curves["E(λ*) + Huber + Trust"]))
-        auc_stds_dict["E(λ*) + Huber + Trust"].append(np.mean(env_stds["E(λ*) + Huber + Trust"]))
-        final_means_dict["E(λ*) + Huber + Trust"].append(env_curves["E(λ*) + Huber + Trust"][-1])
-        final_stds_dict["E(λ*) + Huber + Trust"].append(env_stds["E(λ*) + Huber + Trust"][-1])
-
         # Plot curves
         for alg in alg_names:
             c = env_curves[alg]
             s = env_stds[alg]
             lbl = f"{alg} (λ={best_lmb_td})" if alg == "TD(λ*)" else (f"{alg} (λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
-            plot_curve_with_std(ax, c, s, lbl, colors[alg], batch_size, lw=2.2 if "Both" in alg or "TD" in alg else 1.8, linestyle=linestyles[alg])
+            plot_curve_with_std(ax, c, s, lbl, colors[alg], batch_size, lw=2.2 if "TD" in alg or "Baseline" in alg else 1.8, linestyle=linestyles[alg])
 
         ax.set_title(env_title, fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Timesteps", fontsize=9.5)
@@ -653,10 +662,10 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             "Best E(λ) Baseline λ": best_lmb_el,
             "Best E(λ) Baseline Return": env_curves["E(λ*) Baseline"][-1],
             "Best E(λ) Baseline AUC": best_auc_el,
-            "E(λ) + Huber + Trust Return": env_curves["E(λ*) + Huber + Trust"][-1],
-            "E(λ) + Huber + Trust AUC": auc_means_dict["E(λ*) + Huber + Trust"][-1],
             "E(0) Return": env_curves["E(0)"][-1],
             "E(0) AUC": auc_means_dict["E(0)"][-1],
+            "E(0) Naive Sampling Return": env_curves["E(0) Naive Sampling"][-1],
+            "E(0) Naive Sampling AUC": auc_means_dict["E(0) Naive Sampling"][-1],
             "MC Return": env_curves["MC"][-1],
             "MC AUC": auc_means_dict["MC"][-1],
         })

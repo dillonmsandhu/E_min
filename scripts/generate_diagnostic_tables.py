@@ -183,7 +183,7 @@ def process_v_critics(pkl_path, base_out_dir):
     n_envs = len(envs)
 
     # 1. Main Comparison Table
-    col_names_main = ["MC", "E(0)", "TD(λ*)", "E(λ*) Baseline", "E(λ*) + Huber + Trust"]
+    col_names_main = ["MC", "E(0)", "E(0) Naive Sampling", "TD(λ*)", "E(λ*) Baseline"]
     mean_main = np.zeros((n_envs, len(col_names_main)))
     std_main = np.zeros((n_envs, len(col_names_main)))
 
@@ -198,6 +198,11 @@ def process_v_critics(pkl_path, base_out_dir):
         mean_main[i, 1] = float(np.mean(e0_data))
         std_main[i, 1] = float(np.std(np.mean(e0_data, axis=1)))
 
+        best_lr_e0_no = max(critic_lrs, key=lambda lr: np.mean(runs[env]["E(0)_no_v_aux"][lr]["returned_episode_returns"]))
+        e0_no_data = runs[env]["E(0)_no_v_aux"][best_lr_e0_no]["returned_episode_returns"]
+        mean_main[i, 2] = float(np.mean(e0_no_data))
+        std_main[i, 2] = float(np.std(np.mean(e0_no_data, axis=1)))
+
         best_auc_td, best_td_data = -1e9, None
         for clr in critic_lrs:
             for lmb in lambdas:
@@ -206,8 +211,8 @@ def process_v_critics(pkl_path, base_out_dir):
                 if auc > best_auc_td:
                     best_auc_td = auc
                     best_td_data = data
-        mean_main[i, 2] = float(np.mean(best_td_data))
-        std_main[i, 2] = float(np.std(np.mean(best_td_data, axis=1)))
+        mean_main[i, 3] = float(np.mean(best_td_data))
+        std_main[i, 3] = float(np.std(np.mean(best_td_data, axis=1)))
 
         best_auc_el, best_el_data = -1e9, None
         for clr in critic_lrs:
@@ -217,13 +222,8 @@ def process_v_critics(pkl_path, base_out_dir):
                 if auc > best_auc_el:
                     best_auc_el = auc
                     best_el_data = data
-        mean_main[i, 3] = float(np.mean(best_el_data))
-        std_main[i, 3] = float(np.std(np.mean(best_el_data, axis=1)))
-
-        best_lr_both = max(critic_lrs, key=lambda lr: np.mean(runs[env]["E(lambda)_both"][lr]["returned_episode_returns"]))
-        both_data = runs[env]["E(lambda)_both"][best_lr_both]["returned_episode_returns"]
-        mean_main[i, 4] = float(np.mean(both_data))
-        std_main[i, 4] = float(np.std(np.mean(both_data, axis=1)))
+        mean_main[i, 4] = float(np.mean(best_el_data))
+        std_main[i, 4] = float(np.std(np.mean(best_el_data, axis=1)))
 
     export_table_bundle(
         folder_path=os.path.join(tables_dir, "main_comparison"),
