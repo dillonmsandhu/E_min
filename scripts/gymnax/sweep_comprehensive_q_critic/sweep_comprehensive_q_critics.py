@@ -14,12 +14,12 @@ an auxiliary network V_aux because:
   R_{t:t+K} = G_t - gamma^K G_{t+K}
 is exact with zero transition noise along the rollout trajectory.
 
-Analysis Outputs:
-1. Diagnostic 1: E(0)-Q vs. E(lambda=0)-Q verification
-2. Diagnostic 2: SARSA(lambda) vs. E(lambda)-Q spectrum comparison across lambdas
-3. Main Head-to-Head Comparison: E(lambda*-Q), SARSA(lambda*), E(0)-Q, MC-Q
-4. Normalized AUC Heatmap across environments
-5. Comprehensive Performance Summary CSV
+Visualizations (Modeled after sampled_lambda_sweep):
+- main_comparison_learning_curves: 2x3 grid comparing the 4 key Q-critic algorithms.
+- lambda_sensitivity_curves: 2x3 grid plotting Performance vs. lambda for SARSA(lambda) vs. E(lambda)-Q.
+- main_comparison_auc_table: Publication-grade regular table with heatmap coloring for AUC.
+- main_comparison_final_return_table: Publication-grade regular table with heatmap coloring for final returns.
+- main_comparison_summary.csv: Tabulating metrics across all environments.
 """
 
 import os
@@ -27,18 +27,27 @@ import sys
 import argparse
 import time
 import pickle
+import math
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# Publication font formatting
+matplotlib.rcParams["pdf.fonttype"] = 42
+matplotlib.rcParams["ps.fonttype"] = 42
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["font.sans-serif"] = ["DejaVu Sans", "Helvetica", "Arial"]
+matplotlib.rcParams["axes.edgecolor"] = "#333333"
+matplotlib.rcParams["axes.linewidth"] = 0.8
+
 # Ensure E_min root is strictly prioritized on sys.path
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _repo_root = os.path.abspath(os.path.join(_script_dir, "../../.."))  # E_min root
 _scripts_dir = os.path.abspath(os.path.join(_script_dir, "../.."))   # E_min/scripts
 
-sys.path = [_repo_root, _scripts_dir] + [
+sys.path = [_repo_root, _scripts_dir, _script_dir] + [
     p for p in sys.path
     if not (os.path.exists(os.path.join(p, "fixed_policy")) or (p == "" and os.path.exists(os.path.join(os.getcwd(), "fixed_policy"))))
 ]
@@ -47,6 +56,15 @@ import jax
 import jax.numpy as jnp
 
 from gymnax_rl.algos.q_ppo import make_train as make_q_ppo_train
+
+ENV_TITLES = {
+    "CartPole-v1": "CartPole-v1",
+    "Acrobot-v1": "Acrobot-v1",
+    "MountainCar-v0": "Mountain Car (Sparse)",
+    "DeepSea-bsuite": "DeepSea (bsuite)",
+    "DiscountingChain-bsuite": "Discounting Chain (bsuite)",
+    "Pong-misc": "Pong",
+}
 
 
 def compute_auc(returns_curve):
@@ -60,7 +78,6 @@ def run_experiment(config, seed_keys):
     vmapped_fn = jax.jit(jax.vmap(train_fn))
     start_t = time.time()
     out = vmapped_fn(seed_keys)
-    # Block until execution finishes to track wall-clock time
     jax.tree_util.tree_map(lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x, out)
     elapsed = time.time() - start_t
 
@@ -104,7 +121,6 @@ def run_sweep(args):
 
     all_runs = {}
 
-    # Check if user requested loading existing data
     if getattr(args, "load_existing", None) and os.path.exists(args.load_existing):
         print(f"Loading existing metrics from: {args.load_existing}")
         with open(args.load_existing, "rb") as f:
@@ -115,7 +131,6 @@ def run_sweep(args):
     num_updates = max(1, args.total_timesteps // batch_size)
     timesteps = np.arange(1, num_updates + 1) * batch_size
 
-    # Align timesteps to loaded trajectory length if loading existing data
     if all_runs:
         for env in envs:
             if env in all_runs:
@@ -148,9 +163,7 @@ def run_sweep(args):
 
         print(f"\n>>> Running Environment: {env_name} <<<")
 
-        # -------------------------------------------------------------
-        # 1. MC-Q Baseline (swept across critic LRs)
-        # -------------------------------------------------------------
+        # 1. MC-Q Baseline
         for lr in critic_lrs:
             if lr not in all_runs[env_name]["MC"]:
                 print(f"[MC-Q] env={env_name}, critic_lr={lr}...")
@@ -178,9 +191,7 @@ def run_sweep(args):
                 all_runs[env_name]["MC"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # -------------------------------------------------------------
-        # 2. E(0)-Q (swept across critic LRs)
-        # -------------------------------------------------------------
+        # 2. E(0)-Q
         for lr in critic_lrs:
             if lr not in all_runs[env_name]["E(0)"]:
                 print(f"[E(0)-Q] env={env_name}, critic_lr={lr}...")
@@ -206,9 +217,7 @@ def run_sweep(args):
                 all_runs[env_name]["E(0)"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # -------------------------------------------------------------
-        # 3. SARSA(lambda) Grid (critic_lrs x lambdas)
-        # -------------------------------------------------------------
+        # 3. SARSA(lambda) Grid
         for lr in critic_lrs:
             for lmb in lambdas:
                 if lmb not in all_runs[env_name]["SARSA(lambda)"][lr]:
@@ -237,9 +246,7 @@ def run_sweep(args):
                     all_runs[env_name]["SARSA(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # -------------------------------------------------------------
-        # 4. E(lambda)-Q Grid (critic_lrs x lambdas)
-        # -------------------------------------------------------------
+        # 4. E(lambda)-Q Grid
         for lr in critic_lrs:
             for lmb in lambdas:
                 if lmb not in all_runs[env_name]["E(lambda)"][lr]:
@@ -268,25 +275,92 @@ def run_sweep(args):
                     all_runs[env_name]["E(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-    # Save raw metrics
     save_path = os.path.join(out_dir, "data", "sweep_metrics_all.pkl")
     with open(save_path, "wb") as f:
         pickle.dump({"runs": all_runs, "timesteps": timesteps, "args": vars(args)}, f)
     print(f"\nSaved raw metrics to {save_path}")
 
-    # Generate Diagnostics & Benchmark Plots
     generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, lambdas, args)
 
 
-def plot_curve_with_std(ax, curve, std, label, color, batch_size, lw=2.2, alpha=0.12, linestyle="-"):
+def plot_curve_with_std(ax, curve, std, label, color, batch_size, lw=2.0, alpha=0.15, linestyle="-"):
     t = np.arange(1, len(curve) + 1) * batch_size
     ax.plot(t, curve, label=label, color=color, lw=lw, linestyle=linestyle)
     if std is not None:
         ax.fill_between(t, curve - std, curve + std, color=color, alpha=alpha)
 
 
+def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="Blues"):
+    """
+    Renders a publication-grade table with heatmap-colored cells:
+    Rows = Environments, Columns = Conditions.
+    Each cell contains formatted numerical text (Mean ± Std),
+    background color shows relative rank, and best condition is bordered green.
+    """
+    n_rows, n_cols = df_mean.shape
+    fig_w = max(8.5, n_cols * 1.85 + 2.0)
+    fig_h = max(3.5, n_rows * 0.70 + 1.8)
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=300)
+
+    mat_mean = df_mean.values
+    mat_std = df_std.values if df_std is not None else np.zeros_like(mat_mean)
+
+    row_mins = np.nanmin(mat_mean, axis=1, keepdims=True)
+    row_maxs = np.nanmax(mat_mean, axis=1, keepdims=True)
+    row_ranges = np.maximum(row_maxs - row_mins, 1e-8)
+    mat_norm = (mat_mean - row_mins) / row_ranges
+
+    color_map = getattr(plt.cm, cmap)
+    im = ax.imshow(mat_norm, cmap=color_map, vmin=0.0, vmax=1.0, aspect="auto")
+
+    ax.set_xticks(np.arange(n_cols))
+    ax.set_xticklabels(df_mean.columns, fontsize=10.5, fontweight="bold", rotation=25, ha="right")
+    ax.set_yticks(np.arange(n_rows))
+    ax.set_yticklabels(df_mean.index, fontsize=10.5, fontweight="bold")
+
+    ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n_rows, 1), minor=True)
+    ax.grid(which="minor", color="#d0d7de", linestyle="-", linewidth=1.2)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    for r in range(n_rows):
+        best_c = np.nanargmax(mat_mean[r])
+        for c in range(n_cols):
+            val = mat_mean[r, c]
+            std = mat_std[r, c]
+            norm_val = mat_norm[r, c]
+
+            is_best = (c == best_c)
+            txt = f"{val:.1f}\n±{std:.1f}" if abs(val) >= 10 else f"{val:.2f}\n±{std:.2f}"
+            text_color = "white" if norm_val > 0.60 else "#111111"
+            weight = "bold" if is_best else "normal"
+
+            if is_best:
+                rect = plt.Rectangle((c - 0.48, r - 0.48), 0.96, 0.96, fill=False, edgecolor="#0b6623", linewidth=2.5)
+                ax.add_patch(rect)
+
+            ax.text(c, r, txt, ha="center", va="center", color=text_color, fontsize=9.5, fontweight=weight)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.030, pad=0.04)
+    cbar.set_label(cbar_label, fontsize=10, fontweight="bold")
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=16)
+
+    plt.tight_layout()
+    png_path = f"{output_base}.png"
+    pdf_path = f"{output_base}.pdf"
+    plt.savefig(png_path, bbox_inches="tight")
+    plt.savefig(pdf_path, bbox_inches="tight")
+    plt.close()
+    print(f"Saved Heatmap Table to {png_path} and {pdf_path}")
+
+
 def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, lambdas, args):
-    """Generates diagnostic and benchmark figures and summary tables for Q-PPO."""
+    """Generates the streamlined publication-quality figures and heatmap tables for Q-PPO."""
+    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
+
     batch_size = args.num_envs * args.num_steps
     for env in envs:
         for k in all_runs[env]:
@@ -299,105 +373,68 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
                 timesteps = np.arange(1, curve_len + 1) * batch_size
                 break
 
-    print("\n================ GENERATING ANALYSES & FIGURES ================")
+    print("\n================ GENERATING ANALYSES & FIGURES (Q-PPO) ================")
     plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
     n_envs = len(envs)
 
-    # -------------------------------------------------------------
-    # Diagnostic 1: E(0)-Q vs. E(lambda=0)-Q
-    # -------------------------------------------------------------
-    fig, axes = plt.subplots(1, n_envs, figsize=(7.0 * n_envs, 5.0), dpi=150, squeeze=False)
-    for idx, env in enumerate(envs):
-        ax = axes[0, idx]
-        best_clr_e0 = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)"][lr]["returned_episode_returns"]))
-        e0_curve = all_runs[env]["E(0)"][best_clr_e0]["returned_episode_returns"].mean(axis=0)
-        e0_std = all_runs[env]["E(0)"][best_clr_e0]["returned_episode_returns"].std(axis=0)
-
-        best_clr_el0 = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(lambda)"][lr][0.0]["returned_episode_returns"]))
-        el0_curve = all_runs[env]["E(lambda)"][best_clr_el0][0.0]["returned_episode_returns"].mean(axis=0)
-        el0_std = all_runs[env]["E(lambda)"][best_clr_el0][0.0]["returned_episode_returns"].std(axis=0)
-
-        plot_curve_with_std(ax, e0_curve, e0_std, f"E(0)-Q (lr={best_clr_e0})", "#1f77b4", batch_size, lw=2.4)
-        plot_curve_with_std(ax, el0_curve, el0_std, f"E(λ=0)-Q (lr={best_clr_el0})", "#ff7f0e", batch_size, lw=2.2, linestyle="--")
-
-        ax.set_title(f"{env}: Diagnostic 1 (E(0)-Q vs E(λ=0)-Q)", fontsize=12, fontweight="bold", pad=10)
-        ax.set_xlabel("Timesteps", fontsize=10)
-        ax.set_ylabel("Episodic Return", fontsize=10)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        ax.legend(frameon=True, facecolor="white", fontsize=9.5)
-
-    plt.tight_layout()
-    diag1_path = os.path.join(out_dir, "diagnostics", "diagnostic_1_e0_vs_elambda0.png")
-    plt.savefig(diag1_path)
-    plt.close()
-    print(f"Saved Diagnostic 1 to {diag1_path}")
+    n_cols = min(n_envs, 3)
+    n_rows = math.ceil(n_envs / n_cols)
 
     # -------------------------------------------------------------
-    # Diagnostic 2: SARSA(lambda) vs. E(lambda)-Q Across Lambda Spectrum
+    # 1. MAIN COMPARISON: 4 Core Curves (2x3 Grid for 6 Environments)
     # -------------------------------------------------------------
-    fig, axes = plt.subplots(len(lambdas), n_envs, figsize=(7.0 * n_envs, 4.0 * len(lambdas)), dpi=150, squeeze=False)
-    for col, env in enumerate(envs):
-        for row, lmb in enumerate(lambdas):
-            ax = axes[row, col]
-            best_clr_sarsa = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["SARSA(lambda)"][lr][lmb]["returned_episode_returns"]))
-            sarsa_curve = all_runs[env]["SARSA(lambda)"][best_clr_sarsa][lmb]["returned_episode_returns"].mean(axis=0)
-            sarsa_std = all_runs[env]["SARSA(lambda)"][best_clr_sarsa][lmb]["returned_episode_returns"].std(axis=0)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
+    axes_flat = axes.flatten()
 
-            best_clr_el = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(lambda)"][lr][lmb]["returned_episode_returns"]))
-            el_curve = all_runs[env]["E(lambda)"][best_clr_el][lmb]["returned_episode_returns"].mean(axis=0)
-            el_std = all_runs[env]["E(lambda)"][best_clr_el][lmb]["returned_episode_returns"].std(axis=0)
-
-            plot_curve_with_std(ax, sarsa_curve, sarsa_std, f"SARSA(λ={lmb})", "#4575b4", batch_size, lw=2.0)
-            plot_curve_with_std(ax, el_curve, el_std, f"E(λ={lmb})-Q", "#d73027", batch_size, lw=2.2)
-
-            ax.set_title(f"{env} (λ={lmb})", fontsize=11, fontweight="bold")
-            ax.set_xlabel("Timesteps", fontsize=9)
-            ax.set_ylabel("Episodic Return", fontsize=9)
-            ax.grid(True, linestyle="--", alpha=0.5)
-            ax.legend(frameon=True, facecolor="white", fontsize=8.5, loc="lower right")
-
-    plt.tight_layout()
-    diag2_path = os.path.join(out_dir, "diagnostics", "diagnostic_2_sarsa_vs_elambda_spectrum.png")
-    plt.savefig(diag2_path)
-    plt.close()
-    print(f"Saved Diagnostic 2 to {diag2_path}")
-
-    # -------------------------------------------------------------
-    # Main Head-to-Head Comparison: E(lambda*-Q), SARSA(lambda*), E(0)-Q, MC-Q
-    # -------------------------------------------------------------
-    fig, axes = plt.subplots(1, n_envs, figsize=(7.5 * n_envs, 5.5), dpi=150, squeeze=False)
     alg_names = ["MC-Q", "E(0)-Q", "SARSA(λ*)", "E(λ*-Q)"]
     colors = {
         "MC-Q": "#7f7f7f",
         "E(0)-Q": "#1f77b4",
-        "SARSA(λ*)": "#ff7f0e",
+        "SARSA(λ*)": "#e6550d",
         "E(λ*-Q)": "#2ca02c",
     }
+    linestyles = {
+        "MC-Q": "-",
+        "E(0)-Q": "-",
+        "SARSA(λ*)": "--",
+        "E(λ*-Q)": "-",
+    }
 
-    auc_matrix = []
+    auc_means_dict = {alg: [] for alg in alg_names}
+    auc_stds_dict = {alg: [] for alg in alg_names}
+    final_means_dict = {alg: [] for alg in alg_names}
+    final_stds_dict = {alg: [] for alg in alg_names}
     summary_rows = []
 
     for idx, env in enumerate(envs):
-        ax = axes[0, idx]
+        ax = axes_flat[idx]
+        env_title = ENV_TITLES.get(env, env)
+
         env_curves = {}
-        env_aucs = {}
+        env_stds = {}
 
-        # 1. Best MC-Q (across critic_lrs)
+        # 1. MC-Q
         best_lr_mc = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["MC"][lr]["returned_episode_returns"]))
-        env_curves["MC-Q"] = all_runs[env]["MC"][best_lr_mc]["returned_episode_returns"].mean(axis=0)
-        env_curves["MC-Q_std"] = all_runs[env]["MC"][best_lr_mc]["returned_episode_returns"].std(axis=0)
-        env_aucs["MC-Q"] = compute_auc(env_curves["MC-Q"])
+        mc_data = all_runs[env]["MC"][best_lr_mc]["returned_episode_returns"]
+        env_curves["MC-Q"] = mc_data.mean(axis=0)
+        env_stds["MC-Q"] = mc_data.std(axis=0)
+        auc_means_dict["MC-Q"].append(compute_auc(env_curves["MC-Q"]))
+        auc_stds_dict["MC-Q"].append(np.mean(env_stds["MC-Q"]))
+        final_means_dict["MC-Q"].append(env_curves["MC-Q"][-1])
+        final_stds_dict["MC-Q"].append(env_stds["MC-Q"][-1])
 
-        # 2. Best E(0)-Q (across critic_lrs)
+        # 2. E(0)-Q
         best_lr_e0 = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)"][lr]["returned_episode_returns"]))
-        env_curves["E(0)-Q"] = all_runs[env]["E(0)"][best_lr_e0]["returned_episode_returns"].mean(axis=0)
-        env_curves["E(0)-Q_std"] = all_runs[env]["E(0)"][best_lr_e0]["returned_episode_returns"].std(axis=0)
-        env_aucs["E(0)-Q"] = compute_auc(env_curves["E(0)-Q"])
+        e0_data = all_runs[env]["E(0)"][best_lr_e0]["returned_episode_returns"]
+        env_curves["E(0)-Q"] = e0_data.mean(axis=0)
+        env_stds["E(0)-Q"] = e0_data.std(axis=0)
+        auc_means_dict["E(0)-Q"].append(compute_auc(env_curves["E(0)-Q"]))
+        auc_stds_dict["E(0)-Q"].append(np.mean(env_stds["E(0)-Q"]))
+        final_means_dict["E(0)-Q"].append(env_curves["E(0)-Q"][-1])
+        final_stds_dict["E(0)-Q"].append(env_stds["E(0)-Q"][-1])
 
-        # 3. Best SARSA(lambda) (across critic_lrs and lambdas)
-        best_lr_sarsa = None
-        best_lmb_sarsa = None
-        best_auc_sarsa = -1e9
+        # 3. SARSA(lambda*)
+        best_lr_sarsa, best_lmb_sarsa, best_auc_sarsa = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
                 c_auc = compute_auc(all_runs[env]["SARSA(lambda)"][clr][lmb]["returned_episode_returns"].mean(axis=0))
@@ -405,14 +442,16 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
                     best_auc_sarsa = c_auc
                     best_lr_sarsa = clr
                     best_lmb_sarsa = lmb
-        env_curves["SARSA(λ*)"] = all_runs[env]["SARSA(lambda)"][best_lr_sarsa][best_lmb_sarsa]["returned_episode_returns"].mean(axis=0)
-        env_curves["SARSA(λ*)_std"] = all_runs[env]["SARSA(lambda)"][best_lr_sarsa][best_lmb_sarsa]["returned_episode_returns"].std(axis=0)
-        env_aucs["SARSA(λ*)"] = best_auc_sarsa
+        sarsa_data = all_runs[env]["SARSA(lambda)"][best_lr_sarsa][best_lmb_sarsa]["returned_episode_returns"]
+        env_curves["SARSA(λ*)"] = sarsa_data.mean(axis=0)
+        env_stds["SARSA(λ*)"] = sarsa_data.std(axis=0)
+        auc_means_dict["SARSA(λ*)"].append(best_auc_sarsa)
+        auc_stds_dict["SARSA(λ*)"].append(np.mean(env_stds["SARSA(λ*)"]))
+        final_means_dict["SARSA(λ*)"].append(env_curves["SARSA(λ*)"][-1])
+        final_stds_dict["SARSA(λ*)"].append(env_stds["SARSA(λ*)"][-1])
 
-        # 4. Best E(lambda)-Q (across critic_lrs and lambdas)
-        best_lr_el = None
-        best_lmb_el = None
-        best_auc_el = -1e9
+        # 4. E(lambda*-Q)
+        best_lr_el, best_lmb_el, best_auc_el = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
                 c_auc = compute_auc(all_runs[env]["E(lambda)"][clr][lmb]["returned_episode_returns"].mean(axis=0))
@@ -420,30 +459,33 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
                     best_auc_el = c_auc
                     best_lr_el = clr
                     best_lmb_el = lmb
-        env_curves["E(λ*-Q)"] = all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el]["returned_episode_returns"].mean(axis=0)
-        env_curves["E(λ*-Q)_std"] = all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el]["returned_episode_returns"].std(axis=0)
-        env_aucs["E(λ*-Q)"] = best_auc_el
+        el_data = all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el]["returned_episode_returns"]
+        env_curves["E(λ*-Q)"] = el_data.mean(axis=0)
+        env_stds["E(λ*-Q)"] = el_data.std(axis=0)
+        auc_means_dict["E(λ*-Q)"].append(best_auc_el)
+        auc_stds_dict["E(λ*-Q)"].append(np.mean(env_stds["E(λ*-Q)"]))
+        final_means_dict["E(λ*-Q)"].append(env_curves["E(λ*-Q)"][-1])
+        final_stds_dict["E(λ*-Q)"].append(env_stds["E(λ*-Q)"][-1])
 
         # Plot curves
         for alg in alg_names:
             c = env_curves[alg]
-            s = env_curves[f"{alg}_std"]
-            label = f"{alg} (λ={best_lmb_el})" if alg == "E(λ*-Q)" else (f"{alg} (λ={best_lmb_sarsa})" if alg == "SARSA(λ*)" else alg)
-            plot_curve_with_std(ax, c, s, label, colors[alg], batch_size, lw=2.4, alpha=0.15)
+            s = env_stds[alg]
+            lbl = f"{alg} (λ={best_lmb_el})" if alg == "E(λ*-Q)" else (f"{alg} (λ={best_lmb_sarsa})" if alg == "SARSA(λ*)" else alg)
+            plot_curve_with_std(ax, c, s, lbl, colors[alg], batch_size, lw=2.2 if "E(λ" in alg or "SARSA" in alg else 1.8, linestyle=linestyles[alg])
 
-        ax.set_title(f"{env}: Head-to-Head Q-PPO Comparison", fontsize=12, fontweight="bold", pad=10)
-        ax.set_xlabel("Timesteps", fontsize=10)
-        ax.set_ylabel("Episodic Return", fontsize=10)
-        ax.grid(True, linestyle="--", alpha=0.5)
-        ax.legend(frameon=True, facecolor="white", fontsize=9.5, loc="upper left")
-
-        auc_matrix.append([env_aucs[alg] for alg in alg_names])
+        ax.set_title(env_title, fontsize=11, fontweight="bold", pad=8)
+        ax.set_xlabel("Timesteps", fontsize=9.5)
+        ax.set_ylabel("Episodic Return", fontsize=9.5)
+        ax.grid(True, linestyle=":", alpha=0.5)
+        if idx == 0:
+            ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=8.5, loc="lower right")
 
         m_best_el = all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el]
         n_term = float(m_best_el.get("n_terminations", np.zeros(1)).sum())
         n_trunc = float(m_best_el.get("n_truncations", np.zeros(1)).sum())
         summary_rows.append({
-            "Environment": env,
+            "Environment": env_title,
             "Best E(λ)-Q λ": best_lmb_el,
             "Best E(λ)-Q Return": env_curves["E(λ*-Q)"][-1],
             "Best E(λ)-Q AUC": best_auc_el,
@@ -451,50 +493,93 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             "Best SARSA(λ) Return": env_curves["SARSA(λ*)"][-1],
             "Best SARSA(λ) AUC": best_auc_sarsa,
             "E(0)-Q Return": env_curves["E(0)-Q"][-1],
-            "E(0)-Q AUC": env_aucs["E(0)-Q"],
+            "E(0)-Q AUC": auc_means_dict["E(0)-Q"][-1],
             "MC-Q Return": env_curves["MC-Q"][-1],
-            "MC-Q AUC": env_aucs["MC-Q"],
+            "MC-Q AUC": auc_means_dict["MC-Q"][-1],
             "Terminations": n_term,
             "Truncations": n_trunc,
         })
 
+    for extra_idx in range(n_envs, len(axes_flat)):
+        axes_flat[extra_idx].set_visible(False)
+
     plt.tight_layout()
-    bench_curves_path = os.path.join(out_dir, "benchmarks", "main_comparison_learning_curves.png")
-    plt.savefig(bench_curves_path)
+    bench_curves_base = os.path.join(out_dir, "benchmarks", "main_comparison_learning_curves")
+    plt.savefig(f"{bench_curves_base}.png", bbox_inches="tight")
+    plt.savefig(f"{bench_curves_base}.pdf", bbox_inches="tight")
     plt.close()
-    print(f"Saved Main Comparison Learning Curves to {bench_curves_path}")
+    print(f"Saved Main Comparison Learning Curves to {bench_curves_base}.png and .pdf")
 
     # -------------------------------------------------------------
-    # Normalized AUC Heatmap
+    # 2. LAMBDA SENSITIVITY CURVES (AUC vs. Lambda: SARSA vs. E(lambda)-Q)
     # -------------------------------------------------------------
-    auc_arr = np.array(auc_matrix)  # shape (n_envs, 4)
-    auc_min = auc_arr.min(axis=1, keepdims=True)
-    auc_max = auc_arr.max(axis=1, keepdims=True)
-    auc_norm = (auc_arr - auc_min) / np.maximum(auc_max - auc_min, 1e-8)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
+    axes_flat = axes.flatten()
 
-    fig, ax = plt.subplots(figsize=(8.0, max(3.5, 1.2 * n_envs)), dpi=150)
-    cax = ax.matshow(auc_norm, cmap="viridis", aspect="auto")
-    fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04, label="Normalized AUC (Row-wise)")
+    for idx, env in enumerate(envs):
+        ax = axes_flat[idx]
+        env_title = ENV_TITLES.get(env, env)
 
-    ax.set_xticks(range(len(alg_names)))
-    ax.set_xticklabels(alg_names, fontsize=11, fontweight="bold")
-    ax.set_yticks(range(n_envs))
-    ax.set_yticklabels(envs, fontsize=11, fontweight="bold")
+        sarsa_lam_aucs = []
+        elam_lam_aucs = []
 
-    for i in range(n_envs):
-        for j in range(len(alg_names)):
-            val = auc_arr[i, j]
-            text_color = "white" if auc_norm[i, j] < 0.65 else "black"
-            ax.text(j, i, f"{val:.1f}", ha="center", va="center", color=text_color, fontweight="bold", fontsize=11)
+        for lmb in lambdas:
+            best_lr_s = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["SARSA(lambda)"][lr][lmb]["returned_episode_returns"]))
+            sarsa_lam_aucs.append(compute_auc(all_runs[env]["SARSA(lambda)"][best_lr_s][lmb]["returned_episode_returns"].mean(axis=0)))
 
-    ax.set_title("Normalized AUC Comparison Across Q-Critic Architectures", pad=20, fontsize=12, fontweight="bold")
+            best_lr_e = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(lambda)"][lr][lmb]["returned_episode_returns"]))
+            elam_lam_aucs.append(compute_auc(all_runs[env]["E(lambda)"][best_lr_e][lmb]["returned_episode_returns"].mean(axis=0)))
+
+        ax.plot(lambdas, sarsa_lam_aucs, marker="o", markersize=6, color="#e6550d", linewidth=2.0, linestyle="--", label="SARSA(λ)")
+        ax.plot(lambdas, elam_lam_aucs, marker="s", markersize=6, color="#2ca02c", linewidth=2.2, linestyle="-", label="E(λ)-Q")
+
+        ax.set_title(f"{env_title}: λ-Sensitivity (AUC)", fontsize=11, fontweight="bold", pad=8)
+        ax.set_xlabel(r"Lookahead Parameter $\lambda$", fontsize=9.5)
+        ax.set_ylabel("Normalized AUC", fontsize=9.5)
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.set_xticks(lambdas)
+        if idx == 0:
+            ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=8.5, loc="lower right")
+
+    for extra_idx in range(n_envs, len(axes_flat)):
+        axes_flat[extra_idx].set_visible(False)
+
     plt.tight_layout()
-    heatmap_path = os.path.join(out_dir, "benchmarks", "main_comparison_auc_heatmap.png")
-    plt.savefig(heatmap_path)
+    sens_curves_base = os.path.join(out_dir, "diagnostics", "lambda_sensitivity_curves")
+    plt.savefig(f"{sens_curves_base}.png", bbox_inches="tight")
+    plt.savefig(f"{sens_curves_base}.pdf", bbox_inches="tight")
     plt.close()
-    print(f"Saved AUC Heatmap to {heatmap_path}")
+    print(f"Saved Lambda Sensitivity Curves to {sens_curves_base}.png and .pdf")
 
-    # Save summary table
+    # -------------------------------------------------------------
+    # 3. REGULAR TABLES WITH HEATMAP COLORING
+    # -------------------------------------------------------------
+    env_row_labels = [ENV_TITLES.get(e, e) for e in envs]
+
+    # Table 1: Q-PPO AUC Table
+    df_auc_mean = pd.DataFrame(auc_means_dict, index=env_row_labels)
+    df_auc_std = pd.DataFrame(auc_stds_dict, index=env_row_labels)
+    render_heatmap_table(
+        df_auc_mean,
+        df_auc_std,
+        title="Q-PPO AUC Performance Matrix Across Deterministic Domains",
+        cbar_label="Relative AUC (Row Normalized: 0=Min, 1=Max)",
+        output_base=os.path.join(out_dir, "benchmarks", "main_comparison_auc_table"),
+        cmap="Blues",
+    )
+
+    # Table 2: Q-PPO Final Return Table
+    df_final_mean = pd.DataFrame(final_means_dict, index=env_row_labels)
+    df_final_std = pd.DataFrame(final_stds_dict, index=env_row_labels)
+    render_heatmap_table(
+        df_final_mean,
+        df_final_std,
+        title="Q-PPO Final Episodic Return Matrix Across Deterministic Domains",
+        cbar_label="Relative Return (Row Normalized: 0=Min, 1=Max)",
+        output_base=os.path.join(out_dir, "benchmarks", "main_comparison_final_return_table"),
+        cmap="Blues",
+    )
+
     summary_df = pd.DataFrame(summary_rows)
     csv_path = os.path.join(out_dir, "benchmarks", "main_comparison_summary.csv")
     summary_df.to_csv(csv_path, index=False)

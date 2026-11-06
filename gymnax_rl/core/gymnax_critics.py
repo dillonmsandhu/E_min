@@ -567,7 +567,7 @@ def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
     aux_coef = config.get("AUX_VF_COEF", 1.0)
 
     # Empirical MC errors
-    e_i = targets - v_i
+    e_i = targets_i - v_i
     e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
 
     # Auxiliary head loss and errors
@@ -596,7 +596,7 @@ def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
     value_loss = magnitude_loss + laplacian_loss + start_anchor_loss + timeout_corr_loss + aux_mc_loss
     scaled_loss = config.get("VF_COEF", 0.5) * value_loss
 
-    delta_mag = jnp.abs(targets - v_i).mean()
+    delta_mag = jnp.abs(targets_i - v_i).mean()
     aux_info = {
         "val_loss": value_loss,
         "magnitude_loss": magnitude_loss,

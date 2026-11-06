@@ -19,6 +19,8 @@ config = {
 
     # Network Architecture
     "NETWORK_TYPE": "mlp",
+    "SHARED_TORSO": False,
+    "USE_VISUAL_OBS": True,
     "k": 16,
     "LAYER_NORM": False,
     "NUM_VALUE_HEADS": 1,

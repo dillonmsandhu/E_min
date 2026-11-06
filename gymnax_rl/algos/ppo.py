@@ -191,8 +191,9 @@ def make_train(base_config):
                     timeout_aux_next = timeout_aux_next.squeeze(-1)
                 aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
                 aux_lambda = config.get("AUX_LAMBDA", 1.0)
+                traj_batch_aux = traj_batch._replace(value=traj_batch.v_aux)
                 _, aux_targets = calculate_gae(
-                    traj_batch,
+                    traj_batch_aux,
                     aux_next_value,
                     gamma=config["GAMMA"],
                     gae_lambda=aux_lambda,

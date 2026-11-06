@@ -219,7 +219,7 @@ class MLP_AC_DualCritic(nn.Module):
     final_hidden_dim: int
     norm_type: str = "none"
     is_continuous: bool = False
-    shared_torso: bool = True
+    shared_torso: bool = False
 
     def setup(self):
         self.actor_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
@@ -281,7 +281,7 @@ class PQN_AC_DualCritic(nn.Module):
     final_hidden_dim: int
     norm_type: str = "none"
     is_continuous: bool = False
-    shared_torso: bool = True
+    shared_torso: bool = False
 
     def setup(self):
         self.actor_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
@@ -568,7 +568,7 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
         "USES_AUX",
         c_type in ["e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical", "e_lambda", "elambda", "e_geometric"],
     )
-    shared_torso = config.get("SHARED_TORSO", True)
+    shared_torso = config.get("SHARED_TORSO", False)
 
     if uses_aux:
         if use_mlp:

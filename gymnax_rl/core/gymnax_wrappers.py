@@ -95,6 +95,13 @@ def make_env(config):
             max_steps_in_episode=config.get("MAX_STEPS_IN_EPISODE", 1000),
             instant_bullets=config.get("INSTANT_BULLETS", False),
         )
+    elif env_name in ["FourRooms-misc", "FourRooms"]:
+        use_visual = config.get("USE_VISUAL_OBS", True)
+        if use_visual:
+            env, env_params = gymnax.make(env_name, use_visual_obs=True)
+            config["NETWORK_TYPE"] = "cnn"
+        else:
+            env, env_params = gymnax.make(env_name, use_visual_obs=False)
     else:
         env, env_params = gymnax.make(env_name)
 
