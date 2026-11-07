@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--trust_coef", type=float, default=1.0, help="Trust region coef used")
     parser.add_argument("--num_envs", type=int, default=32, help="Parallel envs")
     parser.add_argument("--num_steps", type=int, default=256, help="Rollout length")
+    parser.add_argument("--metric_key", type=str, default="returned_discounted_episode_returns", help="Metric to plot (default: returned_discounted_episode_returns)")
 
     args = parser.parse_args()
     out_dir = args.out_dir
@@ -105,6 +106,7 @@ def main():
     # Setup directories for consolidated figures
     os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "plots"), exist_ok=True)
 
     class ArgsWrapper:
         ablation_lambda = args.ablation_lambda
@@ -112,6 +114,7 @@ def main():
         trust_coef = args.trust_coef
         num_envs = args.num_envs
         num_steps = args.num_steps
+        metric_key = args.metric_key
 
     generate_diagnostics_and_plots(
         all_runs=consolidated_runs,

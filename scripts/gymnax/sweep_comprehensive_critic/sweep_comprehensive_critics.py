@@ -76,9 +76,38 @@ ENV_TITLES = {
 }
 
 
+def get_env_default_timesteps(env_name: str, fallback_timesteps: int | None = None) -> int:
+    """Returns environment-specific timesteps: 1M on MountainCar envs, 300k on others."""
+    if fallback_timesteps is not None:
+        return fallback_timesteps
+    if "MountainCar" in env_name:
+        return 1_000_000
+    else:
+        return 300_000
+
+
 def compute_auc(returns_curve):
     """Computes normalized Area Under Curve (AUC) across update timesteps."""
     return float(np.mean(returns_curve))
+
+
+def get_metric_curve(run_dict, metric_key="returned_discounted_episode_returns"):
+    """Safely extracts the specified metric curve, falling back to returned_episode_returns if absent."""
+    if metric_key in run_dict:
+        return np.array(run_dict[metric_key])
+    elif "returned_discounted_episode_returns" in run_dict:
+        return np.array(run_dict["returned_discounted_episode_returns"])
+    elif "returned_episode_returns" in run_dict:
+        return np.array(run_dict["returned_episode_returns"])
+    elif "metrics" in run_dict:
+        m = run_dict["metrics"]
+        if metric_key in m:
+            return np.array(m[metric_key])
+        elif "returned_discounted_episode_returns" in m:
+            return np.array(m["returned_discounted_episode_returns"])
+        elif "returned_episode_returns" in m:
+            return np.array(m["returned_episode_returns"])
+    raise KeyError(f"Metric {metric_key} not found in run data.")
 
 
 def run_experiment(config, seed_keys):
@@ -93,6 +122,9 @@ def run_experiment(config, seed_keys):
     metrics = out["metrics"]
     res = {
         "returned_episode_returns": np.array(metrics["returned_episode_returns"]),
+        "returned_discounted_episode_returns": np.array(
+            metrics.get("returned_discounted_episode_returns", metrics["returned_episode_returns"])
+        ),
         "returned_episode_lengths": np.array(metrics["returned_episode_lengths"]),
         "critic_loss": np.array(metrics["value_loss"] if "value_loss" in metrics else metrics.get("val_loss", metrics.get("critic_loss", 0.0))),
         "actor_loss": np.array(metrics["actor_loss"]),
@@ -149,7 +181,8 @@ def run_sweep(args):
             all_runs = loaded.get("runs", {})
 
     batch_size = args.num_envs * args.num_steps
-    num_updates = max(1, args.total_timesteps // batch_size)
+    base_timesteps = args.total_timesteps or 300000
+    num_updates = max(1, base_timesteps // batch_size)
     timesteps = np.arange(1, num_updates + 1) * batch_size
 
     if all_runs:
@@ -169,12 +202,13 @@ def run_sweep(args):
     print(f"STARTING COMPREHENSIVE CRITIC SWEEP & V_AUX ABLATIONS")
     print(f"Envs: {envs}")
     print(f"Rollouts: {num_envs} envs x {num_steps} steps (batch {batch_size})")
-    print(f"Updates: {num_updates} | Total timesteps: {total_timesteps}")
+    print(f"Timesteps Policy: Auto (1M for MountainCar envs, 300k for small envs) | Override: {args.total_timesteps}")
     print(f"Critic LRs: {critic_lrs} | Lambdas: {lambdas} | Seeds: {n_seeds}")
     print(f"V_aux Ablation Lambda: {ablation_lambda} (Huber δ={huber_delta}, Trust β={trust_coef})")
     print(f"=================================================================\n")
 
     for env_name in envs:
+        env_timesteps = get_env_default_timesteps(env_name, args.total_timesteps)
         if env_name not in all_runs:
             all_runs[env_name] = {
                 "MC": {},
@@ -187,7 +221,7 @@ def run_sweep(args):
                 "E(lambda)_both": {},
             }
 
-        print(f"\n>>> Running Environment: {env_name} <<<")
+        print(f"\n>>> Running Environment: {env_name} (Timesteps: {env_timesteps:,}) <<<")
 
         # 1. MC Baseline
         for lr in critic_lrs:
@@ -204,7 +238,7 @@ def run_sweep(args):
                     "GAE_LAMBDA": 0.8,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -234,7 +268,7 @@ def run_sweep(args):
                     "GAE_LAMBDA": 0.8,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -264,7 +298,7 @@ def run_sweep(args):
                     "GAE_LAMBDA": 0.8,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -292,7 +326,7 @@ def run_sweep(args):
                         "GAE_LAMBDA": 0.8,
                         "NUM_ENVS": num_envs,
                         "NUM_STEPS": num_steps,
-                        "TOTAL_TIMESTEPS": total_timesteps,
+                        "TOTAL_TIMESTEPS": env_timesteps,
                         "MINIBATCH_SIZE": minibatch_size,
                         "ACTOR_MINIBATCH_SIZE": minibatch_size,
                         "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -321,7 +355,7 @@ def run_sweep(args):
                         "GAE_LAMBDA": 0.8,
                         "NUM_ENVS": num_envs,
                         "NUM_STEPS": num_steps,
-                        "TOTAL_TIMESTEPS": total_timesteps,
+                        "TOTAL_TIMESTEPS": env_timesteps,
                         "MINIBATCH_SIZE": minibatch_size,
                         "ACTOR_MINIBATCH_SIZE": minibatch_size,
                         "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -350,10 +384,12 @@ def run_sweep(args):
                     "JUMP_MODE": "full_mc_invalid_jump",
                     "GAE_LAMBDA": 0.8,
                     "V_AUX_LOSS_TYPE": "huber",
+                    "AUX_LOSS_TYPE": "huber",
                     "V_AUX_HUBER_DELTA": huber_delta,
+                    "AUX_HUBER_DELTA": huber_delta,
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -379,9 +415,11 @@ def run_sweep(args):
                     "JUMP_MODE": "full_mc_invalid_jump",
                     "GAE_LAMBDA": 0.8,
                     "V_AUX_TRUST_COEF": trust_coef,
+                    "AUX_TRUST_REGION_COEF": trust_coef,
+                    "AUX_REG_TYPE": "l2",
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -407,11 +445,15 @@ def run_sweep(args):
                     "JUMP_MODE": "full_mc_invalid_jump",
                     "GAE_LAMBDA": 0.8,
                     "V_AUX_LOSS_TYPE": "huber",
+                    "AUX_LOSS_TYPE": "huber",
                     "V_AUX_HUBER_DELTA": huber_delta,
+                    "AUX_HUBER_DELTA": huber_delta,
                     "V_AUX_TRUST_COEF": trust_coef,
+                    "AUX_TRUST_REGION_COEF": trust_coef,
+                    "AUX_REG_TYPE": "l2",
                     "NUM_ENVS": num_envs,
                     "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": total_timesteps,
+                    "TOTAL_TIMESTEPS": env_timesteps,
                     "MINIBATCH_SIZE": minibatch_size,
                     "ACTOR_MINIBATCH_SIZE": minibatch_size,
                     "CRITIC_MINIBATCH_SIZE": minibatch_size,
@@ -514,7 +556,11 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
-    """Generates the streamlined publication-quality figures and heatmap tables."""
+    plots_dir = os.path.join(out_dir, "plots")
+    os.makedirs(plots_dir, exist_ok=True)
+
+    metric_key = getattr(args, "metric_key", "returned_discounted_episode_returns")
+    """Generates the streamlined publication-quality figures, plots directory, and heatmap tables."""
     batch_size = args.num_envs * args.num_steps
     for env in envs:
         for k in all_runs[env]:
@@ -522,12 +568,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             first_val = list(sub.values())[0]
             if isinstance(first_val, dict):
                 first_val = list(first_val.values())[0]
-            if "returned_episode_returns" in first_val:
-                curve_len = first_val["returned_episode_returns"].shape[-1]
+            if "returned_discounted_episode_returns" in first_val or "returned_episode_returns" in first_val:
+                c_data = first_val.get("returned_discounted_episode_returns", first_val.get("returned_episode_returns"))
+                curve_len = c_data.shape[-1]
                 timesteps = np.arange(1, curve_len + 1) * batch_size
                 break
 
-    print("\n================ GENERATING ANALYSES & FIGURES ================")
+    print(f"\n================ GENERATING ANALYSES & FIGURES (Metric: {metric_key}) ================")
     plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
     n_envs = len(envs)
 
@@ -543,7 +590,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     # -------------------------------------------------------------
     # 1. MAIN COMPARISON: 5 Core Curves Per Environment
     # -------------------------------------------------------------
-    # TD(lambda*), E(lambda*) Baseline, E(lambda*) + Huber + Trust, E(0), MC
+    # TD(lambda*), E(lambda*) Baseline, E(0) Naive Sampling, E(0), MC
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
     axes_flat = axes.flatten()
 
@@ -577,8 +624,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         env_stds = {}
 
         # 1. MC (best lr)
-        best_lr_mc = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["MC"][lr]["returned_episode_returns"]))
-        mc_data = all_runs[env]["MC"][best_lr_mc]["returned_episode_returns"]
+        best_lr_mc = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["MC"][lr], metric_key)))
+        mc_data = get_metric_curve(all_runs[env]["MC"][best_lr_mc], metric_key)
         env_curves["MC"] = mc_data.mean(axis=0)
         env_stds["MC"] = mc_data.std(axis=0)
         auc_means_dict["MC"].append(compute_auc(env_curves["MC"]))
@@ -587,8 +634,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_stds_dict["MC"].append(env_stds["MC"][-1])
 
         # 2. E(0) (with V_aux, best lr)
-        best_lr_e0 = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)_v_aux"][lr]["returned_episode_returns"]))
-        e0_data = all_runs[env]["E(0)_v_aux"][best_lr_e0]["returned_episode_returns"]
+        best_lr_e0 = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(0)_v_aux"][lr], metric_key)))
+        e0_data = get_metric_curve(all_runs[env]["E(0)_v_aux"][best_lr_e0], metric_key)
         env_curves["E(0)"] = e0_data.mean(axis=0)
         env_stds["E(0)"] = e0_data.std(axis=0)
         auc_means_dict["E(0)"].append(compute_auc(env_curves["E(0)"]))
@@ -597,8 +644,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_stds_dict["E(0)"].append(env_stds["E(0)"][-1])
 
         # 3. E(0) Naive Sampling (without V_aux, best lr)
-        best_lr_e0_naive = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(0)_no_v_aux"][lr]["returned_episode_returns"]))
-        e0_naive_data = all_runs[env]["E(0)_no_v_aux"][best_lr_e0_naive]["returned_episode_returns"]
+        best_lr_e0_naive = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(0)_no_v_aux"][lr], metric_key)))
+        e0_naive_data = get_metric_curve(all_runs[env]["E(0)_no_v_aux"][best_lr_e0_naive], metric_key)
         env_curves["E(0) Naive Sampling"] = e0_naive_data.mean(axis=0)
         env_stds["E(0) Naive Sampling"] = e0_naive_data.std(axis=0)
         auc_means_dict["E(0) Naive Sampling"].append(compute_auc(env_curves["E(0) Naive Sampling"]))
@@ -610,12 +657,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         best_lr_td, best_lmb_td, best_auc_td = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
-                c_auc = compute_auc(all_runs[env]["TD(lambda)"][clr][lmb]["returned_episode_returns"].mean(axis=0))
+                c_data = get_metric_curve(all_runs[env]["TD(lambda)"][clr][lmb], metric_key)
+                c_auc = compute_auc(c_data.mean(axis=0))
                 if c_auc > best_auc_td:
                     best_auc_td = c_auc
                     best_lr_td = clr
                     best_lmb_td = lmb
-        td_data = all_runs[env]["TD(lambda)"][best_lr_td][best_lmb_td]["returned_episode_returns"]
+        td_data = get_metric_curve(all_runs[env]["TD(lambda)"][best_lr_td][best_lmb_td], metric_key)
         env_curves["TD(λ*)"] = td_data.mean(axis=0)
         env_stds["TD(λ*)"] = td_data.std(axis=0)
         auc_means_dict["TD(λ*)"].append(best_auc_td)
@@ -627,12 +675,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         best_lr_el, best_lmb_el, best_auc_el = None, None, -1e9
         for clr in critic_lrs:
             for lmb in lambdas:
-                c_auc = compute_auc(all_runs[env]["E(lambda)"][clr][lmb]["returned_episode_returns"].mean(axis=0))
+                c_data = get_metric_curve(all_runs[env]["E(lambda)"][clr][lmb], metric_key)
+                c_auc = compute_auc(c_data.mean(axis=0))
                 if c_auc > best_auc_el:
                     best_auc_el = c_auc
                     best_lr_el = clr
                     best_lmb_el = lmb
-        el_data = all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el]["returned_episode_returns"]
+        el_data = get_metric_curve(all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el], metric_key)
         env_curves["E(λ*) Baseline"] = el_data.mean(axis=0)
         env_stds["E(λ*) Baseline"] = el_data.std(axis=0)
         auc_means_dict["E(λ*) Baseline"].append(best_auc_el)
@@ -640,19 +689,35 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         final_means_dict["E(λ*) Baseline"].append(env_curves["E(λ*) Baseline"][-1])
         final_stds_dict["E(λ*) Baseline"].append(env_stds["E(λ*) Baseline"][-1])
 
-        # Plot curves
+        # Plot curves on multi-panel grid
         for alg in alg_names:
             c = env_curves[alg]
             s = env_stds[alg]
-            lbl = f"{alg} (λ={best_lmb_td})" if alg == "TD(λ*)" else (f"{alg} (λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
+            lbl = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
             plot_curve_with_std(ax, c, s, lbl, colors[alg], batch_size, lw=2.2 if "TD" in alg or "Baseline" in alg else 1.8, linestyle=linestyles[alg])
 
         ax.set_title(env_title, fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Timesteps", fontsize=9.5)
-        ax.set_ylabel("Episodic Return", fontsize=9.5)
+        ax.set_ylabel("Discounted Return", fontsize=9.5)
         ax.grid(True, linestyle=":", alpha=0.5)
-        if idx == 0:
-            ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=8.5, loc="lower right")
+        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.2, loc="best")
+
+        # Save individual per-environment learning curve figure in plots/
+        fig_single, ax_single = plt.subplots(figsize=(6.5, 4.5), dpi=300)
+        for alg in alg_names:
+            c = env_curves[alg]
+            s = env_stds[alg]
+            lbl = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
+            plot_curve_with_std(ax_single, c, s, lbl, colors[alg], batch_size, lw=2.2 if "TD" in alg or "Baseline" in alg else 1.8, linestyle=linestyles[alg])
+        ax_single.set_title(f"{env_title}: Critic Learning Curves", fontsize=12, fontweight="bold", pad=10)
+        ax_single.set_xlabel("Timesteps", fontsize=10)
+        ax_single.set_ylabel("Discounted Return", fontsize=10)
+        ax_single.grid(True, linestyle=":", alpha=0.5)
+        ax_single.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=9, loc="best")
+        fig_single.tight_layout()
+        fig_single.savefig(os.path.join(plots_dir, f"{env}.png"), bbox_inches="tight")
+        fig_single.savefig(os.path.join(plots_dir, f"{env}.pdf"), bbox_inches="tight")
+        plt.close(fig_single)
 
         summary_rows.append({
             "Environment": env_title,
@@ -675,11 +740,17 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         axes_flat[extra_idx].set_visible(False)
 
     plt.tight_layout()
+    plots_grid_base = os.path.join(plots_dir, "all_envs_learning_curves")
+    plots_main_base = os.path.join(plots_dir, "main_comparison_learning_curves")
     bench_curves_base = os.path.join(out_dir, "benchmarks", "main_comparison_learning_curves")
+    plt.savefig(f"{plots_grid_base}.png", bbox_inches="tight")
+    plt.savefig(f"{plots_grid_base}.pdf", bbox_inches="tight")
+    plt.savefig(f"{plots_main_base}.png", bbox_inches="tight")
+    plt.savefig(f"{plots_main_base}.pdf", bbox_inches="tight")
     plt.savefig(f"{bench_curves_base}.png", bbox_inches="tight")
     plt.savefig(f"{bench_curves_base}.pdf", bbox_inches="tight")
     plt.close()
-    print(f"Saved Main Comparison Learning Curves to {bench_curves_base}.png and .pdf")
+    print(f"Saved All Environments Learning Curves to {plots_grid_base}.png, {plots_main_base}.png, and {bench_curves_base}.png")
 
     # -------------------------------------------------------------
     # 2. V_AUX ABLATIONS LEARNING CURVES (with TD Converged Dotted Line)
@@ -704,15 +775,16 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         ax = axes_flat[idx]
         env_title = ENV_TITLES.get(env, env)
 
-        best_clr = max(critic_lrs, key=lambda lr: np.mean(all_runs[env]["E(lambda)"][lr][abl_lmb]["returned_episode_returns"]))
+        best_clr = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(lambda)"][lr][abl_lmb], metric_key)))
 
         # Converged TD line
-        td_curve = all_runs[env]["TD(lambda)"][best_clr][abl_lmb]["returned_episode_returns"].mean(axis=0)
+        td_data = get_metric_curve(all_runs[env]["TD(lambda)"][best_clr][abl_lmb], metric_key)
+        td_curve = td_data.mean(axis=0)
         td_converged = np.mean(td_curve[-max(1, int(len(td_curve)*0.1)):])
         ax.axhline(td_converged, color="#e6550d", linestyle=":", linewidth=2.0, label="TD(λ) Converged Ref")
 
         # 1. Baseline
-        b_data = all_runs[env]["E(lambda)"][best_clr][abl_lmb]["returned_episode_returns"]
+        b_data = get_metric_curve(all_runs[env]["E(lambda)"][best_clr][abl_lmb], metric_key)
         b_curve = b_data.mean(axis=0)
         b_std = b_data.std(axis=0)
         plot_curve_with_std(ax, b_curve, b_std, "Baseline (MSE)", abl_colors["Baseline (MSE)"], batch_size, lw=1.8, linestyle="--")
@@ -722,7 +794,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         abl_final_stds["Baseline (MSE)"].append(b_std[-1])
 
         # 2. + Huber
-        h_data = all_runs[env]["E(lambda)_huber"][best_clr]["returned_episode_returns"]
+        h_data = get_metric_curve(all_runs[env]["E(lambda)_huber"][best_clr], metric_key)
         h_curve = h_data.mean(axis=0)
         h_std = h_data.std(axis=0)
         plot_curve_with_std(ax, h_curve, h_std, "+ Huber", abl_colors["+ Huber"], batch_size, lw=2.0)
@@ -732,7 +804,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         abl_final_stds["+ Huber"].append(h_std[-1])
 
         # 3. + Trust
-        t_data = all_runs[env]["E(lambda)_trust"][best_clr]["returned_episode_returns"]
+        t_data = get_metric_curve(all_runs[env]["E(lambda)_trust"][best_clr], metric_key)
         t_curve = t_data.mean(axis=0)
         t_std = t_data.std(axis=0)
         plot_curve_with_std(ax, t_curve, t_std, "+ Trust Region", abl_colors["+ Trust Region"], batch_size, lw=2.0)
@@ -742,7 +814,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         abl_final_stds["+ Trust Region"].append(t_std[-1])
 
         # 4. + Both
-        bo_data = all_runs[env]["E(lambda)_both"][best_clr]["returned_episode_returns"]
+        bo_data = get_metric_curve(all_runs[env]["E(lambda)_both"][best_clr], metric_key)
         bo_curve = bo_data.mean(axis=0)
         bo_std = bo_data.std(axis=0)
         plot_curve_with_std(ax, bo_curve, bo_std, "+ Both (Huber+Trust)", abl_colors["+ Both"], batch_size, lw=2.4)
@@ -753,20 +825,22 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
 
         ax.set_title(f"{env_title} (λ={abl_lmb})", fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Timesteps", fontsize=9.5)
-        ax.set_ylabel("Episodic Return", fontsize=9.5)
+        ax.set_ylabel("Discounted Return", fontsize=9.5)
         ax.grid(True, linestyle=":", alpha=0.5)
-        if idx == 0:
-            ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=8.5, loc="lower right")
+        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.2, loc="best")
 
     for extra_idx in range(n_envs, len(axes_flat)):
         axes_flat[extra_idx].set_visible(False)
 
     plt.tight_layout()
     v_aux_curves_base = os.path.join(out_dir, "diagnostics", "v_aux_ablations_learning_curves")
+    v_aux_plots_base = os.path.join(plots_dir, "v_aux_ablations_learning_curves")
     plt.savefig(f"{v_aux_curves_base}.png", bbox_inches="tight")
     plt.savefig(f"{v_aux_curves_base}.pdf", bbox_inches="tight")
+    plt.savefig(f"{v_aux_plots_base}.png", bbox_inches="tight")
+    plt.savefig(f"{v_aux_plots_base}.pdf", bbox_inches="tight")
     plt.close()
-    print(f"Saved V_aux Ablations Learning Curves to {v_aux_curves_base}.png and .pdf")
+    print(f"Saved V_aux Ablations Learning Curves to {v_aux_curves_base}.png and {v_aux_plots_base}.png")
 
     # -------------------------------------------------------------
     # 3. REGULAR TABLES WITH HEATMAP COLORING
@@ -812,9 +886,11 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     # Save summary CSV
     summary_df = pd.DataFrame(summary_rows)
     csv_path = os.path.join(out_dir, "benchmarks", "main_comparison_summary.csv")
+    csv_plots_path = os.path.join(plots_dir, "main_comparison_summary.csv")
     summary_df.to_csv(csv_path, index=False)
-    print(f"Saved Summary CSV to {csv_path}")
-    print("\nAll figures and diagnostics generated successfully!")
+    summary_df.to_csv(csv_plots_path, index=False)
+    print(f"Saved Summary CSV to {csv_path} and {csv_plots_path}")
+    print("\nAll figures, plots, and diagnostics generated successfully!")
 
 
 def main():
@@ -823,13 +899,14 @@ def main():
     parser.add_argument("--lambdas", nargs="+", type=float, default=[0.0, 0.4, 0.8, 0.95], help="Lambdas to sweep")
     parser.add_argument("--critic-lrs", nargs="+", type=float, default=[1e-4, 3e-4, 1e-3], help="Critic learning rates")
     parser.add_argument("--actor-lr", type=float, default=3e-4, help="Fixed actor learning rate")
-    parser.add_argument("--total-timesteps", type=int, default=300000, help="Total training timesteps")
+    parser.add_argument("--total-timesteps", type=int, default=None, help="Total training timesteps (default: auto per env: 1M for MountainCar, 300k for small envs)")
     parser.add_argument("--num-envs", type=int, default=32, help="Parallel environments (rollouts)")
     parser.add_argument("--num-steps", type=int, default=256, help="Rollout length")
     parser.add_argument("--minibatch-size", type=int, default=512, help="Minibatch size")
     parser.add_argument("--n-seeds", type=int, default=3, help="Random seeds per configuration")
     parser.add_argument("--master-seed", type=int, default=42, help="Master random seed")
     parser.add_argument("--out-dir", type=str, default="results/critic_sweep", help="Output directory")
+    parser.add_argument("--metric-key", type=str, default="returned_discounted_episode_returns", help="Metric to plot (default: returned_discounted_episode_returns)")
     parser.add_argument("--ablation-lambda", type=float, default=0.8, help="Single lambda value to test V_aux regularizations")
     parser.add_argument("--huber-delta", type=float, default=10.0, help="Huber loss delta for V_aux ablation")
     parser.add_argument("--trust-coef", type=float, default=1.0, help="Trust-region L2 coefficient for V_aux ablation")

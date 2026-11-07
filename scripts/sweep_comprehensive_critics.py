@@ -56,6 +56,16 @@ import jax.numpy as jnp
 from gymnax_rl.algos.ppo import make_train as make_ppo_train
 
 
+def get_env_default_timesteps(env_name: str, fallback_timesteps: int | None = None) -> int:
+    """Returns environment-specific timesteps: 1M on MountainCar envs, 300k on others."""
+    if fallback_timesteps is not None:
+        return fallback_timesteps
+    if "MountainCar" in env_name:
+        return 1_000_000
+    else:
+        return 300_000
+
+
 def compute_auc(returns_curve):
     """Computes normalized Area Under Curve (AUC) across update timesteps."""
     return float(np.mean(returns_curve))
@@ -117,7 +127,8 @@ def run_sweep(args):
             all_runs = loaded.get("runs", {})
 
     batch_size = args.num_envs * args.num_steps
-    num_updates = max(1, args.total_timesteps // batch_size)
+    base_timesteps = args.total_timesteps or 300000
+    num_updates = max(1, base_timesteps // batch_size)
     timesteps = np.arange(1, num_updates + 1) * batch_size
 
     # Align timesteps to loaded trajectory length if loading existing data
@@ -138,15 +149,17 @@ def run_sweep(args):
     print(f"STARTING COMPREHENSIVE CRITIC SWEEP & V_AUX ABLATIONS")
     print(f"Envs: {envs}")
     print(f"Rollouts: {args.num_envs} envs x {args.num_steps} steps (batch {batch_size})")
-    print(f"Updates: {num_updates} | Total timesteps: {args.total_timesteps}")
+    print(f"Timesteps Policy: Auto (1M for MountainCar envs, 300k for small envs) | Override: {args.total_timesteps}")
     print(f"Critic LRs: {critic_lrs} | Lambdas: {lambdas} | Seeds: {args.n_seeds}")
     print(f"V_aux Ablation Lambda: {abl_lmb} (Huber δ={args.huber_delta}, Trust β={args.trust_coef})")
     print(f"=================================================================")
 
     for env_name in envs:
+        env_timesteps = get_env_default_timesteps(env_name, args.total_timesteps)
+        env_base_config = {**base_config, "ENV_NAME": env_name, "TOTAL_TIMESTEPS": env_timesteps}
         if env_name not in all_runs:
             all_runs[env_name] = {}
-        print("\n>>> Running Environment: " + str(env_name) + " <<<")
+        print(f"\n>>> Running Environment: {env_name} (Timesteps: {env_timesteps:,}) <<<")
 
         # -------------------------------------------------------------
         # 1. MC (CRITIC_TYPE = 'mc')
@@ -156,7 +169,7 @@ def run_sweep(args):
         for clr in critic_lrs:
             if clr not in all_runs[env_name]["MC"]:
                 print(f"[MC] env={env_name}, critic_lr={clr}...")
-                cfg = {**base_config, "ENV_NAME": env_name, "CRITIC_TYPE": "mc", "CRITIC_LR": clr, "USES_AUX": True}
+                cfg = {**env_base_config, "CRITIC_TYPE": "mc", "CRITIC_LR": clr, "USES_AUX": True}
                 metrics = run_experiment(cfg, seed_keys)
                 all_runs[env_name]["MC"][clr] = metrics
                 mean_ret = metrics["returned_episode_returns"].mean(axis=0)[-1]
@@ -170,7 +183,7 @@ def run_sweep(args):
         for clr in critic_lrs:
             if clr not in all_runs[env_name]["E(0)_v_aux"]:
                 print(f"[E(0) with V_aux] env={env_name}, critic_lr={clr}...")
-                cfg = {**base_config, "ENV_NAME": env_name, "CRITIC_TYPE": "e_0", "CRITIC_LR": clr, "USES_AUX": True, "RETURN_LAMBDA": 1.0}
+                cfg = {**env_base_config, "CRITIC_TYPE": "e_0", "CRITIC_LR": clr, "USES_AUX": True, "RETURN_LAMBDA": 1.0}
                 metrics = run_experiment(cfg, seed_keys)
                 all_runs[env_name]["E(0)_v_aux"][clr] = metrics
                 mean_ret = metrics["returned_episode_returns"].mean(axis=0)[-1]
@@ -184,7 +197,7 @@ def run_sweep(args):
         for clr in critic_lrs:
             if clr not in all_runs[env_name]["E(0)_no_v_aux"]:
                 print(f"[E(0) Basic No V_aux] env={env_name}, critic_lr={clr}...")
-                cfg = {**base_config, "ENV_NAME": env_name, "CRITIC_TYPE": "e_0_basic", "CRITIC_LR": clr, "USES_AUX": False, "RETURN_LAMBDA": 1.0}
+                cfg = {**env_base_config, "CRITIC_TYPE": "e_0_basic", "CRITIC_LR": clr, "USES_AUX": False, "RETURN_LAMBDA": 1.0}
                 metrics = run_experiment(cfg, seed_keys)
                 all_runs[env_name]["E(0)_no_v_aux"][clr] = metrics
                 mean_ret = metrics["returned_episode_returns"].mean(axis=0)[-1]
@@ -201,7 +214,7 @@ def run_sweep(args):
             for lmb in lambdas:
                 if lmb not in all_runs[env_name]["TD(lambda)"][clr]:
                     print(f"[TD(lambda)] env={env_name}, lambda={lmb}, critic_lr={clr}...")
-                    cfg = {**base_config, "ENV_NAME": env_name, "CRITIC_TYPE": "fitted", "CRITIC_LR": clr, "VALUE_LAMBDA": lmb}
+                    cfg = {**env_base_config, "CRITIC_TYPE": "fitted", "CRITIC_LR": clr, "VALUE_LAMBDA": lmb}
                     metrics = run_experiment(cfg, seed_keys)
                     all_runs[env_name]["TD(lambda)"][clr][lmb] = metrics
                     mean_ret = metrics["returned_episode_returns"].mean(axis=0)[-1]
@@ -219,8 +232,7 @@ def run_sweep(args):
                 if lmb not in all_runs[env_name]["E(lambda)"][clr]:
                     print(f"[E(lambda)] env={env_name}, lambda={lmb}, critic_lr={clr}...")
                     cfg = {
-                        **base_config,
-                        "ENV_NAME": env_name,
+                        **env_base_config,
                         "CRITIC_TYPE": "e_lambda",
                         "CRITIC_LR": clr,
                         "E_LAMBDA": lmb,
@@ -248,8 +260,7 @@ def run_sweep(args):
             if clr not in all_runs[env_name]["E(lambda)_huber"]:
                 print(f"[E(λ={abl_lmb}) + Huber] env={env_name}, critic_lr={clr}...")
                 cfg = {
-                    **base_config,
-                    "ENV_NAME": env_name,
+                    **env_base_config,
                     "CRITIC_TYPE": "e_lambda",
                     "CRITIC_LR": clr,
                     "E_LAMBDA": abl_lmb,
@@ -273,8 +284,7 @@ def run_sweep(args):
             if clr not in all_runs[env_name]["E(lambda)_trust"]:
                 print(f"[E(λ={abl_lmb}) + Trust Region] env={env_name}, critic_lr={clr}...")
                 cfg = {
-                    **base_config,
-                    "ENV_NAME": env_name,
+                    **env_base_config,
                     "CRITIC_TYPE": "e_lambda",
                     "CRITIC_LR": clr,
                     "E_LAMBDA": abl_lmb,
@@ -297,8 +307,7 @@ def run_sweep(args):
             if clr not in all_runs[env_name]["E(lambda)_both"]:
                 print(f"[E(λ={abl_lmb}) + Both (Huber+Trust)] env={env_name}, critic_lr={clr}...")
                 cfg = {
-                    **base_config,
-                    "ENV_NAME": env_name,
+                    **env_base_config,
                     "CRITIC_TYPE": "e_lambda",
                     "CRITIC_LR": clr,
                     "E_LAMBDA": abl_lmb,
@@ -542,6 +551,9 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     # -------------------------------------------------------------
     # 5. MAIN BENCHMARK: E(lambda*), TD(lambda*), E(0), MC
     # -------------------------------------------------------------
+    plots_dir = os.path.join(out_dir, "plots")
+    os.makedirs(plots_dir, exist_ok=True)
+
     fig, axes = plt.subplots(1, n_envs, figsize=(7.0 * n_envs, 5.0), dpi=150, squeeze=False)
     auc_matrix = []
     env_terminations_summary = []
@@ -606,7 +618,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         for alg in alg_names:
             c = env_curves[alg]
             s = env_curves[f"{alg}_std"]
-            label = f"{alg} (λ={best_lmb_el})" if alg == "E(λ*)" else (f"{alg} (λ={best_lmb_td})" if alg == "TD(λ*)" else alg)
+            label = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*)" else alg)
             plot_curve_with_std(ax, c, s, label, colors[alg], batch_size, lw=2.4, alpha=0.15)
 
         ax.set_title(f"{env}: Head-to-Head Learning Curves", fontsize=12, fontweight="bold", pad=10)
@@ -635,11 +647,31 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             "MC AUC": env_aucs["MC"],
         })
 
+        # Save individual environment learning curve figure in plots/
+        fig_single, ax_single = plt.subplots(figsize=(6.5, 4.5), dpi=300)
+        for alg in alg_names:
+            c = env_curves[alg]
+            s = env_curves[f"{alg}_std"]
+            label = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*)" else alg)
+            plot_curve_with_std(ax_single, c, s, label, colors[alg], batch_size, lw=2.4, alpha=0.15)
+        ax_single.set_title(f"{env}: Critic Learning Curves", fontsize=12, fontweight="bold", pad=10)
+        ax_single.set_xlabel("Timesteps", fontsize=10)
+        ax_single.set_ylabel("Discounted Return", fontsize=10)
+        ax_single.grid(True, linestyle="--", alpha=0.5)
+        ax_single.legend(frameon=True, facecolor="white", fontsize=9.5, loc="lower right")
+        fig_single.tight_layout()
+        fig_single.savefig(os.path.join(plots_dir, f"{env}.png"), bbox_inches="tight")
+        fig_single.savefig(os.path.join(plots_dir, f"{env}.pdf"), bbox_inches="tight")
+        plt.close(fig_single)
+
     plt.tight_layout()
+    plots_curves_path = os.path.join(plots_dir, "all_envs_learning_curves.png")
     bench_curves_path = os.path.join(out_dir, "benchmarks", "main_comparison_learning_curves.png")
+    plt.savefig(plots_curves_path)
+    plt.savefig(os.path.join(plots_dir, "main_comparison_learning_curves.png"))
     plt.savefig(bench_curves_path)
     plt.close()
-    print(f"Saved Main Comparison Learning Curves to {bench_curves_path}")
+    print(f"Saved Learning Curves to {plots_curves_path} and {bench_curves_path}")
 
     # -------------------------------------------------------------
     # AUC Matrix Heatmap
@@ -685,7 +717,7 @@ def main():
     parser.add_argument("--lambdas", nargs="+", type=float, default=[0.0, 0.4, 0.8, 0.95], help="Lambdas to sweep")
     parser.add_argument("--critic-lrs", nargs="+", type=float, default=[1e-4, 3e-4, 1e-3], help="Critic learning rates")
     parser.add_argument("--actor-lr", type=float, default=3e-4, help="Fixed actor learning rate")
-    parser.add_argument("--total-timesteps", type=int, default=300000, help="Total training timesteps")
+    parser.add_argument("--total-timesteps", type=int, default=None, help="Total training timesteps (default: auto per env: 1M for MountainCar, 300k for small envs)")
     parser.add_argument("--num-envs", type=int, default=32, help="Parallel environments (rollouts)")
     parser.add_argument("--num-steps", type=int, default=256, help="Rollout length")
     parser.add_argument("--minibatch-size", type=int, default=512, help="Minibatch size")

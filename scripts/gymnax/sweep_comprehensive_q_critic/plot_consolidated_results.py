@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--out_dir", type=str, default="results/sweep_comprehensive_q_critic", help="Base output directory")
     parser.add_argument("--num_envs", type=int, default=32, help="Parallel envs")
     parser.add_argument("--num_steps", type=int, default=256, help="Rollout length")
+    parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to analyze (default: returned_episode_returns)")
 
     args = parser.parse_args()
     out_dir = args.out_dir
@@ -49,6 +50,7 @@ def main():
     print("================================================================")
     print("Consolidating Q-PPO Critic Sweep Results Across Environments")
     print(f"Scanning base directory: {out_dir}")
+    print(f"Metric Key:              {args.metric_key}")
     print("================================================================")
 
     env_pickles = glob.glob(os.path.join(out_dir, "*", "data", "sweep_metrics_all.pkl"))
@@ -100,10 +102,13 @@ def main():
 
     os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "plots"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "tables"), exist_ok=True)
 
     class ArgsWrapper:
         num_envs = args.num_envs
         num_steps = args.num_steps
+        metric_key = args.metric_key
 
     generate_diagnostics_and_plots(
         all_runs=consolidated_runs,

@@ -102,6 +102,10 @@ def make_env(config):
             config["NETWORK_TYPE"] = "cnn"
         else:
             env, env_params = gymnax.make(env_name, use_visual_obs=False)
+    elif "MinAtar" in env_name:
+        env, env_params = gymnax.make(env_name)
+        if "NETWORK_TYPE" not in config:
+            config["NETWORK_TYPE"] = "cnn"
     else:
         env, env_params = gymnax.make(env_name)
 

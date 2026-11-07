@@ -21,7 +21,7 @@ LOG_DIR="slurm/${DATE}/${SWEEP_NAME}"
 mkdir -p "$LOG_DIR"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 
-TOTAL_TIMESTEPS=${1:-300000}
+TOTAL_TIMESTEPS=${1:-auto}
 N_SEEDS=${2:-3}
 MASTER_SEED=${3:-42}
 LAMBDAS=${4:-"0.0 0.4 0.8 0.95"}
@@ -54,7 +54,7 @@ fi
 
 echo "================================================================"
 echo "Submitting Comprehensive Critic Comparison SLURM Array"
-echo "  Timesteps:        $TOTAL_TIMESTEPS"
+echo "  Timesteps:        $TOTAL_TIMESTEPS (auto: 1M for MountainCar envs, 300k for small envs)"
 echo "  Seeds:            $N_SEEDS (Master: $MASTER_SEED)"
 echo "  Lambdas:          $LAMBDAS"
 echo "  Critic LRs:       $CRITIC_LRS"

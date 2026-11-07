@@ -100,7 +100,16 @@ if [ -z "$ENV_NAME" ]; then
     exit 1
 fi
 
-TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-300000}"
+if [ -z "$TOTAL_TIMESTEPS" ] || [ "$TOTAL_TIMESTEPS" = "auto" ]; then
+    if [[ "$ENV_NAME" == *"MountainCar"* ]]; then
+        ENV_TIMESTEPS=1000000
+    else
+        ENV_TIMESTEPS=300000
+    fi
+else
+    ENV_TIMESTEPS="$TOTAL_TIMESTEPS"
+fi
+
 N_SEEDS="${N_SEEDS:-3}"
 MASTER_SEED="${MASTER_SEED:-42}"
 LAMBDAS="${LAMBDAS:-0.0 0.4 0.8 0.95}"
@@ -120,7 +129,7 @@ echo "  SLURM Job:        ${SLURM_ARRAY_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-0}
 echo "  Host:             $(hostname)"
 echo "  Date:             $(date)"
 echo "  Python:           $PYTHON"
-echo "  Timesteps:        $TOTAL_TIMESTEPS"
+echo "  Timesteps:        $ENV_TIMESTEPS"
 echo "  Seeds:            $N_SEEDS (Master: $MASTER_SEED)"
 echo "  Lambdas:          $LAMBDAS"
 echo "  Critic LRs:       $CRITIC_LRS"
@@ -133,7 +142,7 @@ $PYTHON scripts/gymnax/sweep_comprehensive_critic/run_single_env.py \
     --lambdas $LAMBDAS \
     --critic_lrs $CRITIC_LRS \
     --actor_lr "$ACTOR_LR" \
-    --total_timesteps "$TOTAL_TIMESTEPS" \
+    --total_timesteps "$ENV_TIMESTEPS" \
     --num_envs "$NUM_ENVS" \
     --num_steps "$NUM_STEPS" \
     --minibatch_size "$MINIBATCH_SIZE" \

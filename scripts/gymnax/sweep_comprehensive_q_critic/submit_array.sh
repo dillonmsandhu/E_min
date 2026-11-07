@@ -22,7 +22,7 @@ LOG_DIR="slurm/${DATE}/${SWEEP_NAME}"
 mkdir -p "$LOG_DIR"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 
-TOTAL_TIMESTEPS=${1:-300000}
+TOTAL_TIMESTEPS=${1:-auto}
 N_SEEDS=${2:-3}
 MASTER_SEED=${3:-42}
 LAMBDAS=${4:-"0.0 0.4 0.8 0.95"}
@@ -52,7 +52,7 @@ fi
 
 echo "================================================================"
 echo "Submitting Comprehensive Q-PPO Critic Comparison SLURM Array"
-echo "  Timesteps:        $TOTAL_TIMESTEPS"
+echo "  Timesteps:        $TOTAL_TIMESTEPS (auto: 10M for MinAtar, 1M for MountainCar, 300k for small envs)"
 echo "  Seeds:            $N_SEEDS (Master: $MASTER_SEED)"
 echo "  Lambdas:          $LAMBDAS"
 echo "  Critic LRs:       $CRITIC_LRS"
@@ -74,7 +74,7 @@ SBATCH_ARRAY_CMD="sbatch --parsable \
     \"$ARRAY_SCRIPT\""
 
 ARRAY_JOB_ID=$(eval "$SBATCH_ARRAY_CMD")
-echo "Submitted Array Job ID: $ARRAY_JOB_ID (6 deterministic discrete environments)"
+echo "Submitted Array Job ID: $ARRAY_JOB_ID (10 environments: 6 classic/bsuite/misc + 4 MinAtar)"
 
 POST_SCRIPT="scripts/gymnax/sweep_comprehensive_q_critic/plot_consolidated_results.py"
 

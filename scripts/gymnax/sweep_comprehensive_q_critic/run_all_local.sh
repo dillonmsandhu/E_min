@@ -33,6 +33,10 @@ ALL_ENVS=(
     "DeepSea-bsuite"
     "DiscountingChain-bsuite"
     "Pong-misc"
+    "Asterix-MinAtar"
+    "Breakout-MinAtar"
+    "Freeway-MinAtar"
+    "SpaceInvaders-MinAtar"
 )
 
 OUT_DIR="${1:-results/sweep_comprehensive_q_critic}"

@@ -377,8 +377,8 @@ def compute_aux_head_loss(v_aux, v_aux_old, aux_targets, config, aux_coef=1.0):
     sg = jax.lax.stop_gradient
     targets = sg(aux_targets)
     err = targets - v_aux
-    loss_type = config.get("AUX_LOSS_TYPE", "mse")
-    delta = config.get("AUX_HUBER_DELTA", 10.0)
+    loss_type = config.get("AUX_LOSS_TYPE", config.get("V_AUX_LOSS_TYPE", "mse"))
+    delta = config.get("AUX_HUBER_DELTA", config.get("V_AUX_HUBER_DELTA", 10.0))
 
     def _base_loss(e):
         if loss_type == "huber":
@@ -387,9 +387,9 @@ def compute_aux_head_loss(v_aux, v_aux_old, aux_targets, config, aux_coef=1.0):
             return 0.5 * (e ** 2)
 
     l1 = _base_loss(err)
-    reg_type = config.get("AUX_REG_TYPE", "l2")
-    clip_eps = config.get("AUX_CLIP_EPS", 10.0)
-    beta = config.get("AUX_TRUST_REGION_COEF", 0.0)
+    reg_type = config.get("AUX_REG_TYPE", config.get("V_AUX_REG_TYPE", "l2"))
+    clip_eps = config.get("AUX_CLIP_EPS", config.get("V_AUX_CLIP_EPS", 10.0))
+    beta = config.get("AUX_TRUST_REGION_COEF", config.get("V_AUX_TRUST_COEF", 0.0))
 
     if reg_type == "clipping" and v_aux_old is not None:
         v_clipped = sg(v_aux_old) + jnp.clip(v_aux - sg(v_aux_old), -clip_eps, clip_eps)
