@@ -46,6 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run Comprehensive Critic Sweep on a Single Environment")
     parser.add_argument("--env_name", type=str, required=True, help="Gymnax Environment Name")
     parser.add_argument("--lambdas", nargs="+", type=float, default=[0.0, 0.4, 0.8, 0.95], help="Lambdas to sweep")
+    parser.add_argument("--aux_lambdas", nargs="+", type=float, default=[1.0, 0.9, 0.8], help="Auxiliary critic lambdas to sweep")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=[1e-4, 3e-4, 1e-3], help="Critic learning rates")
     parser.add_argument("--actor_lr", type=float, default=3e-4, help="Fixed actor learning rate")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Total training timesteps (default: auto per env: 1M for MountainCar, 300k for small envs)")
@@ -73,6 +74,7 @@ def main():
     class SweepArgs:
         envs = [cli_args.env_name]
         lambdas = cli_args.lambdas
+        aux_lambdas = cli_args.aux_lambdas
         critic_lrs = cli_args.critic_lrs
         actor_lr = cli_args.actor_lr
         total_timesteps = env_timesteps

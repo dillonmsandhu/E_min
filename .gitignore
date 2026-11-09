@@ -221,3 +221,8 @@ __marimo__/
 *__pycache__*
 __pycache__/
 .aider*
+.agents/*
+!.agents/skills/
+!.agents/rules/
+external_*
+*.code-workspace

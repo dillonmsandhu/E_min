@@ -38,6 +38,7 @@ config = {
     "WEIGHT_DECAY": 0.01,
     "ACTOR_WEIGHT_DECAY": None,
     "CRITIC_WEIGHT_DECAY": None,
+    "ADAM_EPS": 1e-5,
 
     # Rollout & Training Loop
     "NUM_ENVS": 256,
@@ -51,19 +52,20 @@ config = {
     "CRITIC_MINIBATCH_SIZE": None,
 
     # Critic & PPO Hyperparameters
-    "CRITIC_TYPE": "fitted",  # "fitted" (standard PPO), "td_0", "e_0", "e_lambda", "mc"
+    "CRITIC_TYPE": "fitted",  # "fitted", "td_0", "td_lambda", "e_0", "e_0_basic", "e_lambda", "mc"
+    "E_VARIANT": "aux",       # "aux" (uses v_aux), "fwd" (forward-only), "naive" (symmetric without v_aux)
     "GAE_LAMBDA": 0.8,
     "VALUE_LAMBDA": 0.9,
     "TD_LAMBDA": 0.0,
     "E_LAMBDA": 0.8,
-    "RETURN_LAMBDA": 0.99,
+    "RETURN_LAMBDA": 1.0,
+    "AUX_LAMBDA": 1.0,
+    "AUX_VF_COEF": 1.0,
     "RECOMPUTE_TARGETS_EACH_EPOCH": False,
     "CLIP_EPS": 0.1,
     "VF_CLIP": 1e6,
     "VF_COEF": 0.5,
     "POLICY_COEFF": 1.0,
-    "CRITIC_LOSS_TYPE": "mse",
-    "HUBER_DELTA": 1.0,
     "ENT_COEF": 0.01,
     "ADV_STD_FLOOR": 0.1,
     "ADV_CLIP": 3.0,

@@ -2,26 +2,32 @@
 """
 sweep_comprehensive_critics.py
 
-Comprehensive Critic Comparison Sweep & Diagnostic Suite:
-1. E(lambda) with geometric lookahead jumps (sweeping lambda, selecting best)
-2. TD(lambda) fitted value iteration (sweeping lambda, selecting best)
-3. E(0) via algos/E.py (with V_aux)
-4. E(0) Naive Sampling (without V_aux, double sampling)
-5. MC via algos/mc.py (Monte Carlo rollout return regression)
-6. V_aux Regularization Ablations for a single lambda (in dedicated diagnostic suite):
-   - Baseline (MSE)
-   - + Huber Loss (delta=10.0)
-   - + Trust Region Regularization (beta=1.0)
-   - + Both Combined (Huber + Trust)
+Comprehensive Critic Comparison Sweep & Automated Cross-Algorithm Analysis Suite:
+Runs per environment across critic learning rates and lambdas:
+1. MC (Monte Carlo rollout return regression, lambda=1.0)
+2. TD(lambda) fitted value iteration grid (lambdas: [0.0, 0.4, 0.8, 0.95])
+3. E(0) variants:
+   - Naive (no v_aux, full symmetric (e_i - e_j)^2)
+   - Forward-Only (no v_aux, semi-gradient (e_i - sg(e_j))^2)
+   - Basic v_aux (surgical v_aux with AUX_LAMBDA=1.0)
+   - v_aux across AUX_LAMBDA in [1.0, 0.9, 0.8]
+4. E(lambda) grid (lambdas: [0.0, 0.4, 0.8, 0.95] with v_aux, AUX_LAMBDA=1.0)
+5. E(lambda=0.8) variants:
+   - Naive (no v_aux)
+   - Forward-Only (no v_aux)
+   - Basic v_aux (AUX_LAMBDA=1.0)
+   - v_aux across AUX_LAMBDA in [1.0, 0.9, 0.8]
 
-Visualizations (Modeled after sampled_lambda_sweep):
-- main_comparison_learning_curves: Clean multi-panel grid comparing MC, E(0), E(0) Naive Sampling, TD(λ*), and E(λ*) Baseline.
-- v_aux_ablations_learning_curves: Multi-panel grid comparing V_aux regularizations against TD(lambda) converged performance.
-- main_comparison_auc_table: Publication-grade table with heatmap coloring for AUC.
-- main_comparison_final_return_table: Publication-grade table with heatmap coloring for final returns.
-- v_aux_ablations_table: Heatmap table for V_aux ablations.
+Automatically produces 4 cross-algorithm analyses per environment set, each with:
+- Learning curve figures under <out_dir>/plots/ (.pdf and .png)
+- Cross-algorithm tables (Envs = rows, Algos = columns) under <out_dir>/tables/ (.md, .tex, .pdf, .png):
+  1. Analysis 1: E(0) comparison (Naive, Forward-Only, v_aux [lambda_aux=1.0])
+  2. Analysis 2: E(lambda=0.8) comparison (Naive, Forward-Only, v_aux [lambda_aux=1.0])
+  3. Analysis 3: v_aux across AUX_LAMBDA values (1.0, 0.9, 0.8)
+  4. Analysis 4: Best E run vs Best TD run
 """
 
+from __future__ import annotations
 import os
 import sys
 import argparse
@@ -75,6 +81,8 @@ ENV_TITLES = {
     "Pong-misc": "Pong",
 }
 
+AUX_LAMBDAS_DEFAULT = [1.0, 0.9, 0.8]
+
 
 def get_env_default_timesteps(env_name: str, fallback_timesteps: int | None = None) -> int:
     """Returns environment-specific timesteps: 1M on MountainCar envs, 300k on others."""
@@ -92,7 +100,7 @@ def compute_auc(returns_curve):
 
 
 def get_metric_curve(run_dict, metric_key="returned_discounted_episode_returns"):
-    """Safely extracts the specified metric curve, falling back to returned_episode_returns if absent."""
+    """Extracts the specified metric curve of shape (n_seeds, n_updates)."""
     if metric_key in run_dict:
         return np.array(run_dict[metric_key])
     elif "returned_discounted_episode_returns" in run_dict:
@@ -108,6 +116,32 @@ def get_metric_curve(run_dict, metric_key="returned_discounted_episode_returns")
         elif "returned_episode_returns" in m:
             return np.array(m["returned_episode_returns"])
     raise KeyError(f"Metric {metric_key} not found in run data.")
+
+
+def select_best_lr_run(lr_dict, critic_lrs, metric_key):
+    """Selects the run with the highest mean AUC across available critic_lrs."""
+    available_lrs = [lr for lr in critic_lrs if lr in lr_dict]
+    if not available_lrs:
+        available_lrs = list(lr_dict.keys())
+    best_lr = max(available_lrs, key=lambda lr: compute_auc(get_metric_curve(lr_dict[lr], metric_key).mean(axis=0)))
+    data = get_metric_curve(lr_dict[best_lr], metric_key)
+    mean_curve = data.mean(axis=0)
+    std_curve = data.std(axis=0)
+    seed_aucs = data.mean(axis=-1)
+    auc_mean = float(seed_aucs.mean())
+    auc_std = float(seed_aucs.std())
+    final_mean = float(mean_curve[-1])
+    final_std = float(std_curve[-1])
+    return {
+        "lr": best_lr,
+        "data": data,
+        "curve": mean_curve,
+        "std": std_curve,
+        "auc_mean": auc_mean,
+        "auc_std": auc_std,
+        "final_mean": final_mean,
+        "final_std": final_std,
+    }
 
 
 def run_experiment(config, seed_keys):
@@ -126,21 +160,13 @@ def run_experiment(config, seed_keys):
             metrics.get("returned_discounted_episode_returns", metrics["returned_episode_returns"])
         ),
         "returned_episode_lengths": np.array(metrics["returned_episode_lengths"]),
-        "critic_loss": np.array(metrics["value_loss"] if "value_loss" in metrics else metrics.get("val_loss", metrics.get("critic_loss", 0.0))),
+        "critic_loss": np.array(
+            metrics["value_loss"] if "value_loss" in metrics else metrics.get("val_loss", metrics.get("critic_loss", 0.0))
+        ),
         "actor_loss": np.array(metrics["actor_loss"]),
         "entropy": np.array(metrics["entropy"]),
         "elapsed_time": elapsed,
     }
-    if "n_terminations" in metrics:
-        res["n_terminations"] = np.array(metrics["n_terminations"])
-    if "n_truncations" in metrics:
-        res["n_truncations"] = np.array(metrics["n_truncations"])
-    if "critic_v_mse" in metrics:
-        res["critic_v_mse"] = np.array(metrics["critic_v_mse"])
-    if "critic_v_aux_mse" in metrics:
-        res["critic_v_aux_mse"] = np.array(metrics["critic_v_aux_mse"])
-    if "critic_similarity" in metrics:
-        res["critic_similarity"] = np.array(metrics["critic_similarity"])
     for k_m, v_m in metrics.items():
         if k_m not in res:
             res[k_m] = np.array(v_m)
@@ -153,21 +179,19 @@ def run_sweep(args):
     lambdas = args.lambdas
     critic_lrs = args.critic_lrs
     actor_lr = args.actor_lr
-    total_timesteps = args.total_timesteps
     num_envs = args.num_envs
     num_steps = args.num_steps
     minibatch_size = args.minibatch_size
     n_seeds = args.n_seeds
     master_seed = args.master_seed
     out_dir = args.out_dir
-    ablation_lambda = args.ablation_lambda
-    huber_delta = args.huber_delta
-    trust_coef = args.trust_coef
+    ablation_lambda = getattr(args, "ablation_lambda", 0.8)
+    aux_lambdas = getattr(args, "aux_lambdas", AUX_LAMBDAS_DEFAULT)
 
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "data"), exist_ok=True)
-    os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
-    os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "plots"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "tables"), exist_ok=True)
 
     master_key = jax.random.PRNGKey(master_seed)
     seed_keys = jax.random.split(master_key, n_seeds)
@@ -185,286 +209,217 @@ def run_sweep(args):
     num_updates = max(1, base_timesteps // batch_size)
     timesteps = np.arange(1, num_updates + 1) * batch_size
 
-    if all_runs:
-        for env in envs:
-            if env in all_runs:
-                for k in all_runs[env]:
-                    sub = all_runs[env][k]
-                    first_val = list(sub.values())[0]
-                    if isinstance(first_val, dict):
-                        first_val = list(first_val.values())[0]
-                    if "returned_episode_returns" in first_val:
-                        curve_len = first_val["returned_episode_returns"].shape[-1]
-                        timesteps = np.arange(1, curve_len + 1) * batch_size
-                        break
-
-    print(f"=================================================================")
-    print(f"STARTING COMPREHENSIVE CRITIC SWEEP & V_AUX ABLATIONS")
+    print("=================================================================")
+    print("STARTING COMPREHENSIVE CRITIC SWEEP")
     print(f"Envs: {envs}")
     print(f"Rollouts: {num_envs} envs x {num_steps} steps (batch {batch_size})")
-    print(f"Timesteps Policy: Auto (1M for MountainCar envs, 300k for small envs) | Override: {args.total_timesteps}")
     print(f"Critic LRs: {critic_lrs} | Lambdas: {lambdas} | Seeds: {n_seeds}")
-    print(f"V_aux Ablation Lambda: {ablation_lambda} (Huber δ={huber_delta}, Trust β={trust_coef})")
-    print(f"=================================================================\n")
+    print(f"Ablation Lambda: {ablation_lambda} | Aux Lambdas: {aux_lambdas}")
+    print("=================================================================\n")
 
     for env_name in envs:
         env_timesteps = get_env_default_timesteps(env_name, args.total_timesteps)
         if env_name not in all_runs:
-            all_runs[env_name] = {
-                "MC": {},
-                "E(0)_v_aux": {},
-                "E(0)_no_v_aux": {},
-                "TD(lambda)": {lr: {} for lr in critic_lrs},
-                "E(lambda)": {lr: {} for lr in critic_lrs},
-                "E(lambda)_huber": {},
-                "E(lambda)_trust": {},
-                "E(lambda)_both": {},
-            }
+            all_runs[env_name] = {}
+
+        env_dict = all_runs[env_name]
+        env_dict.setdefault("MC", {})
+        env_dict.setdefault("E(0)_v_aux", {})
+        env_dict.setdefault("E(0)_no_v_aux", {})
+        env_dict.setdefault("E(0)_fwd", {})
+        env_dict.setdefault("E(0)_aux_lam", {alam: {} for alam in aux_lambdas})
+        env_dict.setdefault("TD(lambda)", {lr: {} for lr in critic_lrs})
+        env_dict.setdefault("E(lambda)", {lr: {} for lr in critic_lrs})
+        env_dict.setdefault("E(lambda)_naive", {})
+        env_dict.setdefault("E(lambda)_fwd", {})
+        env_dict.setdefault("E(lambda)_aux_lam", {alam: {} for alam in aux_lambdas})
+
+        for lr in critic_lrs:
+            env_dict["TD(lambda)"].setdefault(lr, {})
+            env_dict["E(lambda)"].setdefault(lr, {})
+        for alam in aux_lambdas:
+            env_dict["E(0)_aux_lam"].setdefault(alam, {})
+            env_dict["E(lambda)_aux_lam"].setdefault(alam, {})
+
+        base_env_cfg = {
+            "ENV_NAME": env_name,
+            "LR": actor_lr,
+            "ACTOR_LR": actor_lr,
+            "GAE_LAMBDA": 0.8,
+            "NUM_ENVS": num_envs,
+            "NUM_STEPS": num_steps,
+            "TOTAL_TIMESTEPS": env_timesteps,
+            "MINIBATCH_SIZE": minibatch_size,
+            "ACTOR_MINIBATCH_SIZE": minibatch_size,
+            "CRITIC_MINIBATCH_SIZE": minibatch_size,
+            "NUM_EPOCHS": 4,
+            "ACTOR_EPOCHS": 4,
+            "CRITIC_EPOCHS": 4,
+            "DEBUG": False,
+        }
 
         print(f"\n>>> Running Environment: {env_name} (Timesteps: {env_timesteps:,}) <<<")
 
         # 1. MC Baseline
         for lr in critic_lrs:
-            if lr not in all_runs[env_name]["MC"]:
+            if lr not in env_dict["MC"]:
                 print(f"[MC] env={env_name}, critic_lr={lr}...")
                 cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
+                    **base_env_cfg,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "mc",
                     "VALUE_LAMBDA": 1.0,
                     "RETURN_LAMBDA": 1.0,
-                    "GAE_LAMBDA": 0.8,
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
                 }
                 res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["MC"][lr] = res
+                env_dict["MC"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # 2. E(0) with V_aux
+        # 2. E(0) Variants: v_aux (lambda_aux=1.0), Naive, Forward-Only, and aux_lambda in {1.0, 0.9, 0.8}
         for lr in critic_lrs:
-            if lr not in all_runs[env_name]["E(0)_v_aux"]:
-                print(f"[E(0) with V_aux] env={env_name}, critic_lr={lr}...")
+            if lr not in env_dict["E(0)_v_aux"]:
+                print(f"[E(0) v_aux (lambda_aux=1.0)] env={env_name}, critic_lr={lr}...")
                 cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
+                    **base_env_cfg,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "e_0",
-                    "USES_AUX": True,
-                    "SURGICAL_V_AUX": True,
+                    "E_VARIANT": "aux",
                     "RETURN_LAMBDA": 1.0,
-                    "VALUE_LAMBDA": 1.0,
-                    "GAE_LAMBDA": 0.8,
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
+                    "AUX_LAMBDA": 1.0,
                 }
                 res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["E(0)_v_aux"][lr] = res
+                env_dict["E(0)_v_aux"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
+            env_dict["E(0)_aux_lam"][1.0][lr] = env_dict["E(0)_v_aux"][lr]
 
-        # 3. E(0) without V_aux (Naive Sampling)
-        for lr in critic_lrs:
-            if lr not in all_runs[env_name]["E(0)_no_v_aux"]:
-                print(f"[E(0) Naive Sampling (No V_aux)] env={env_name}, critic_lr={lr}...")
+            if lr not in env_dict["E(0)_no_v_aux"]:
+                print(f"[E(0) Naive (No v_aux)] env={env_name}, critic_lr={lr}...")
                 cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
+                    **base_env_cfg,
                     "CRITIC_LR": lr,
-                    "CRITIC_TYPE": "e_0_basic",
-                    "USES_AUX": False,
-                    "SURGICAL_V_AUX": False,
+                    "CRITIC_TYPE": "e_0",
+                    "E_VARIANT": "naive",
                     "RETURN_LAMBDA": 1.0,
-                    "VALUE_LAMBDA": 1.0,
-                    "GAE_LAMBDA": 0.8,
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
                 }
                 res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["E(0)_no_v_aux"][lr] = res
+                env_dict["E(0)_no_v_aux"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # 4. TD(lambda) Grid
+            if lr not in env_dict["E(0)_fwd"]:
+                print(f"[E(0) Forward-Only] env={env_name}, critic_lr={lr}...")
+                cfg = {
+                    **base_env_cfg,
+                    "CRITIC_LR": lr,
+                    "CRITIC_TYPE": "e_0",
+                    "E_VARIANT": "fwd",
+                    "RETURN_LAMBDA": 1.0,
+                }
+                res = run_experiment(cfg, seed_keys)
+                env_dict["E(0)_fwd"][lr] = res
+                print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
+
+            for alam in aux_lambdas:
+                if alam == 1.0:
+                    continue
+                if lr not in env_dict["E(0)_aux_lam"][alam]:
+                    print(f"[E(0) v_aux (lambda_aux={alam})] env={env_name}, critic_lr={lr}...")
+                    cfg = {
+                        **base_env_cfg,
+                        "CRITIC_LR": lr,
+                        "CRITIC_TYPE": "e_0",
+                        "E_VARIANT": "aux",
+                        "RETURN_LAMBDA": 1.0,
+                        "AUX_LAMBDA": alam,
+                    }
+                    res = run_experiment(cfg, seed_keys)
+                    env_dict["E(0)_aux_lam"][alam][lr] = res
+                    print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
+
+        # 3. TD(lambda) Grid
         for lr in critic_lrs:
             for lmb in lambdas:
-                if lmb not in all_runs[env_name]["TD(lambda)"][lr]:
+                if lmb not in env_dict["TD(lambda)"][lr]:
                     print(f"[TD(lambda)] env={env_name}, lambda={lmb}, critic_lr={lr}...")
                     cfg = {
-                        "ENV_NAME": env_name,
-                        "LR": actor_lr,
-                        "ACTOR_LR": actor_lr,
+                        **base_env_cfg,
                         "CRITIC_LR": lr,
                         "CRITIC_TYPE": "td_lambda",
                         "VALUE_LAMBDA": lmb,
-                        "GAE_LAMBDA": 0.8,
-                        "NUM_ENVS": num_envs,
-                        "NUM_STEPS": num_steps,
-                        "TOTAL_TIMESTEPS": env_timesteps,
-                        "MINIBATCH_SIZE": minibatch_size,
-                        "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                        "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                        "NUM_EPOCHS": 4,
-                        "ACTOR_EPOCHS": 4,
-                        "CRITIC_EPOCHS": 4,
-                        "DEBUG": False,
                     }
                     res = run_experiment(cfg, seed_keys)
-                    all_runs[env_name]["TD(lambda)"][lr][lmb] = res
+                    env_dict["TD(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # 5. E(lambda) Grid
+        # 4. E(lambda) Grid (with v_aux, AUX_LAMBDA=1.0)
+        all_e_lambdas = list(lambdas)
+        if ablation_lambda not in all_e_lambdas:
+            all_e_lambdas.append(ablation_lambda)
         for lr in critic_lrs:
-            for lmb in lambdas:
-                if lmb not in all_runs[env_name]["E(lambda)"][lr]:
-                    print(f"[E(lambda)] env={env_name}, lambda={lmb}, critic_lr={lr}...")
+            for lmb in all_e_lambdas:
+                if lmb not in env_dict["E(lambda)"][lr]:
+                    print(f"[E(lambda) v_aux (lambda_aux=1.0)] env={env_name}, lambda={lmb}, critic_lr={lr}...")
                     cfg = {
-                        "ENV_NAME": env_name,
-                        "LR": actor_lr,
-                        "ACTOR_LR": actor_lr,
+                        **base_env_cfg,
                         "CRITIC_LR": lr,
                         "CRITIC_TYPE": "e_lambda",
                         "E_LAMBDA": lmb,
-                        "JUMP_MODE": "full_mc_invalid_jump",
-                        "GAE_LAMBDA": 0.8,
-                        "NUM_ENVS": num_envs,
-                        "NUM_STEPS": num_steps,
-                        "TOTAL_TIMESTEPS": env_timesteps,
-                        "MINIBATCH_SIZE": minibatch_size,
-                        "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                        "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                        "NUM_EPOCHS": 4,
-                        "ACTOR_EPOCHS": 4,
-                        "CRITIC_EPOCHS": 4,
-                        "DEBUG": False,
+                        "E_VARIANT": "aux",
+                        "RETURN_LAMBDA": 1.0,
+                        "AUX_LAMBDA": 1.0,
                     }
                     res = run_experiment(cfg, seed_keys)
-                    all_runs[env_name]["E(lambda)"][lr][lmb] = res
+                    env_dict["E(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
+            env_dict["E(lambda)_aux_lam"][1.0][lr] = env_dict["E(lambda)"][lr][ablation_lambda]
 
-        # 6. V_aux Regularization Ablations (at ablation_lambda)
-        print(f"\n--- V_aux Regularization Ablations for {env_name} at λ={ablation_lambda} ---")
+        # 5. E(lambda = ablation_lambda) Variants: Naive, Forward-Only, and AUX_LAMBDA in {1.0, 0.9, 0.8}
+        print(f"\n--- E(lambda={ablation_lambda}) Variants & AUX_LAMBDA Sweep for {env_name} ---")
         for lr in critic_lrs:
-            # A. Huber Loss
-            if lr not in all_runs[env_name]["E(lambda)_huber"]:
-                print(f"[E(λ={ablation_lambda}) + Huber] env={env_name}, critic_lr={lr}...")
+            if lr not in env_dict["E(lambda)_naive"]:
+                print(f"[E(lambda={ablation_lambda}) Naive] env={env_name}, critic_lr={lr}...")
                 cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
+                    **base_env_cfg,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "e_lambda",
                     "E_LAMBDA": ablation_lambda,
-                    "JUMP_MODE": "full_mc_invalid_jump",
-                    "GAE_LAMBDA": 0.8,
-                    "V_AUX_LOSS_TYPE": "huber",
-                    "AUX_LOSS_TYPE": "huber",
-                    "V_AUX_HUBER_DELTA": huber_delta,
-                    "AUX_HUBER_DELTA": huber_delta,
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
+                    "E_VARIANT": "naive",
+                    "RETURN_LAMBDA": 1.0,
                 }
                 res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["E(lambda)_huber"][lr] = res
+                env_dict["E(lambda)_naive"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-            # B. Trust Region Regularization
-            if lr not in all_runs[env_name]["E(lambda)_trust"]:
-                print(f"[E(λ={ablation_lambda}) + Trust Region] env={env_name}, critic_lr={lr}...")
+            if lr not in env_dict["E(lambda)_fwd"]:
+                print(f"[E(lambda={ablation_lambda}) Forward-Only] env={env_name}, critic_lr={lr}...")
                 cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
+                    **base_env_cfg,
                     "CRITIC_LR": lr,
                     "CRITIC_TYPE": "e_lambda",
                     "E_LAMBDA": ablation_lambda,
-                    "JUMP_MODE": "full_mc_invalid_jump",
-                    "GAE_LAMBDA": 0.8,
-                    "V_AUX_TRUST_COEF": trust_coef,
-                    "AUX_TRUST_REGION_COEF": trust_coef,
-                    "AUX_REG_TYPE": "l2",
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
+                    "E_VARIANT": "fwd",
+                    "RETURN_LAMBDA": 1.0,
                 }
                 res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["E(lambda)_trust"][lr] = res
+                env_dict["E(lambda)_fwd"][lr] = res
                 print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-            # C. Both Combined
-            if lr not in all_runs[env_name]["E(lambda)_both"]:
-                print(f"[E(λ={ablation_lambda}) + Both (Huber+Trust)] env={env_name}, critic_lr={lr}...")
-                cfg = {
-                    "ENV_NAME": env_name,
-                    "LR": actor_lr,
-                    "ACTOR_LR": actor_lr,
-                    "CRITIC_LR": lr,
-                    "CRITIC_TYPE": "e_lambda",
-                    "E_LAMBDA": ablation_lambda,
-                    "JUMP_MODE": "full_mc_invalid_jump",
-                    "GAE_LAMBDA": 0.8,
-                    "V_AUX_LOSS_TYPE": "huber",
-                    "AUX_LOSS_TYPE": "huber",
-                    "V_AUX_HUBER_DELTA": huber_delta,
-                    "AUX_HUBER_DELTA": huber_delta,
-                    "V_AUX_TRUST_COEF": trust_coef,
-                    "AUX_TRUST_REGION_COEF": trust_coef,
-                    "AUX_REG_TYPE": "l2",
-                    "NUM_ENVS": num_envs,
-                    "NUM_STEPS": num_steps,
-                    "TOTAL_TIMESTEPS": env_timesteps,
-                    "MINIBATCH_SIZE": minibatch_size,
-                    "ACTOR_MINIBATCH_SIZE": minibatch_size,
-                    "CRITIC_MINIBATCH_SIZE": minibatch_size,
-                    "NUM_EPOCHS": 4,
-                    "ACTOR_EPOCHS": 4,
-                    "CRITIC_EPOCHS": 4,
-                    "DEBUG": False,
-                }
-                res = run_experiment(cfg, seed_keys)
-                all_runs[env_name]["E(lambda)_both"][lr] = res
-                print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
+            for alam in aux_lambdas:
+                if alam == 1.0:
+                    continue
+                if lr not in env_dict["E(lambda)_aux_lam"][alam]:
+                    print(f"[E(lambda={ablation_lambda}) v_aux (lambda_aux={alam})] env={env_name}, critic_lr={lr}...")
+                    cfg = {
+                        **base_env_cfg,
+                        "CRITIC_LR": lr,
+                        "CRITIC_TYPE": "e_lambda",
+                        "E_LAMBDA": ablation_lambda,
+                        "E_VARIANT": "aux",
+                        "RETURN_LAMBDA": 1.0,
+                        "AUX_LAMBDA": alam,
+                    }
+                    res = run_experiment(cfg, seed_keys)
+                    env_dict["E(lambda)_aux_lam"][alam][lr] = res
+                    print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
     # Save raw metrics
     save_path = os.path.join(out_dir, "data", "sweep_metrics_all.pkl")
@@ -472,7 +427,7 @@ def run_sweep(args):
         pickle.dump({"runs": all_runs, "timesteps": timesteps, "args": vars(args)}, f)
     print(f"\nSaved raw metrics to {save_path}")
 
-    # Generate Diagnostics & Benchmark Plots
+    # Generate all 4 cross-algorithm analyses (plots + md/tex/pdf tables)
     generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, lambdas, args)
 
 
@@ -483,25 +438,50 @@ def plot_curve_with_std(ax, curve, std, label, color, batch_size, lw=2.0, alpha=
         ax.fill_between(t, curve - std, curve + std, color=color, alpha=alpha)
 
 
+def _format_val_std(val, std):
+    if np.isnan(val):
+        return "N/A"
+    if abs(val) >= 10:
+        return f"{val:.1f} ± {std:.1f}"
+    return f"{val:.2f} ± {std:.2f}"
+
+
+def _format_val_std_tex(val, std, is_best=False):
+    if np.isnan(val):
+        return "N/A"
+    if abs(val) >= 10:
+        s = f"{val:.1f} \\pm {std:.1f}"
+    else:
+        s = f"{val:.2f} \\pm {std:.2f}"
+    return f"$\\mathbf{{{s}}}$" if is_best else f"${s}$"
+
+
+def _escape_tex(text: str) -> str:
+    rep = (
+        str(text)
+        .replace("_", "\\_")
+        .replace("%", "\\%")
+        .replace("&", "\\&")
+        .replace("λ", "$\\lambda$")
+    )
+    return rep
+
+
 def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="Blues"):
     """
     Renders a publication-grade table with heatmap-colored cells:
-    Rows = Environments, Columns = Conditions.
-    Each cell contains the formatted numerical text (Mean ± Std),
-    with the background color showing relative performance, and
-    the best condition highlighted with a bold green border.
-    Saves both PNG (300 DPI) and vector PDF.
+    Rows = Environments, Columns = Algorithms.
+    Saves both PDF and PNG (300 DPI).
     """
     n_rows, n_cols = df_mean.shape
-    fig_w = max(9.0, n_cols * 1.85 + 2.0)
-    fig_h = max(3.5, n_rows * 0.70 + 1.8)
+    fig_w = max(8.5, n_cols * 2.1 + 2.2)
+    fig_h = max(3.2, n_rows * 0.72 + 1.8)
 
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=300)
 
-    mat_mean = df_mean.values
-    mat_std = df_std.values if df_std is not None else np.zeros_like(mat_mean)
+    mat_mean = df_mean.values.astype(float)
+    mat_std = df_std.values.astype(float) if df_std is not None else np.zeros_like(mat_mean)
 
-    # Row-wise normalization so relative rank per environment is clear
     row_mins = np.nanmin(mat_mean, axis=1, keepdims=True)
     row_maxs = np.nanmax(mat_mean, axis=1, keepdims=True)
     row_ranges = np.maximum(row_maxs - row_mins, 1e-8)
@@ -511,18 +491,17 @@ def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="
     im = ax.imshow(mat_norm, cmap=color_map, vmin=0.0, vmax=1.0, aspect="auto")
 
     ax.set_xticks(np.arange(n_cols))
-    ax.set_xticklabels(df_mean.columns, fontsize=10.5, fontweight="bold", rotation=25, ha="right")
+    ax.set_xticklabels(df_mean.columns, fontsize=10.5, fontweight="bold", rotation=20, ha="right")
     ax.set_yticks(np.arange(n_rows))
     ax.set_yticklabels(df_mean.index, fontsize=10.5, fontweight="bold")
 
-    # Clean cell grid lines
     ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, n_rows, 1), minor=True)
     ax.grid(which="minor", color="#d0d7de", linestyle="-", linewidth=1.2)
     ax.tick_params(which="minor", bottom=False, left=False)
 
     for r in range(n_rows):
-        best_c = np.nanargmax(mat_mean[r])
+        best_c = int(np.nanargmax(mat_mean[r]))
         for c in range(n_cols):
             val = mat_mean[r, c]
             std = mat_std[r, c]
@@ -541,7 +520,7 @@ def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.030, pad=0.04)
     cbar.set_label(cbar_label, fontsize=10, fontweight="bold")
-    ax.set_title(title, fontsize=13, fontweight="bold", pad=16)
+    ax.set_title(title, fontsize=12.5, fontweight="bold", pad=14)
 
     plt.tight_layout()
     png_path = f"{output_base}.png"
@@ -549,354 +528,441 @@ def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="
     plt.savefig(png_path, bbox_inches="tight")
     plt.savefig(pdf_path, bbox_inches="tight")
     plt.close()
-    print(f"Saved Heatmap Table to {png_path} and {pdf_path}")
 
 
-def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, lambdas, args):
-    os.makedirs(out_dir, exist_ok=True)
-    os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
-    os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
-    plots_dir = os.path.join(out_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
+def save_table_bundle(df_mean, df_std, title, cbar_label, output_base, cmap="Blues"):
+    """
+    Saves a cross-algorithm table (Envs = row headers, Algos = column headers) in:
+    - Markdown (.md)
+    - LaTeX (.tex)
+    - Vector PDF (.pdf) & PNG (.png)
+    """
+    os.makedirs(os.path.dirname(output_base), exist_ok=True)
+    cols = list(df_mean.columns)
+    rows = list(df_mean.index)
+    mat_mean = df_mean.values.astype(float)
+    mat_std = df_std.values.astype(float) if df_std is not None else np.zeros_like(mat_mean)
 
-    metric_key = getattr(args, "metric_key", "returned_discounted_episode_returns")
-    """Generates the streamlined publication-quality figures, plots directory, and heatmap tables."""
-    batch_size = args.num_envs * args.num_steps
-    for env in envs:
-        for k in all_runs[env]:
-            sub = all_runs[env][k]
-            first_val = list(sub.values())[0]
-            if isinstance(first_val, dict):
-                first_val = list(first_val.values())[0]
-            if "returned_discounted_episode_returns" in first_val or "returned_episode_returns" in first_val:
-                c_data = first_val.get("returned_discounted_episode_returns", first_val.get("returned_episode_returns"))
-                curve_len = c_data.shape[-1]
-                timesteps = np.arange(1, curve_len + 1) * batch_size
-                break
+    # 1. Markdown (.md)
+    md_lines = [f"# {title}\n"]
+    header = "| Environment | " + " | ".join(cols) + " |"
+    sep = "| :--- | " + " | ".join([":---:" for _ in cols]) + " |"
+    md_lines.append(header)
+    md_lines.append(sep)
 
-    print(f"\n================ GENERATING ANALYSES & FIGURES (Metric: {metric_key}) ================")
-    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
+    for r_idx, env_label in enumerate(rows):
+        best_c = int(np.nanargmax(mat_mean[r_idx]))
+        cells = []
+        for c_idx in range(len(cols)):
+            cell_str = _format_val_std(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx])
+            if c_idx == best_c:
+                cell_str = f"**{cell_str}**"
+            cells.append(cell_str)
+        md_lines.append(f"| **{env_label}** | " + " | ".join(cells) + " |")
+
+    if len(rows) > 1:
+        col_means = np.nanmean(mat_mean, axis=0)
+        col_stds = np.nanmean(mat_std, axis=0)
+        best_mean_c = int(np.nanargmax(col_means))
+        mean_cells = []
+        for c_idx in range(len(cols)):
+            cell_str = _format_val_std(col_means[c_idx], col_stds[c_idx])
+            if c_idx == best_mean_c:
+                cell_str = f"**{cell_str}**"
+            mean_cells.append(cell_str)
+        md_lines.append(f"| **Mean** | " + " | ".join(mean_cells) + " |")
+
+    md_path = f"{output_base}.md"
+    with open(md_path, "w") as f:
+        f.write("\n".join(md_lines) + "\n")
+
+    # 2. LaTeX (.tex)
+    col_spec = "l" + ("c" * len(cols))
+    tex_lines = [
+        "\\begin{table}[htbp]",
+        "\\centering",
+        f"\\caption{{{_escape_tex(title)}}}",
+        f"\\begin{{tabular}}{{{col_spec}}}",
+        "\\toprule",
+        "\\textbf{Environment} & " + " & ".join([f"\\textbf{{{_escape_tex(c)}}}" for c in cols]) + " \\\\",
+        "\\midrule",
+    ]
+    for r_idx, env_label in enumerate(rows):
+        best_c = int(np.nanargmax(mat_mean[r_idx]))
+        cells = [
+            _format_val_std_tex(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx], is_best=(c_idx == best_c))
+            for c_idx in range(len(cols))
+        ]
+        tex_lines.append(f"{_escape_tex(env_label)} & " + " & ".join(cells) + " \\\\")
+
+    if len(rows) > 1:
+        tex_lines.append("\\midrule")
+        col_means = np.nanmean(mat_mean, axis=0)
+        col_stds = np.nanmean(mat_std, axis=0)
+        best_mean_c = int(np.nanargmax(col_means))
+        mean_cells = [
+            _format_val_std_tex(col_means[c_idx], col_stds[c_idx], is_best=(c_idx == best_mean_c))
+            for c_idx in range(len(cols))
+        ]
+        tex_lines.append("\\textbf{Mean} & " + " & ".join(mean_cells) + " \\\\")
+
+    tex_lines.extend([
+        "\\bottomrule",
+        "\\end{tabular}",
+        "\\end{table}",
+    ])
+    tex_path = f"{output_base}.tex"
+    with open(tex_path, "w") as f:
+        f.write("\n".join(tex_lines) + "\n")
+
+    # 3. PDF & PNG Heatmap Table
+    render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap=cmap)
+    print(f"Saved table bundle (.md, .tex, .pdf, .png): {output_base}")
+
+
+def render_analysis_plot_and_tables(
+    envs,
+    alg_names,
+    per_env_results,
+    colors,
+    linestyles,
+    batch_size,
+    plot_title_suffix,
+    plot_output_base,
+    table_output_base,
+    table_title_prefix,
+    cmap="Blues",
+):
+    """
+    Renders a multi-panel learning curve plot under plots/ (.pdf and .png)
+    and saves AUC + Final Return table bundles (.md, .tex, .pdf, .png) under tables/.
+    """
     n_envs = len(envs)
-
-    # Resolve ablation lambda
-    abl_lmb = getattr(args, "ablation_lambda", 0.8)
-    if abl_lmb not in lambdas:
-        abl_lmb = 0.8 if 0.8 in lambdas else lambdas[0]
-
-    # Grid dimensions for learning curves (up to 4 columns per row)
     n_cols = min(n_envs, 4)
     n_rows = math.ceil(n_envs / n_cols)
 
-    # -------------------------------------------------------------
-    # 1. MAIN COMPARISON: 5 Core Curves Per Environment
-    # -------------------------------------------------------------
-    # TD(lambda*), E(lambda*) Baseline, E(0) Naive Sampling, E(0), MC
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
     axes_flat = axes.flatten()
 
-    alg_names = ["MC", "E(0)", "E(0) Naive Sampling", "TD(λ*)", "E(λ*) Baseline"]
-    colors = {
-        "MC": "#7f7f7f",
-        "E(0)": "#1f77b4",
-        "E(0) Naive Sampling": "#9467bd",
-        "TD(λ*)": "#e6550d",
-        "E(λ*) Baseline": "#2ca02c",
-    }
-    linestyles = {
-        "MC": "-",
-        "E(0)": "-",
-        "E(0) Naive Sampling": "--",
-        "TD(λ*)": "--",
-        "E(λ*) Baseline": "-",
-    }
-
-    auc_means_dict = {alg: [] for alg in alg_names}
-    auc_stds_dict = {alg: [] for alg in alg_names}
-    final_means_dict = {alg: [] for alg in alg_names}
-    final_stds_dict = {alg: [] for alg in alg_names}
-    summary_rows = []
+    auc_means = {alg: [] for alg in alg_names}
+    auc_stds = {alg: [] for alg in alg_names}
+    final_means = {alg: [] for alg in alg_names}
+    final_stds = {alg: [] for alg in alg_names}
+    env_row_labels = []
 
     for idx, env in enumerate(envs):
         ax = axes_flat[idx]
         env_title = ENV_TITLES.get(env, env)
+        env_row_labels.append(env_title)
 
-        env_curves = {}
-        env_stds = {}
-
-        # 1. MC (best lr)
-        best_lr_mc = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["MC"][lr], metric_key)))
-        mc_data = get_metric_curve(all_runs[env]["MC"][best_lr_mc], metric_key)
-        env_curves["MC"] = mc_data.mean(axis=0)
-        env_stds["MC"] = mc_data.std(axis=0)
-        auc_means_dict["MC"].append(compute_auc(env_curves["MC"]))
-        auc_stds_dict["MC"].append(np.mean(env_stds["MC"]))
-        final_means_dict["MC"].append(env_curves["MC"][-1])
-        final_stds_dict["MC"].append(env_stds["MC"][-1])
-
-        # 2. E(0) (with V_aux, best lr)
-        best_lr_e0 = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(0)_v_aux"][lr], metric_key)))
-        e0_data = get_metric_curve(all_runs[env]["E(0)_v_aux"][best_lr_e0], metric_key)
-        env_curves["E(0)"] = e0_data.mean(axis=0)
-        env_stds["E(0)"] = e0_data.std(axis=0)
-        auc_means_dict["E(0)"].append(compute_auc(env_curves["E(0)"]))
-        auc_stds_dict["E(0)"].append(np.mean(env_stds["E(0)"]))
-        final_means_dict["E(0)"].append(env_curves["E(0)"][-1])
-        final_stds_dict["E(0)"].append(env_stds["E(0)"][-1])
-
-        # 3. E(0) Naive Sampling (without V_aux, best lr)
-        best_lr_e0_naive = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(0)_no_v_aux"][lr], metric_key)))
-        e0_naive_data = get_metric_curve(all_runs[env]["E(0)_no_v_aux"][best_lr_e0_naive], metric_key)
-        env_curves["E(0) Naive Sampling"] = e0_naive_data.mean(axis=0)
-        env_stds["E(0) Naive Sampling"] = e0_naive_data.std(axis=0)
-        auc_means_dict["E(0) Naive Sampling"].append(compute_auc(env_curves["E(0) Naive Sampling"]))
-        auc_stds_dict["E(0) Naive Sampling"].append(np.mean(env_stds["E(0) Naive Sampling"]))
-        final_means_dict["E(0) Naive Sampling"].append(env_curves["E(0) Naive Sampling"][-1])
-        final_stds_dict["E(0) Naive Sampling"].append(env_stds["E(0) Naive Sampling"][-1])
-
-        # 4. TD(lambda*) (best lr and lambda)
-        best_lr_td, best_lmb_td, best_auc_td = None, None, -1e9
-        for clr in critic_lrs:
-            for lmb in lambdas:
-                c_data = get_metric_curve(all_runs[env]["TD(lambda)"][clr][lmb], metric_key)
-                c_auc = compute_auc(c_data.mean(axis=0))
-                if c_auc > best_auc_td:
-                    best_auc_td = c_auc
-                    best_lr_td = clr
-                    best_lmb_td = lmb
-        td_data = get_metric_curve(all_runs[env]["TD(lambda)"][best_lr_td][best_lmb_td], metric_key)
-        env_curves["TD(λ*)"] = td_data.mean(axis=0)
-        env_stds["TD(λ*)"] = td_data.std(axis=0)
-        auc_means_dict["TD(λ*)"].append(best_auc_td)
-        auc_stds_dict["TD(λ*)"].append(np.mean(env_stds["TD(λ*)"]))
-        final_means_dict["TD(λ*)"].append(env_curves["TD(λ*)"][-1])
-        final_stds_dict["TD(λ*)"].append(env_stds["TD(λ*)"][-1])
-
-        # 5. E(lambda*) Baseline (best lr and lambda)
-        best_lr_el, best_lmb_el, best_auc_el = None, None, -1e9
-        for clr in critic_lrs:
-            for lmb in lambdas:
-                c_data = get_metric_curve(all_runs[env]["E(lambda)"][clr][lmb], metric_key)
-                c_auc = compute_auc(c_data.mean(axis=0))
-                if c_auc > best_auc_el:
-                    best_auc_el = c_auc
-                    best_lr_el = clr
-                    best_lmb_el = lmb
-        el_data = get_metric_curve(all_runs[env]["E(lambda)"][best_lr_el][best_lmb_el], metric_key)
-        env_curves["E(λ*) Baseline"] = el_data.mean(axis=0)
-        env_stds["E(λ*) Baseline"] = el_data.std(axis=0)
-        auc_means_dict["E(λ*) Baseline"].append(best_auc_el)
-        auc_stds_dict["E(λ*) Baseline"].append(np.mean(env_stds["E(λ*) Baseline"]))
-        final_means_dict["E(λ*) Baseline"].append(env_curves["E(λ*) Baseline"][-1])
-        final_stds_dict["E(λ*) Baseline"].append(env_stds["E(λ*) Baseline"][-1])
-
-        # Plot curves on multi-panel grid
         for alg in alg_names:
-            c = env_curves[alg]
-            s = env_stds[alg]
-            lbl = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
-            plot_curve_with_std(ax, c, s, lbl, colors[alg], batch_size, lw=2.2 if "TD" in alg or "Baseline" in alg else 1.8, linestyle=linestyles[alg])
+            info = per_env_results[env][alg]
+            lbl = info.get("legend_label", alg)
+            plot_curve_with_std(
+                ax,
+                info["curve"],
+                info["std"],
+                lbl,
+                colors[alg],
+                batch_size,
+                lw=2.2,
+                linestyle=linestyles.get(alg, "-"),
+            )
+            auc_means[alg].append(info["auc_mean"])
+            auc_stds[alg].append(info["auc_std"])
+            final_means[alg].append(info["final_mean"])
+            final_stds[alg].append(info["final_std"])
 
-        ax.set_title(env_title, fontsize=11, fontweight="bold", pad=8)
+        ax.set_title(f"{env_title}{plot_title_suffix}", fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Timesteps", fontsize=9.5)
         ax.set_ylabel("Discounted Return", fontsize=9.5)
         ax.grid(True, linestyle=":", alpha=0.5)
-        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.2, loc="best")
-
-        # Save individual per-environment learning curve figure in plots/
-        fig_single, ax_single = plt.subplots(figsize=(6.5, 4.5), dpi=300)
-        for alg in alg_names:
-            c = env_curves[alg]
-            s = env_stds[alg]
-            lbl = f"TD(λ={best_lmb_td})" if alg == "TD(λ*)" else (f"E(λ={best_lmb_el})" if alg == "E(λ*) Baseline" else alg)
-            plot_curve_with_std(ax_single, c, s, lbl, colors[alg], batch_size, lw=2.2 if "TD" in alg or "Baseline" in alg else 1.8, linestyle=linestyles[alg])
-        ax_single.set_title(f"{env_title}: Critic Learning Curves", fontsize=12, fontweight="bold", pad=10)
-        ax_single.set_xlabel("Timesteps", fontsize=10)
-        ax_single.set_ylabel("Discounted Return", fontsize=10)
-        ax_single.grid(True, linestyle=":", alpha=0.5)
-        ax_single.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=9, loc="best")
-        fig_single.tight_layout()
-        fig_single.savefig(os.path.join(plots_dir, f"{env}.png"), bbox_inches="tight")
-        fig_single.savefig(os.path.join(plots_dir, f"{env}.pdf"), bbox_inches="tight")
-        plt.close(fig_single)
-
-        summary_rows.append({
-            "Environment": env_title,
-            "Best TD(λ) λ": best_lmb_td,
-            "Best TD(λ) Return": env_curves["TD(λ*)"][-1],
-            "Best TD(λ) AUC": best_auc_td,
-            "Best E(λ) Baseline λ": best_lmb_el,
-            "Best E(λ) Baseline Return": env_curves["E(λ*) Baseline"][-1],
-            "Best E(λ) Baseline AUC": best_auc_el,
-            "E(0) Return": env_curves["E(0)"][-1],
-            "E(0) AUC": auc_means_dict["E(0)"][-1],
-            "E(0) Naive Sampling Return": env_curves["E(0) Naive Sampling"][-1],
-            "E(0) Naive Sampling AUC": auc_means_dict["E(0) Naive Sampling"][-1],
-            "MC Return": env_curves["MC"][-1],
-            "MC AUC": auc_means_dict["MC"][-1],
-        })
-
-    # Hide unused subplots if total envs < n_rows * n_cols
-    for extra_idx in range(n_envs, len(axes_flat)):
-        axes_flat[extra_idx].set_visible(False)
-
-    plt.tight_layout()
-    plots_grid_base = os.path.join(plots_dir, "all_envs_learning_curves")
-    plots_main_base = os.path.join(plots_dir, "main_comparison_learning_curves")
-    bench_curves_base = os.path.join(out_dir, "benchmarks", "main_comparison_learning_curves")
-    plt.savefig(f"{plots_grid_base}.png", bbox_inches="tight")
-    plt.savefig(f"{plots_grid_base}.pdf", bbox_inches="tight")
-    plt.savefig(f"{plots_main_base}.png", bbox_inches="tight")
-    plt.savefig(f"{plots_main_base}.pdf", bbox_inches="tight")
-    plt.savefig(f"{bench_curves_base}.png", bbox_inches="tight")
-    plt.savefig(f"{bench_curves_base}.pdf", bbox_inches="tight")
-    plt.close()
-    print(f"Saved All Environments Learning Curves to {plots_grid_base}.png, {plots_main_base}.png, and {bench_curves_base}.png")
-
-    # -------------------------------------------------------------
-    # 2. V_AUX ABLATIONS LEARNING CURVES (with TD Converged Dotted Line)
-    # -------------------------------------------------------------
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.0 * n_cols, 4.0 * n_rows), dpi=300, squeeze=False)
-    axes_flat = axes.flatten()
-
-    abl_names = ["Baseline (MSE)", "+ Huber", "+ Trust Region", "+ Both"]
-    abl_colors = {
-        "Baseline (MSE)": "#6baed6",
-        "+ Huber": "#2ca02c",
-        "+ Trust Region": "#756bb1",
-        "+ Both": "#00441b",
-    }
-
-    abl_auc_means = {name: [] for name in abl_names}
-    abl_auc_stds = {name: [] for name in abl_names}
-    abl_final_means = {name: [] for name in abl_names}
-    abl_final_stds = {name: [] for name in abl_names}
-
-    for idx, env in enumerate(envs):
-        ax = axes_flat[idx]
-        env_title = ENV_TITLES.get(env, env)
-
-        best_clr = max(critic_lrs, key=lambda lr: np.mean(get_metric_curve(all_runs[env]["E(lambda)"][lr][abl_lmb], metric_key)))
-
-        # Converged TD line
-        td_data = get_metric_curve(all_runs[env]["TD(lambda)"][best_clr][abl_lmb], metric_key)
-        td_curve = td_data.mean(axis=0)
-        td_converged = np.mean(td_curve[-max(1, int(len(td_curve)*0.1)):])
-        ax.axhline(td_converged, color="#e6550d", linestyle=":", linewidth=2.0, label="TD(λ) Converged Ref")
-
-        # 1. Baseline
-        b_data = get_metric_curve(all_runs[env]["E(lambda)"][best_clr][abl_lmb], metric_key)
-        b_curve = b_data.mean(axis=0)
-        b_std = b_data.std(axis=0)
-        plot_curve_with_std(ax, b_curve, b_std, "Baseline (MSE)", abl_colors["Baseline (MSE)"], batch_size, lw=1.8, linestyle="--")
-        abl_auc_means["Baseline (MSE)"].append(compute_auc(b_curve))
-        abl_auc_stds["Baseline (MSE)"].append(np.mean(b_std))
-        abl_final_means["Baseline (MSE)"].append(b_curve[-1])
-        abl_final_stds["Baseline (MSE)"].append(b_std[-1])
-
-        # 2. + Huber
-        h_data = get_metric_curve(all_runs[env]["E(lambda)_huber"][best_clr], metric_key)
-        h_curve = h_data.mean(axis=0)
-        h_std = h_data.std(axis=0)
-        plot_curve_with_std(ax, h_curve, h_std, "+ Huber", abl_colors["+ Huber"], batch_size, lw=2.0)
-        abl_auc_means["+ Huber"].append(compute_auc(h_curve))
-        abl_auc_stds["+ Huber"].append(np.mean(h_std))
-        abl_final_means["+ Huber"].append(h_curve[-1])
-        abl_final_stds["+ Huber"].append(h_std[-1])
-
-        # 3. + Trust
-        t_data = get_metric_curve(all_runs[env]["E(lambda)_trust"][best_clr], metric_key)
-        t_curve = t_data.mean(axis=0)
-        t_std = t_data.std(axis=0)
-        plot_curve_with_std(ax, t_curve, t_std, "+ Trust Region", abl_colors["+ Trust Region"], batch_size, lw=2.0)
-        abl_auc_means["+ Trust Region"].append(compute_auc(t_curve))
-        abl_auc_stds["+ Trust Region"].append(np.mean(t_std))
-        abl_final_means["+ Trust Region"].append(t_curve[-1])
-        abl_final_stds["+ Trust Region"].append(t_std[-1])
-
-        # 4. + Both
-        bo_data = get_metric_curve(all_runs[env]["E(lambda)_both"][best_clr], metric_key)
-        bo_curve = bo_data.mean(axis=0)
-        bo_std = bo_data.std(axis=0)
-        plot_curve_with_std(ax, bo_curve, bo_std, "+ Both (Huber+Trust)", abl_colors["+ Both"], batch_size, lw=2.4)
-        abl_auc_means["+ Both"].append(compute_auc(bo_curve))
-        abl_auc_stds["+ Both"].append(np.mean(bo_std))
-        abl_final_means["+ Both"].append(bo_curve[-1])
-        abl_final_stds["+ Both"].append(bo_std[-1])
-
-        ax.set_title(f"{env_title} (λ={abl_lmb})", fontsize=11, fontweight="bold", pad=8)
-        ax.set_xlabel("Timesteps", fontsize=9.5)
-        ax.set_ylabel("Discounted Return", fontsize=9.5)
-        ax.grid(True, linestyle=":", alpha=0.5)
-        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.2, loc="best")
+        ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.8, loc="best")
 
     for extra_idx in range(n_envs, len(axes_flat)):
         axes_flat[extra_idx].set_visible(False)
 
     plt.tight_layout()
-    v_aux_curves_base = os.path.join(out_dir, "diagnostics", "v_aux_ablations_learning_curves")
-    v_aux_plots_base = os.path.join(plots_dir, "v_aux_ablations_learning_curves")
-    plt.savefig(f"{v_aux_curves_base}.png", bbox_inches="tight")
-    plt.savefig(f"{v_aux_curves_base}.pdf", bbox_inches="tight")
-    plt.savefig(f"{v_aux_plots_base}.png", bbox_inches="tight")
-    plt.savefig(f"{v_aux_plots_base}.pdf", bbox_inches="tight")
+    os.makedirs(os.path.dirname(plot_output_base), exist_ok=True)
+    plt.savefig(f"{plot_output_base}.png", bbox_inches="tight")
+    plt.savefig(f"{plot_output_base}.pdf", bbox_inches="tight")
     plt.close()
-    print(f"Saved V_aux Ablations Learning Curves to {v_aux_curves_base}.png and {v_aux_plots_base}.png")
+    print(f"Saved learning curves plot (.pdf, .png): {plot_output_base}")
 
-    # -------------------------------------------------------------
-    # 3. REGULAR TABLES WITH HEATMAP COLORING
-    # -------------------------------------------------------------
-    env_row_labels = [ENV_TITLES.get(e, e) for e in envs]
+    df_auc_mean = pd.DataFrame(auc_means, index=env_row_labels)
+    df_auc_std = pd.DataFrame(auc_stds, index=env_row_labels)
+    df_final_mean = pd.DataFrame(final_means, index=env_row_labels)
+    df_final_std = pd.DataFrame(final_stds, index=env_row_labels)
 
-    # Table 1: Main Comparison AUC Table
-    df_auc_mean = pd.DataFrame(auc_means_dict, index=env_row_labels)
-    df_auc_std = pd.DataFrame(auc_stds_dict, index=env_row_labels)
-    render_heatmap_table(
+    save_table_bundle(
         df_auc_mean,
         df_auc_std,
-        title="AUC Performance Matrix Across Critic Architectures",
-        cbar_label="Relative AUC (Row Normalized: 0=Min, 1=Max)",
-        output_base=os.path.join(out_dir, "benchmarks", "main_comparison_auc_table"),
-        cmap="Blues",
+        title=f"{table_title_prefix} — Area Under Curve (AUC)",
+        cbar_label="Relative AUC (Row Normalized)",
+        output_base=f"{table_output_base}_auc",
+        cmap=cmap,
     )
-
-    # Table 2: Main Comparison Final Return Table
-    df_final_mean = pd.DataFrame(final_means_dict, index=env_row_labels)
-    df_final_std = pd.DataFrame(final_stds_dict, index=env_row_labels)
-    render_heatmap_table(
+    save_table_bundle(
         df_final_mean,
         df_final_std,
-        title="Final Episodic Return Matrix Across Critic Architectures",
-        cbar_label="Relative Return (Row Normalized: 0=Min, 1=Max)",
-        output_base=os.path.join(out_dir, "benchmarks", "main_comparison_final_return_table"),
+        title=f"{table_title_prefix} — Final Episodic Return",
+        cbar_label="Relative Final Return (Row Normalized)",
+        output_base=f"{table_output_base}_final",
+        cmap=cmap,
+    )
+    # Also write the primary table name (Final Return) at table_output_base.{md,tex,pdf,png}
+    save_table_bundle(
+        df_final_mean,
+        df_final_std,
+        title=f"{table_title_prefix} (Final Return)",
+        cbar_label="Relative Final Return (Row Normalized)",
+        output_base=table_output_base,
+        cmap=cmap,
+    )
+
+
+def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, lambdas, args):
+    """
+    Produces the 4 automated cross-algorithm analyses:
+    1. E(0) variants: Naive, Forward-Only, and basic v_aux (lambda_aux = 1.0)
+    2. E(lambda=0.8) variants: Naive, Forward-Only, and basic v_aux (lambda_aux = 1.0)
+    3. v_aux across aux_lambda values (1.0, 0.9, 0.8)
+    4. Best E run vs Best TD run
+    Each analysis outputs learning curves under <out_dir>/plots/ and (.md, .tex, .pdf) tables under <out_dir>/tables/.
+    """
+    plots_dir = os.path.join(out_dir, "plots")
+    tables_dir = os.path.join(out_dir, "tables")
+    os.makedirs(plots_dir, exist_ok=True)
+    os.makedirs(tables_dir, exist_ok=True)
+
+    metric_key = getattr(args, "metric_key", "returned_discounted_episode_returns")
+    batch_size = args.num_envs * args.num_steps
+    abl_lmb = getattr(args, "ablation_lambda", 0.8)
+    aux_lambdas = getattr(args, "aux_lambdas", AUX_LAMBDAS_DEFAULT)
+
+    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
+    print(f"\n================ GENERATING 4 AUTOMATED ANALYSES (Metric: {metric_key}) ================")
+
+    # =========================================================================
+    # ANALYSIS 1: E(0) with Naive, Forward-Only, and Basic v_aux (lambda_aux=1.0)
+    # =========================================================================
+    a1_algs = ["E(0) Naive", "E(0) Forward-Only", "E(0) v_aux (λ_aux=1.0)"]
+    a1_colors = {
+        "E(0) Naive": "#9467bd",
+        "E(0) Forward-Only": "#ff7f0e",
+        "E(0) v_aux (λ_aux=1.0)": "#1f77b4",
+    }
+    a1_styles = {
+        "E(0) Naive": "--",
+        "E(0) Forward-Only": "-.",
+        "E(0) v_aux (λ_aux=1.0)": "-",
+    }
+    a1_results = {}
+    for env in envs:
+        env_d = all_runs[env]
+        a1_results[env] = {
+            "E(0) Naive": select_best_lr_run(env_d["E(0)_no_v_aux"], critic_lrs, metric_key),
+            "E(0) Forward-Only": select_best_lr_run(env_d["E(0)_fwd"], critic_lrs, metric_key),
+            "E(0) v_aux (λ_aux=1.0)": select_best_lr_run(env_d["E(0)_v_aux"], critic_lrs, metric_key),
+        }
+
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=a1_algs,
+        per_env_results=a1_results,
+        colors=a1_colors,
+        linestyles=a1_styles,
+        batch_size=batch_size,
+        plot_title_suffix=" — E(0) Variants",
+        plot_output_base=os.path.join(plots_dir, "e0_variants_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "e0_variants"),
+        table_title_prefix="E(0) Critic Variants Comparison",
         cmap="Blues",
     )
 
-    # Table 3: V_aux Ablations Table
-    df_abl_mean = pd.DataFrame(abl_auc_means, index=env_row_labels)
-    df_abl_std = pd.DataFrame(abl_auc_stds, index=env_row_labels)
-    render_heatmap_table(
-        df_abl_mean,
-        df_abl_std,
-        title=f"V_aux Regularization AUC Matrix (λ={abl_lmb})",
-        cbar_label="Relative AUC (Row Normalized)",
-        output_base=os.path.join(out_dir, "diagnostics", "v_aux_ablations_table"),
+    # =========================================================================
+    # ANALYSIS 2: E(lambda=0.8) with Naive, Forward-Only, and Basic v_aux (lambda_aux=1.0)
+    # =========================================================================
+    a2_algs = [
+        f"E({abl_lmb}) Naive",
+        f"E({abl_lmb}) Forward-Only",
+        f"E({abl_lmb}) v_aux (λ_aux=1.0)",
+    ]
+    a2_colors = {
+        f"E({abl_lmb}) Naive": "#9467bd",
+        f"E({abl_lmb}) Forward-Only": "#ff7f0e",
+        f"E({abl_lmb}) v_aux (λ_aux=1.0)": "#2ca02c",
+    }
+    a2_styles = {
+        f"E({abl_lmb}) Naive": "--",
+        f"E({abl_lmb}) Forward-Only": "-.",
+        f"E({abl_lmb}) v_aux (λ_aux=1.0)": "-",
+    }
+    a2_results = {}
+    for env in envs:
+        env_d = all_runs[env]
+        el_lmb_lr_dict = {
+            lr: env_d["E(lambda)"][lr][abl_lmb]
+            for lr in env_d["E(lambda)"]
+            if abl_lmb in env_d["E(lambda)"][lr]
+        }
+        a2_results[env] = {
+            f"E({abl_lmb}) Naive": select_best_lr_run(env_d["E(lambda)_naive"], critic_lrs, metric_key),
+            f"E({abl_lmb}) Forward-Only": select_best_lr_run(env_d["E(lambda)_fwd"], critic_lrs, metric_key),
+            f"E({abl_lmb}) v_aux (λ_aux=1.0)": select_best_lr_run(el_lmb_lr_dict, critic_lrs, metric_key),
+        }
+
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=a2_algs,
+        per_env_results=a2_results,
+        colors=a2_colors,
+        linestyles=a2_styles,
+        batch_size=batch_size,
+        plot_title_suffix=f" — E(λ={abl_lmb}) Variants",
+        plot_output_base=os.path.join(plots_dir, "e_lambda08_variants_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "e_lambda08_variants"),
+        table_title_prefix=f"E(λ={abl_lmb}) Critic Variants Comparison",
+        cmap="Blues",
+    )
+
+    # =========================================================================
+    # ANALYSIS 3: Comparing v_aux at Different AUX_LAMBDA Values (1.0, 0.9, 0.8)
+    # =========================================================================
+    a3_algs = [f"v_aux (λ_aux={alam})" for alam in aux_lambdas]
+    palette_a3 = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd"]
+    styles_a3 = ["--", "-.", "-", ":"]
+    a3_colors = {alg: palette_a3[i % len(palette_a3)] for i, alg in enumerate(a3_algs)}
+    a3_styles = {alg: styles_a3[i % len(styles_a3)] for i, alg in enumerate(a3_algs)}
+    a3_results = {}
+    for env in envs:
+        env_d = all_runs[env]
+        a3_results[env] = {}
+        for alam in aux_lambdas:
+            alg_label = f"v_aux (λ_aux={alam})"
+            lr_dict = env_d["E(lambda)_aux_lam"].get(alam, {})
+            if not lr_dict and alam == 1.0:
+                lr_dict = {
+                    lr: env_d["E(lambda)"][lr][abl_lmb]
+                    for lr in env_d["E(lambda)"]
+                    if abl_lmb in env_d["E(lambda)"][lr]
+                }
+            a3_results[env][alg_label] = select_best_lr_run(lr_dict, critic_lrs, metric_key)
+
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=a3_algs,
+        per_env_results=a3_results,
+        colors=a3_colors,
+        linestyles=a3_styles,
+        batch_size=batch_size,
+        plot_title_suffix=f" — v_aux λ_aux Sweep (E(λ={abl_lmb}))",
+        plot_output_base=os.path.join(plots_dir, "v_aux_lambda_comparison_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "v_aux_lambda_comparison"),
+        table_title_prefix=f"v_aux Auxiliary Return Lambda (λ_aux) Comparison at E(λ={abl_lmb})",
         cmap="YlGn",
     )
 
-    # Save summary CSV
-    summary_df = pd.DataFrame(summary_rows)
-    csv_path = os.path.join(out_dir, "benchmarks", "main_comparison_summary.csv")
-    csv_plots_path = os.path.join(plots_dir, "main_comparison_summary.csv")
-    summary_df.to_csv(csv_path, index=False)
-    summary_df.to_csv(csv_plots_path, index=False)
-    print(f"Saved Summary CSV to {csv_path} and {csv_plots_path}")
-    print("\nAll figures, plots, and diagnostics generated successfully!")
+    # =========================================================================
+    # ANALYSIS 4: Comparing Best E Run to Best TD Run
+    # =========================================================================
+    a4_algs = ["Best TD(λ*)", "Best E (v_aux)", "Best E (All)"]
+    a4_colors = {
+        "Best TD(λ*)": "#e6550d",
+        "Best E (v_aux)": "#1f77b4",
+        "Best E (All)": "#2ca02c",
+    }
+    a4_styles = {
+        "Best TD(λ*)": "--",
+        "Best E (v_aux)": "-",
+        "Best E (All)": "-",
+    }
+    a4_results = {}
+    for env in envs:
+        env_d = all_runs[env]
+
+        # 1. Best TD(lambda*) across all (lr, lmb)
+        best_td_info = None
+        for lr, lmb_dict in env_d["TD(lambda)"].items():
+            for lmb in lmb_dict:
+                res_info = select_best_lr_run({lr: lmb_dict[lmb]}, [lr], metric_key)
+                res_info["legend_label"] = f"Best TD (λ={lmb})"
+                if best_td_info is None or res_info["auc_mean"] > best_td_info["auc_mean"]:
+                    best_td_info = res_info
+
+        # 2. Best E (v_aux): best across E(0)_v_aux, E(0)_aux_lam, E(lambda), E(lambda)_aux_lam
+        v_aux_candidates = []
+        if env_d.get("E(0)_v_aux"):
+            info = select_best_lr_run(env_d["E(0)_v_aux"], critic_lrs, metric_key)
+            info["legend_label"] = "Best E v_aux (E(0), λ_aux=1.0)"
+            v_aux_candidates.append(info)
+        for alam, lr_d in env_d.get("E(0)_aux_lam", {}).items():
+            if lr_d:
+                info = select_best_lr_run(lr_d, critic_lrs, metric_key)
+                info["legend_label"] = f"Best E v_aux (E(0), λ_aux={alam})"
+                v_aux_candidates.append(info)
+        for lr, lmb_dict in env_d.get("E(lambda)", {}).items():
+            for lmb in lmb_dict:
+                info = select_best_lr_run({lr: lmb_dict[lmb]}, [lr], metric_key)
+                info["legend_label"] = f"Best E v_aux (λ={lmb}, λ_aux=1.0)"
+                v_aux_candidates.append(info)
+        for alam, lr_d in env_d.get("E(lambda)_aux_lam", {}).items():
+            if lr_d:
+                info = select_best_lr_run(lr_d, critic_lrs, metric_key)
+                info["legend_label"] = f"Best E v_aux (λ={abl_lmb}, λ_aux={alam})"
+                v_aux_candidates.append(info)
+
+        best_e_v_aux_info = max(v_aux_candidates, key=lambda x: x["auc_mean"])
+
+        # 3. Best E (All): best across v_aux + Forward-Only + Naive
+        all_e_candidates = list(v_aux_candidates)
+        if env_d.get("E(0)_no_v_aux"):
+            info = select_best_lr_run(env_d["E(0)_no_v_aux"], critic_lrs, metric_key)
+            info["legend_label"] = "Best E (E(0) Naive)"
+            all_e_candidates.append(info)
+        if env_d.get("E(0)_fwd"):
+            info = select_best_lr_run(env_d["E(0)_fwd"], critic_lrs, metric_key)
+            info["legend_label"] = "Best E (E(0) Fwd)"
+            all_e_candidates.append(info)
+        if env_d.get("E(lambda)_naive"):
+            info = select_best_lr_run(env_d["E(lambda)_naive"], critic_lrs, metric_key)
+            info["legend_label"] = f"Best E (E({abl_lmb}) Naive)"
+            all_e_candidates.append(info)
+        if env_d.get("E(lambda)_fwd"):
+            info = select_best_lr_run(env_d["E(lambda)_fwd"], critic_lrs, metric_key)
+            info["legend_label"] = f"Best E (E({abl_lmb}) Fwd)"
+            all_e_candidates.append(info)
+
+        best_e_all_info = max(all_e_candidates, key=lambda x: x["auc_mean"])
+
+        a4_results[env] = {
+            "Best TD(λ*)": best_td_info,
+            "Best E (v_aux)": best_e_v_aux_info,
+            "Best E (All)": best_e_all_info,
+        }
+
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=a4_algs,
+        per_env_results=a4_results,
+        colors=a4_colors,
+        linestyles=a4_styles,
+        batch_size=batch_size,
+        plot_title_suffix=" — Best E vs Best TD",
+        plot_output_base=os.path.join(plots_dir, "best_e_vs_best_td_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "best_e_vs_best_td"),
+        table_title_prefix="Best E Run vs Best TD Run Comparison",
+        cmap="Blues",
+    )
+
+    print("\nAll 4 cross-algorithm analyses (plots and .md/.tex/.pdf tables) generated successfully!")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Comprehensive Critic Comparison Sweep & Diagnostic Suite")
+    parser = argparse.ArgumentParser(description="Comprehensive Critic Comparison Sweep & Automated Analysis Suite")
     parser.add_argument("--envs", nargs="+", default=["CartPole-v1"], help="List of environments")
     parser.add_argument("--lambdas", nargs="+", type=float, default=[0.0, 0.4, 0.8, 0.95], help="Lambdas to sweep")
+    parser.add_argument("--aux-lambdas", nargs="+", type=float, default=AUX_LAMBDAS_DEFAULT, help="Auxiliary critic lambdas to sweep")
     parser.add_argument("--critic-lrs", nargs="+", type=float, default=[1e-4, 3e-4, 1e-3], help="Critic learning rates")
     parser.add_argument("--actor-lr", type=float, default=3e-4, help="Fixed actor learning rate")
     parser.add_argument("--total-timesteps", type=int, default=None, help="Total training timesteps (default: auto per env: 1M for MountainCar, 300k for small envs)")
@@ -905,12 +971,10 @@ def main():
     parser.add_argument("--minibatch-size", type=int, default=512, help="Minibatch size")
     parser.add_argument("--n-seeds", type=int, default=3, help="Random seeds per configuration")
     parser.add_argument("--master-seed", type=int, default=42, help="Master random seed")
-    parser.add_argument("--out-dir", type=str, default="results/critic_sweep", help="Output directory")
-    parser.add_argument("--metric-key", type=str, default="returned_discounted_episode_returns", help="Metric to plot (default: returned_discounted_episode_returns)")
-    parser.add_argument("--ablation-lambda", type=float, default=0.8, help="Single lambda value to test V_aux regularizations")
-    parser.add_argument("--huber-delta", type=float, default=10.0, help="Huber loss delta for V_aux ablation")
-    parser.add_argument("--trust-coef", type=float, default=1.0, help="Trust-region L2 coefficient for V_aux ablation")
-    parser.add_argument("--load-existing", type=str, default=None, help="Path to existing sweep_metrics_all.pkl to skip already completed runs")
+    parser.add_argument("--out-dir", type=str, default="results/sweep_comprehensive_critic", help="Output directory")
+    parser.add_argument("--ablation-lambda", type=float, default=0.8, help="Lambda for E(lambda) variants & v_aux sweep")
+    parser.add_argument("--metric-key", type=str, default="returned_discounted_episode_returns", help="Metric key to plot")
+    parser.add_argument("--load-existing", type=str, default=None, help="Load existing sweep_metrics_all.pkl and regenerate plots/tables only")
 
     args = parser.parse_args()
     run_sweep(args)

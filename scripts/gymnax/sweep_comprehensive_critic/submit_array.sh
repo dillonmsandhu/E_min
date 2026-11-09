@@ -12,8 +12,8 @@
 
 set -e
 
-# Ensure working directory is repo root
-[ -f "core/config.py" ] || cd "$(dirname "$0")/../../.."
+# Ensure working directory is E_min repo root
+[ -f "gymnax_rl/core/gymnax_config.py" ] || cd "$(dirname "$0")/../../.."
 REPO_ROOT="$(pwd)"
 DATE=${DATE:-$(date +%Y-%m-%d)}
 SWEEP_NAME="sweep_comprehensive_critic"

@@ -103,13 +103,13 @@ def main():
         pickle.dump({"runs": consolidated_runs, "timesteps": timesteps, "envs": envs}, f)
     print(f"Saved consolidated data to: {cons_path}")
 
-    # Setup directories for consolidated figures
-    os.makedirs(os.path.join(out_dir, "diagnostics"), exist_ok=True)
-    os.makedirs(os.path.join(out_dir, "benchmarks"), exist_ok=True)
+    # Setup directories for consolidated figures and tables
     os.makedirs(os.path.join(out_dir, "plots"), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, "tables"), exist_ok=True)
 
     class ArgsWrapper:
         ablation_lambda = args.ablation_lambda
+        aux_lambdas = [1.0, 0.9, 0.8]
         huber_delta = args.huber_delta
         trust_coef = args.trust_coef
         num_envs = args.num_envs

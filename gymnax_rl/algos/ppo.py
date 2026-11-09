@@ -14,12 +14,12 @@ from gymnax_rl.core.gymnax_utils import (
     Transition,
     shuffle_and_batch,
     merge_hparams,
-    post_process_advantage,
 )
 from gymnax_rl.core.gymnax_wrappers import make_env
 from gymnax_rl.core.gymnax_network import (
     initialize_actor_critic,
     initialize_split_flax_train_state,
+    uses_aux_network,
 )
 from gymnax_rl.core.gymnax_critics import (
     get_critic_loss_fn,
@@ -50,30 +50,24 @@ def make_train(base_config):
 
     def train(rng, hparams=None):
         config = merge_hparams(config_copy, hparams)
-        c_type = config.get("CRITIC_TYPE", "fitted").lower()
+        c_type = config["CRITIC_TYPE"].lower()
         critic_loss_fn = get_critic_loss_fn(c_type, split=True)
         actor_loss_fn = ppo_actor_loss_fn
-        config = merge_hparams(config_copy, hparams)
         batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]
         config["NUM_UPDATES"] = max(1, config["TOTAL_TIMESTEPS"] // batch_size)
 
         # Actor and Critic epochs & minibatch sizes
-        actor_epochs = config.get("ACTOR_EPOCHS")
-        if actor_epochs is None:
-            actor_epochs = config.get("NUM_EPOCHS", 4)
+        actor_epochs = config["ACTOR_EPOCHS"] if config["ACTOR_EPOCHS"] is not None else config["NUM_EPOCHS"]
+        critic_epochs = config["CRITIC_EPOCHS"] if config["CRITIC_EPOCHS"] is not None else config["NUM_EPOCHS"]
 
-        critic_epochs = config.get("CRITIC_EPOCHS")
-        if critic_epochs is None:
-            critic_epochs = config.get("NUM_EPOCHS", 4)
-
-        actor_mb_size = config.get("ACTOR_MINIBATCH_SIZE")
-        if actor_mb_size is None:
-            actor_mb_size = config.get("MINIBATCH_SIZE", 1024)
+        actor_mb_size = (
+            config["ACTOR_MINIBATCH_SIZE"] if config["ACTOR_MINIBATCH_SIZE"] is not None else config["MINIBATCH_SIZE"]
+        )
         actor_mb_size = min(batch_size, actor_mb_size)
 
-        critic_mb_size = config.get("CRITIC_MINIBATCH_SIZE")
-        if critic_mb_size is None:
-            critic_mb_size = config.get("MINIBATCH_SIZE", 1024)
+        critic_mb_size = (
+            config["CRITIC_MINIBATCH_SIZE"] if config["CRITIC_MINIBATCH_SIZE"] is not None else config["MINIBATCH_SIZE"]
+        )
         critic_mb_size = min(batch_size, critic_mb_size)
 
         config["ACTOR_EPOCHS"] = actor_epochs
@@ -83,10 +77,10 @@ def make_train(base_config):
         config["ACTOR_NUM_MINIBATCHES"] = max(1, batch_size // actor_mb_size)
         config["CRITIC_NUM_MINIBATCHES"] = max(1, batch_size // critic_mb_size)
 
-        # Lambdas
-        gae_lambda = config.get("GAE_LAMBDA", 0.8)
+        # Lambdas & Auxiliary Critic Dispatch
+        gae_lambda = config["GAE_LAMBDA"]
         target_lambda = get_critic_target_lambda(config)
-        uses_aux = config.get("USES_AUX", c_type in ["e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical", "e_lambda", "elambda", "e_geometric"])
+        uses_aux = uses_aux_network(config)
 
         # Network & Split TrainState
         network, network_params = initialize_actor_critic(
@@ -155,12 +149,18 @@ def make_train(base_config):
             )
 
             # 2. CALCULATE ADVANTAGES & TARGETS
-            _, last_val = network.apply(train_state.params, last_obs)
-            regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val[None]], axis=0)
+            final_next_val = network.apply(
+                train_state.params, traj_batch.next_obs[-1], method=network.value
+            )
+            if final_next_val.ndim > traj_batch.value.ndim - 1:
+                final_next_val = final_next_val.squeeze(-1)
+            regular_next_val = jnp.concatenate([traj_batch.value[1:], final_next_val[None]], axis=0)
             timeout_next_val = network.apply(train_state.params, traj_batch.next_obs, method=network.value)
             if timeout_next_val.ndim > regular_next_val.ndim:
                 timeout_next_val = timeout_next_val.squeeze(-1)
             next_value = jnp.where(traj_batch.is_timeout, timeout_next_val, regular_next_val)
+            true_terminal = traj_batch.done & ~traj_batch.is_timeout
+            last_val = jnp.where(true_terminal[-1], 0.0, next_value[-1])
 
             advantages, gae_targets = calculate_gae(
                 traj_batch,
@@ -178,7 +178,7 @@ def make_train(base_config):
                     target_lambda=target_lambda,
                 )
 
-            # AUXILIARY TARGETS (Self-bootstrapped via v_aux matching ppo/sampled_E.py)
+            # AUXILIARY TARGETS (Self-bootstrapped via v_aux)
             if uses_aux:
                 final_next_aux_val = network.apply(
                     train_state.params, traj_batch.next_obs[-1], method=network.v_aux
@@ -190,7 +190,7 @@ def make_train(base_config):
                 if timeout_aux_next.ndim > regular_aux_next.ndim:
                     timeout_aux_next = timeout_aux_next.squeeze(-1)
                 aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
-                aux_lambda = config.get("AUX_LAMBDA", 1.0)
+                aux_lambda = config["AUX_LAMBDA"]
                 traj_batch_aux = traj_batch._replace(value=traj_batch.v_aux)
                 _, aux_targets = calculate_gae(
                     traj_batch_aux,
@@ -201,8 +201,7 @@ def make_train(base_config):
             else:
                 aux_targets = targets
 
-            # Align next targets G_{t+1} matching ppo/sampled_E.py
-            true_terminal = traj_batch.done & ~traj_batch.is_timeout
+            # Align next targets G_{t+1}
             next_targets = jnp.roll(targets, shift=-1, axis=0)
             next_targets = next_targets.at[-1].set(last_val)
             next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
@@ -217,17 +216,15 @@ def make_train(base_config):
 
             # 3. PREPARE CRITIC TRANSITIONS (Geometric jumps for E(lambda))
             rng, _rng = jax.random.split(rng)
-            c_type = config.get("CRITIC_TYPE", "fitted").lower()
             traj_batch, steps_since_start = prepare_critic_transitions(
                 critic_type=c_type,
                 traj_batch=traj_batch,
                 targets=targets,
                 last_val=last_val,
                 gamma=config["GAMMA"],
-                e_lambda=config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8)),
+                e_lambda=config["E_LAMBDA"],
                 rng=_rng,
                 steps_since_start=steps_since_start,
-                config=config,
             )
 
             # 4. CRITIC UPDATE PHASE

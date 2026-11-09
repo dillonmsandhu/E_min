@@ -1,4 +1,9 @@
-# RL Research Assistant Guidelines (JAX + Gymnax)
+# RL Research Assistant Guidelines (JAX + Gymnax + Brax)
+
+## 0. Project Architecture & Sibling R&D Repo (`bellman_error`)
+- **Target Repository (`E_min`)**: Likely final repository for this project, hosting the pure JAX Gymnax and upcoming Brax implementations, benchmarking pipelines, and cluster sweeps.
+- **R&D Sandbox (`bellman_error`)**: Located at `/Users/dillonsandhu/Documents/Research/bellman_error` (accessible via symlink `external_bellman_error`). Focuses on algorithmic formulation, mathematical proofs, tabular environments, and diagnostics.
+- **Core Asset in `bellman_error`**: Contains the strong, verified implementation of the **E-minimization algorithm using `v_aux`** (auxiliary value network / debiased sampled E-min in `random_policy/`, `ppo/sampled_E.py`, `core/sampling_e_metrics.py`). Port and adapt algorithms from `bellman_error` into `E_min`.
 
 ## 1. Development & Execution Environment
 - **Local machine**: Used ONLY for code editing, git commits, and fast CPU smoke tests.

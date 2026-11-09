@@ -6,7 +6,61 @@ from flax import linen as nn
 from flax.linen.initializers import constant, orthogonal
 from flax.training.train_state import TrainState
 from gymnax.environments import spaces
-from typing import NamedTuple, Any, Tuple
+from typing import NamedTuple
+
+
+AUX_ELIGIBLE_CRITICS = (
+    "e_0",
+    "e0",
+    "e",
+    "sampled_e",
+    "surgical_v_aux",
+    "surgical",
+    "e_lambda",
+    "elambda",
+    "e_geometric",
+)
+
+NON_AUX_CRITICS = (
+    "e_0_basic",
+    "e_basic",
+    "e_0_biased",
+    "e_biased",
+    "fitted",
+    "ppo",
+    "td_0",
+    "td",
+    "td0",
+    "classic_td",
+    "td_lambda",
+    "sampled_td_lambda",
+    "mc",
+    "sampled_mc",
+)
+
+VALID_E_VARIANTS = ("aux", "fwd", "naive")
+
+
+def uses_aux_network(config: dict) -> bool:
+    """
+    Determines from config whether the auxiliary critic network (v_aux) should be
+    initialized and optimized separately. Fails fast on unrecognized CRITIC_TYPE or E_VARIANT.
+    """
+    critic_type = config["CRITIC_TYPE"].lower()
+    e_variant = config["E_VARIANT"].lower()
+    if e_variant not in VALID_E_VARIANTS:
+        raise ValueError(
+            f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of {VALID_E_VARIANTS}."
+        )
+    if critic_type in AUX_ELIGIBLE_CRITICS:
+        return e_variant == "aux"
+    elif critic_type in NON_AUX_CRITICS:
+        return False
+    else:
+        raise ValueError(
+            f"Unrecognized CRITIC_TYPE '{config['CRITIC_TYPE']}'. "
+            f"Expected one of {AUX_ELIGIBLE_CRITICS + NON_AUX_CRITICS}."
+        )
 
 
 class PQN_CNN(nn.Module):
@@ -66,8 +120,6 @@ class MLP(nn.Module):
 
         assert x.ndim in (1, 2, 3), f"Input shape should be (D) or (B, D) or (L, B, D) got {x.shape}"
 
-        batch_dims = (x.shape[0],) if x.ndim == 2 else (1,)
-
         if x.ndim == 1:
             x = x[None, ...]
 
@@ -98,18 +150,16 @@ class PolicyHead(nn.Module):
     def __call__(self, x):
         x = nn.relu(x)
         if not self.is_continuous:
-            # Discrete: Output Logits
             logits = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01))(x)
             return distrax.Categorical(logits=logits)
         else:
-            # Continuous: Output Mean and Log Std
             loc = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01))(x)
             log_std = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
             return distrax.MultivariateNormalDiag(loc=loc, scale_diag=jnp.exp(log_std))
 
 
 class PQN_AC(nn.Module):
-    """Actor critic with separate small CNNs for actor and critic (for MinAtar)"""
+    """Actor critic with separate small CNNs for actor and critic (for MinAtar)."""
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
@@ -161,7 +211,7 @@ class PQN_AC(nn.Module):
 
 
 class MLP_AC(nn.Module):
-    """Actor critic with separate MLPs for actor and critic (for vector / classic control)"""
+    """Actor critic with separate MLPs for actor and critic (for vector / classic control)."""
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
@@ -212,9 +262,8 @@ class MLP_AC(nn.Module):
         return action.squeeze()
 
 
-
 class MLP_AC_DualCritic(nn.Module):
-    """Actor critic with separate MLPs for actor and critic, with dual heads (v and v_aux) on critic."""
+    """Actor critic with separate MLPs for actor, main critic (v), and auxiliary critic (v_aux)."""
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
@@ -276,7 +325,7 @@ class MLP_AC_DualCritic(nn.Module):
 
 
 class PQN_AC_DualCritic(nn.Module):
-    """Actor critic with separate CNNs for actor and critic, with dual heads (v and v_aux) on critic."""
+    """Actor critic with separate CNNs for actor, main critic (v), and auxiliary critic (v_aux)."""
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
@@ -352,7 +401,7 @@ class DualTrainState(NamedTuple):
         return self._replace(actor=self.actor.apply_gradients(grads=grads))
 
     def apply_gradients(self, grads):
-        p = grads.get("params", grads)
+        p = grads["params"] if "params" in grads else grads
         a_grads = {k: v for k, v in p.items() if "actor" in k}
         c_grads = {k: v for k, v in p.items() if "actor" not in k}
         return self._replace(
@@ -378,22 +427,35 @@ def make_warmup_linear_schedule(init_lr, end_lr, total_steps, warmup_ratio=0.1):
     return optax.join_schedules([warmup_fn, decay_fn], [warmup_steps])
 
 
-def initialize_flax_train_state(config, network, params):
-    """PPO / E-minimization optimizer with separate actor and critic learning rates."""
-    total_grad_steps = (
-        config["NUM_UPDATES"] * config.get("NUM_MINIBATCHES", 1) * config["NUM_EPOCHS"]
+def _build_adamw_tx(lr_schedule, max_grad_norm: float, weight_decay: float, adam_eps: float):
+    """Constructs a single global-norm-clipped AdamW transformation."""
+    return optax.chain(
+        optax.clip_by_global_norm(max_grad_norm),
+        optax.adamw(
+            lr_schedule,
+            weight_decay=weight_decay,
+            eps=adam_eps,
+        ),
     )
 
-    actor_lr = config.get("ACTOR_LR", config["LR"])
-    critic_lr = config.get("CRITIC_LR", config["LR"])
-    actor_lr_end = config.get("ACTOR_LR_END")
-    if actor_lr_end is None:
-        actor_lr_end = actor_lr
-    critic_lr_end = config.get("CRITIC_LR_END", config.get("LR_END"))
-    if critic_lr_end is None:
-        critic_lr_end = critic_lr
 
-    warmup_ratio = config.get("WARMUP_RATIO", 0.1)
+def initialize_flax_train_state(config, network, params):
+    """Unified TrainState with separate actor, critic, and (when uses_aux=True) critic_aux optimizers."""
+    batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]
+    num_minibatches = max(1, batch_size // min(batch_size, config["MINIBATCH_SIZE"]))
+    total_grad_steps = config["NUM_UPDATES"] * num_minibatches * config["NUM_EPOCHS"]
+
+    actor_lr = config["ACTOR_LR"] if config["ACTOR_LR"] is not None else config["LR"]
+    critic_lr = config["CRITIC_LR"] if config["CRITIC_LR"] is not None else config["LR"]
+    actor_lr_end = config["ACTOR_LR_END"] if config["ACTOR_LR_END"] is not None else actor_lr
+    critic_lr_end = config["CRITIC_LR_END"] if config["CRITIC_LR_END"] is not None else critic_lr
+
+    warmup_ratio = config["WARMUP_RATIO"]
+    max_grad_norm = config["MAX_GRAD_NORM"]
+    adam_eps = config["ADAM_EPS"]
+
+    actor_wd = config["ACTOR_WEIGHT_DECAY"] if config["ACTOR_WEIGHT_DECAY"] is not None else config["WEIGHT_DECAY"]
+    critic_wd = config["CRITIC_WEIGHT_DECAY"] if config["CRITIC_WEIGHT_DECAY"] is not None else config["WEIGHT_DECAY"]
 
     actor_lr_scheduler = make_warmup_linear_schedule(
         init_lr=actor_lr,
@@ -408,71 +470,64 @@ def initialize_flax_train_state(config, network, params):
         warmup_ratio=warmup_ratio,
     )
 
-    actor_wd = config.get("ACTOR_WEIGHT_DECAY")
-    if actor_wd is None:
-        actor_wd = config.get("WEIGHT_DECAY", 1e-2)
-    critic_wd = config.get("CRITIC_WEIGHT_DECAY")
-    if critic_wd is None:
-        critic_wd = config.get("WEIGHT_DECAY", 1e-2)
+    actor_tx = _build_adamw_tx(actor_lr_scheduler, max_grad_norm, actor_wd, adam_eps)
+    critic_tx = _build_adamw_tx(critic_lr_scheduler, max_grad_norm, critic_wd, adam_eps)
 
-    actor_tx = optax.chain(
-        optax.clip_by_global_norm(config.get("MAX_GRAD_NORM", 1.0)),
-        optax.adamw(
-            actor_lr_scheduler,
-            weight_decay=actor_wd,
-            eps=config.get("ADAM_EPS", 1e-5),
-        ),
-    )
-    critic_tx = optax.chain(
-        optax.clip_by_global_norm(config.get("MAX_GRAD_NORM", 1.0)),
-        optax.adamw(
-            critic_lr_scheduler,
-            weight_decay=critic_wd,
-            eps=config.get("ADAM_EPS", 1e-5),
-        ),
-    )
+    uses_aux = uses_aux_network(config)
+    if uses_aux:
+        aux_critic_tx = _build_adamw_tx(critic_lr_scheduler, max_grad_norm, critic_wd, adam_eps)
 
-    def param_labels(path, val):
-        is_actor = any("actor" in getattr(p, "key", "") or "actor" in str(p) for p in path)
-        return "actor" if is_actor else "critic"
+        def param_labels(path, val):
+            is_actor = any("actor" in getattr(p, "key", "") or "actor" in str(p) for p in path)
+            if is_actor:
+                return "actor"
+            is_aux = any("aux" in getattr(p, "key", "") or "aux" in str(p) for p in path)
+            return "critic_aux" if is_aux else "critic"
 
-    tx = optax.multi_transform(
-        {"actor": actor_tx, "critic": critic_tx},
-        jax.tree_util.tree_map_with_path(param_labels, params),
-    )
+        tx = optax.multi_transform(
+            {"actor": actor_tx, "critic": critic_tx, "critic_aux": aux_critic_tx},
+            jax.tree_util.tree_map_with_path(param_labels, params),
+        )
+    else:
+        def param_labels(path, val):
+            is_actor = any("actor" in getattr(p, "key", "") or "actor" in str(p) for p in path)
+            return "actor" if is_actor else "critic"
 
-    train_state = TrainState.create(
+        tx = optax.multi_transform(
+            {"actor": actor_tx, "critic": critic_tx},
+            jax.tree_util.tree_map_with_path(param_labels, params),
+        )
+
+    return TrainState.create(
         apply_fn=network.apply,
         params=params,
         tx=tx,
     )
-    return train_state
 
 
 def initialize_split_flax_train_state(config, network, params):
-    """Separate TrainStates for actor and critic, isolating gradient steps and weight decay."""
-    p = params.get("params", params)
+    """
+    Separate TrainStates for actor and critic.
+    Reads config via uses_aux_network(config) to check if v_aux is initialized; if so,
+    partitions critic parameters into 'critic' and 'critic_aux' with independent global
+    gradient norm clipping and AdamW states.
+    """
+    p = params["params"] if "params" in params else params
     actor_params = {k: v for k, v in p.items() if "actor" in k}
     critic_params = {k: v for k, v in p.items() if "actor" not in k}
 
-    actor_epochs = config.get("ACTOR_EPOCHS")
-    if actor_epochs is None:
-        actor_epochs = config.get("NUM_EPOCHS", 4)
+    actor_epochs = config["ACTOR_EPOCHS"] if config["ACTOR_EPOCHS"] is not None else config["NUM_EPOCHS"]
+    critic_epochs = config["CRITIC_EPOCHS"] if config["CRITIC_EPOCHS"] is not None else config["NUM_EPOCHS"]
 
-    critic_epochs = config.get("CRITIC_EPOCHS")
-    if critic_epochs is None:
-        critic_epochs = config.get("NUM_EPOCHS", 4)
+    actor_minibatch_size = (
+        config["ACTOR_MINIBATCH_SIZE"] if config["ACTOR_MINIBATCH_SIZE"] is not None else config["MINIBATCH_SIZE"]
+    )
+    critic_minibatch_size = (
+        config["CRITIC_MINIBATCH_SIZE"] if config["CRITIC_MINIBATCH_SIZE"] is not None else config["MINIBATCH_SIZE"]
+    )
 
-    actor_minibatch_size = config.get("ACTOR_MINIBATCH_SIZE")
-    if actor_minibatch_size is None:
-        actor_minibatch_size = config.get("MINIBATCH_SIZE", 1024)
-
-    critic_minibatch_size = config.get("CRITIC_MINIBATCH_SIZE")
-    if critic_minibatch_size is None:
-        critic_minibatch_size = config.get("MINIBATCH_SIZE", 1024)
-
-    batch_size = config.get("NUM_STEPS", 64) * config.get("NUM_ENVS", 256)
-    n_updates = config.get("NUM_UPDATES", max(1, config.get("TOTAL_TIMESTEPS", 1000000) // max(1, batch_size)))
+    batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]
+    n_updates = config["NUM_UPDATES"]
 
     actor_n_mb = max(1, batch_size // min(batch_size, actor_minibatch_size))
     critic_n_mb = max(1, batch_size // min(batch_size, critic_minibatch_size))
@@ -480,16 +535,17 @@ def initialize_split_flax_train_state(config, network, params):
     actor_total_steps = n_updates * actor_n_mb * actor_epochs
     critic_total_steps = n_updates * critic_n_mb * critic_epochs
 
-    actor_lr = config.get("ACTOR_LR", config["LR"])
-    critic_lr = config.get("CRITIC_LR", config["LR"])
-    actor_lr_end = config.get("ACTOR_LR_END")
-    if actor_lr_end is None:
-        actor_lr_end = actor_lr
-    critic_lr_end = config.get("CRITIC_LR_END", config.get("LR_END"))
-    if critic_lr_end is None:
-        critic_lr_end = critic_lr
+    actor_lr = config["ACTOR_LR"] if config["ACTOR_LR"] is not None else config["LR"]
+    critic_lr = config["CRITIC_LR"] if config["CRITIC_LR"] is not None else config["LR"]
+    actor_lr_end = config["ACTOR_LR_END"] if config["ACTOR_LR_END"] is not None else actor_lr
+    critic_lr_end = config["CRITIC_LR_END"] if config["CRITIC_LR_END"] is not None else critic_lr
 
-    warmup_ratio = config.get("WARMUP_RATIO", 0.1)
+    warmup_ratio = config["WARMUP_RATIO"]
+    max_grad_norm = config["MAX_GRAD_NORM"]
+    adam_eps = config["ADAM_EPS"]
+
+    actor_wd = config["ACTOR_WEIGHT_DECAY"] if config["ACTOR_WEIGHT_DECAY"] is not None else config["WEIGHT_DECAY"]
+    critic_wd = config["CRITIC_WEIGHT_DECAY"] if config["CRITIC_WEIGHT_DECAY"] is not None else config["WEIGHT_DECAY"]
 
     actor_lr_scheduler = make_warmup_linear_schedule(
         init_lr=actor_lr,
@@ -504,30 +560,30 @@ def initialize_split_flax_train_state(config, network, params):
         warmup_ratio=warmup_ratio,
     )
 
-    actor_wd = config.get("ACTOR_WEIGHT_DECAY")
-    if actor_wd is None:
-        actor_wd = config.get("WEIGHT_DECAY", 1e-2)
+    actor_tx = _build_adamw_tx(actor_lr_scheduler, max_grad_norm, actor_wd, adam_eps)
+    main_critic_tx = _build_adamw_tx(critic_lr_scheduler, max_grad_norm, critic_wd, adam_eps)
 
-    critic_wd = config.get("CRITIC_WEIGHT_DECAY")
-    if critic_wd is None:
-        critic_wd = config.get("WEIGHT_DECAY", 1e-2)
+    uses_aux = uses_aux_network(config)
+    has_aux_params = any("aux" in k for k in critic_params)
+    if uses_aux != has_aux_params:
+        raise ValueError(
+            f"Config/network mismatch: uses_aux_network(config)={uses_aux}, "
+            f"but critic_params keys={list(critic_params.keys())}."
+        )
 
-    actor_tx = optax.chain(
-        optax.clip_by_global_norm(config.get("MAX_GRAD_NORM", 1.0)),
-        optax.adamw(
-            actor_lr_scheduler,
-            weight_decay=actor_wd,
-            eps=config.get("ADAM_EPS", 1e-5),
-        ),
-    )
-    critic_tx = optax.chain(
-        optax.clip_by_global_norm(config.get("MAX_GRAD_NORM", 1.0)),
-        optax.adamw(
-            critic_lr_scheduler,
-            weight_decay=critic_wd,
-            eps=config.get("ADAM_EPS", 1e-5),
-        ),
-    )
+    if uses_aux:
+        aux_critic_tx = _build_adamw_tx(critic_lr_scheduler, max_grad_norm, critic_wd, adam_eps)
+
+        def critic_param_labels(path, val):
+            is_aux = any("aux" in getattr(p, "key", "") or "aux" in str(p) for p in path)
+            return "critic_aux" if is_aux else "critic"
+
+        critic_tx = optax.multi_transform(
+            {"critic": main_critic_tx, "critic_aux": aux_critic_tx},
+            jax.tree_util.tree_map_with_path(critic_param_labels, critic_params),
+        )
+    else:
+        critic_tx = main_critic_tx
 
     actor_ts = TrainState.create(
         apply_fn=network.apply,
@@ -547,7 +603,7 @@ initialize_split_train_state = initialize_split_flax_train_state
 
 
 def initialize_actor_critic(rng, obs_shape, env, env_params, config):
-    """Initializes actor-critic network and parameters supporting discrete and continuous actions."""
+    """Initializes actor-critic network and parameters based on config."""
     rng, init_rng = jax.random.split(rng)
 
     is_continuous = isinstance(env.action_space(env_params), spaces.Box)
@@ -557,18 +613,14 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
         else env.action_space(env_params).n
     )
 
-    k = config.get("k", 16)
-    n_value_heads = config.get("NUM_VALUE_HEADS", 1)
-    layer_norm = config.get("LAYER_NORM", False)
+    k = config["k"]
+    n_value_heads = config["NUM_VALUE_HEADS"]
+    layer_norm = config["LAYER_NORM"]
     norm_type = "layer_norm" if layer_norm else "none"
     use_mlp = len(obs_shape) < 3
 
-    c_type = config.get("CRITIC_TYPE", "fitted").lower()
-    uses_aux = config.get(
-        "USES_AUX",
-        c_type in ["e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical", "e_lambda", "elambda", "e_geometric"],
-    )
-    shared_torso = config.get("SHARED_TORSO", False)
+    uses_aux = uses_aux_network(config)
+    shared_torso = config["SHARED_TORSO"]
 
     if uses_aux:
         if use_mlp:
@@ -609,7 +661,5 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
     return model, params
 
 
-def initialize_network(rng, obs_shape, env, env_params, k=16, n_heads=2, layer_norm=False, n_value_heads=1):
-    """Convenience wrapper for initialize_actor_critic."""
-    config = {"k": k, "LAYER_NORM": layer_norm, "NUM_VALUE_HEADS": n_value_heads}
-    return initialize_actor_critic(rng, obs_shape, env, env_params, config)
+initialize_network = initialize_actor_critic
+

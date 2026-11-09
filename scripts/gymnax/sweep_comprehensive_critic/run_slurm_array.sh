@@ -40,7 +40,7 @@ set -e
 if [ -n "$SLURM_SUBMIT_DIR" ]; then
     cd "$SLURM_SUBMIT_DIR"
 fi
-[ -f "core/config.py" ] || cd "$(dirname "$0")/../../.."
+[ -f "gymnax_rl/core/gymnax_config.py" ] || cd "$(dirname "$0")/../../.."
 REPO_ROOT="$(pwd)"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
