@@ -178,8 +178,10 @@ def make_train(base_config):
                     target_lambda=target_lambda,
                 )
 
-            # AUXILIARY TARGETS (Self-bootstrapped via v_aux)
-            if uses_aux:
+            # AUXILIARY TARGETS
+            e_variant = config["E_VARIANT"].lower()
+            if uses_aux and e_variant == "aux":
+                # v_aux regresses onto its own self-bootstrapped lambda_aux-return
                 final_next_aux_val = network.apply(
                     train_state.params, traj_batch.next_obs[-1], method=network.v_aux
                 )
@@ -198,6 +200,17 @@ def make_train(base_config):
                     gamma=config["GAMMA"],
                     gae_lambda=aux_lambda,
                 )
+            elif uses_aux and e_variant == "e_aux":
+                # e_phi regresses onto G^{lambda_aux}_t - v_theta(s_t); store G^{lambda_aux}_t here
+                # (bootstrapped on the main critic) and subtract live v_theta inside the loss.
+                aux_targets = calculate_targets(
+                    traj_batch,
+                    next_value,
+                    gamma=config["GAMMA"],
+                    target_lambda=config["AUX_LAMBDA"],
+                )
+            elif uses_aux:
+                raise ValueError(f"uses_aux=True with unsupported E_VARIANT '{config['E_VARIANT']}'.")
             else:
                 aux_targets = targets
 

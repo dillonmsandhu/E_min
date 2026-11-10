@@ -38,13 +38,16 @@ NON_AUX_CRITICS = (
     "sampled_mc",
 )
 
-VALID_E_VARIANTS = ("aux", "fwd", "naive")
+VALID_E_VARIANTS = ("aux", "e_aux", "fwd", "naive")
+AUX_HEAD_E_VARIANTS = ("aux", "e_aux")
 
 
 def uses_aux_network(config: dict) -> bool:
     """
-    Determines from config whether the auxiliary critic network (v_aux) should be
+    Determines from config whether the auxiliary critic head should be
     initialized and optimized separately. Fails fast on unrecognized CRITIC_TYPE or E_VARIANT.
+      - E_VARIANT='aux':   aux head predicts v_aux(s) ~ V(s)
+      - E_VARIANT='e_aux': aux head predicts e_phi(s) ~ V(s) - v_theta(s) directly
     """
     critic_type = config["CRITIC_TYPE"].lower()
     e_variant = config["E_VARIANT"].lower()
@@ -53,7 +56,7 @@ def uses_aux_network(config: dict) -> bool:
             f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of {VALID_E_VARIANTS}."
         )
     if critic_type in AUX_ELIGIBLE_CRITICS:
-        return e_variant == "aux"
+        return e_variant in AUX_HEAD_E_VARIANTS
     elif critic_type in NON_AUX_CRITICS:
         return False
     else:

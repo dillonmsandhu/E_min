@@ -101,15 +101,23 @@ def compute_runtime_metrics(
     }
 
     if hasattr(network, "both"):
-        v_main, v_aux = network.apply(train_state.params, traj_batch.obs, method=network.both)
-        target = traj_batch.aux_targets if traj_batch.aux_targets is not None else traj_batch.targets
-        if target is not None:
-            metrics["mse_v_main"] = jnp.mean((v_main - target) ** 2)
-            metrics["mse_v_aux"] = jnp.mean((v_aux - target) ** 2)
-            norm_main = jnp.linalg.norm(v_main)
-            norm_aux = jnp.linalg.norm(v_aux)
-            cos_sim = jnp.dot(v_main.flatten(), v_aux.flatten()) / (norm_main * norm_aux + 1e-8)
-            metrics["v_similarity"] = cos_sim
+        v_main, aux_head = network.apply(train_state.params, traj_batch.obs, method=network.both)
+        if config["E_VARIANT"].lower() == "e_aux":
+            # aux head is e_phi(s) ~ V(s) - v_theta(s); compare to empirical error G^{lambda_aux} - v_theta
+            e_target = traj_batch.aux_targets - v_main
+            metrics["mse_e_aux"] = jnp.mean((aux_head - e_target) ** 2)
+            metrics["e_aux_mean_abs"] = jnp.mean(jnp.abs(aux_head))
+            metrics["e_target_mean_abs"] = jnp.mean(jnp.abs(e_target))
+        else:
+            target = traj_batch.aux_targets if traj_batch.aux_targets is not None else traj_batch.targets
+            if target is not None:
+                v_aux = aux_head
+                metrics["mse_v_main"] = jnp.mean((v_main - target) ** 2)
+                metrics["mse_v_aux"] = jnp.mean((v_aux - target) ** 2)
+                norm_main = jnp.linalg.norm(v_main)
+                norm_aux = jnp.linalg.norm(v_aux)
+                cos_sim = jnp.dot(v_main.flatten(), v_aux.flatten()) / (norm_main * norm_aux + 1e-8)
+                metrics["v_similarity"] = cos_sim
 
     if isinstance(loss_info, dict):
         for k, v in loss_info.items():
