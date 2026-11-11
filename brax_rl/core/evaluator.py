@@ -86,8 +86,8 @@ def run_experiment_main(make_train, default_critic="fitted", save_dir=None, args
         "--critic",
         type=str,
         default=default_critic,
-        choices=["fitted", "td_0", "e_0", "e_lambda"],
-        help="Critic loss formulation: 'fitted', 'td_0', 'e_0', or 'e_lambda'",
+        choices=["fitted", "sarsa", "sarsa_0", "td_0", "e_0", "e_lambda", "mc"],
+        help="Critic loss formulation: 'fitted', 'sarsa', 'td_0', 'e_0', 'e_lambda', or 'mc'",
     )
     parser.add_argument("--e-lambda", dest="e_lambda", type=float, default=None, help="Lambda value for E(lambda) critic")
     parser.add_argument("--gae-lambda", dest="gae_lambda", type=float, default=None, help="Lambda value for GAE advantages")
