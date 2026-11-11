@@ -118,8 +118,8 @@ class ContinuousDDPGNetwork(nn.Module):
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
-    action_low: float = -1.0
-    action_high: float = 1.0
+    action_low: Any = -1.0
+    action_high: Any = 1.0
     exploration_noise: float = 0.1
 
     def setup(self):
@@ -134,8 +134,10 @@ class ContinuousDDPGNetwork(nn.Module):
         raw = self.actor_head(phi_a)
         if x.ndim == 1:
             raw = raw.squeeze(0)
-        mid = 0.5 * (self.action_low + self.action_high)
-        half_range = 0.5 * (self.action_high - self.action_low)
+        low = jnp.asarray(self.action_low, dtype=raw.dtype)
+        high = jnp.asarray(self.action_high, dtype=raw.dtype)
+        mid = 0.5 * (low + high)
+        half_range = 0.5 * (high - low)
         return mid + half_range * jnp.tanh(raw)
 
     def policy(self, x: jnp.ndarray) -> distrax.MultivariateNormalDiag:
@@ -176,8 +178,8 @@ class ContinuousDDPGDualCritic(nn.Module):
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
-    action_low: float = -1.0
-    action_high: float = 1.0
+    action_low: Any = -1.0
+    action_high: Any = 1.0
     exploration_noise: float = 0.1
     shared_torso: bool = False
 
@@ -195,8 +197,10 @@ class ContinuousDDPGDualCritic(nn.Module):
         raw = self.actor_head(phi_a)
         if x.ndim == 1:
             raw = raw.squeeze(0)
-        mid = 0.5 * (self.action_low + self.action_high)
-        half_range = 0.5 * (self.action_high - self.action_low)
+        low = jnp.asarray(self.action_low, dtype=raw.dtype)
+        high = jnp.asarray(self.action_high, dtype=raw.dtype)
+        mid = 0.5 * (low + high)
+        half_range = 0.5 * (high - low)
         return mid + half_range * jnp.tanh(raw)
 
     def policy(self, x: jnp.ndarray) -> distrax.MultivariateNormalDiag:
@@ -271,13 +275,14 @@ def initialize_q_actor_critic(rng, obs_shape, env, env_params, config):
 def initialize_ddpg_network(rng, obs_shape, env, env_params, config):
     """Initializes Continuous On-Policy DDPG network for Box action spaces."""
     import numpy as np
-    act_space = env.action_space(env_params)
-    if not isinstance(act_space, spaces.Box):
-        raise ValueError(f"DDPG requires continuous Box action space, got {type(act_space)}")
+    with jax.ensure_compile_time_eval():
+        act_space = env.action_space(env_params)
+        if not isinstance(act_space, spaces.Box):
+            raise ValueError(f"DDPG requires continuous Box action space, got {type(act_space)}")
 
-    action_dim = act_space.shape[0] if len(act_space.shape) > 0 else 1
-    action_low = float(np.asarray(act_space.low).flatten()[0])
-    action_high = float(np.asarray(act_space.high).flatten()[0])
+        action_dim = act_space.shape[0] if len(act_space.shape) > 0 else 1
+        action_low = tuple(float(v) for v in np.asarray(act_space.low).reshape(-1))
+        action_high = tuple(float(v) for v in np.asarray(act_space.high).reshape(-1))
 
     k = config["k"]
     layer_norm = config["LAYER_NORM"]
