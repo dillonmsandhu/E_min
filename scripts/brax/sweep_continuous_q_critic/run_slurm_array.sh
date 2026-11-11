@@ -102,7 +102,7 @@ SARSA_LAMBDAS="${SARSA_LAMBDAS:-0.0 0.4 0.8 0.95 1.0}"
 NUM_ENVS="${NUM_ENVS:-256}"
 NUM_STEPS="${NUM_STEPS:-128}"
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-1024}"
-EXPLORATION_NOISE="${EXPLORATION_NOISE:-0.1}"
+EXPLORATION_NOISE="${EXPLORATION_NOISE:-0.2}"
 
 echo "=================================================================="
 echo "Starting Brax Continuous Q-Critic (DDPG) Suite for: $ENV_NAME"

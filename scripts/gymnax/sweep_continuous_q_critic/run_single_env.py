@@ -56,7 +56,7 @@ def main():
     parser.add_argument("--minibatch_size", type=int, default=512, help="Minibatch size")
     parser.add_argument("--n_seeds", type=int, default=3, help="Seeds per condition")
     parser.add_argument("--master_seed", type=int, default=42, help="Master RNG seed")
-    parser.add_argument("--exploration_noise", type=float, default=0.2, help="Rollout exploration noise std")
+    parser.add_argument("--exploration_noise", type=float, default=0.1, help="Rollout exploration noise std")
     parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to evaluate")
     parser.add_argument("--out_dir", type=str, default="results/sweep_continuous_q_critic_gymnax", help="Base output directory")
     parser.add_argument("--load_existing", type=str, default=None, help="Path to existing sweep_metrics_all.pkl")

@@ -573,6 +573,7 @@ def run_sweep(args):
         for lam in sarsa_lambdas:
             env_dict["SARSA"].setdefault(lam, {})
 
+        critic_decay_ratio = brax_ddpg_config["CRITIC_LR_END"] / brax_ddpg_config["CRITIC_LR"]
         base_cfg = {
             **brax_ddpg_config,
             "ENV_NAME": env_name,
@@ -601,7 +602,7 @@ def run_sweep(args):
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
-                        "CRITIC_LR_END": 0.1 * lr,
+                        "CRITIC_LR_END": critic_decay_ratio * lr,
                         "CRITIC_TYPE": critic_type,
                         "E_VARIANT": e_var,
                         "RETURN_LAMBDA": 1.0,
@@ -622,7 +623,7 @@ def run_sweep(args):
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
-                        "CRITIC_LR_END": 0.1 * lr,
+                        "CRITIC_LR_END": critic_decay_ratio * lr,
                         "CRITIC_TYPE": critic_type,
                         "E_VARIANT": e_var,
                         "E_LAMBDA": 0.8,
@@ -642,7 +643,7 @@ def run_sweep(args):
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
-                        "CRITIC_LR_END": 0.1 * lr,
+                        "CRITIC_LR_END": critic_decay_ratio * lr,
                         "CRITIC_TYPE": c_type,
                         "VALUE_LAMBDA": lam,
                         "TD_LAMBDA": 0.0,

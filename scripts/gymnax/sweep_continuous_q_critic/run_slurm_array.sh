@@ -96,7 +96,7 @@ SARSA_LAMBDAS="${SARSA_LAMBDAS:-0.0 0.4 0.8 0.95 1.0}"
 NUM_ENVS="${NUM_ENVS:-64}"
 NUM_STEPS="${NUM_STEPS:-64}"
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-512}"
-EXPLORATION_NOISE="${EXPLORATION_NOISE:-0.2}"
+EXPLORATION_NOISE="${EXPLORATION_NOISE:-0.1}"
 
 echo "=================================================================="
 echo "Starting Gymnax Continuous Q-Critic (DDPG) Suite for: $ENV_NAME"
