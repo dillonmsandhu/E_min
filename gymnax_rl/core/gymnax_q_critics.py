@@ -179,7 +179,7 @@ def ddpg_actor_loss_fn(actor_params, critic_params, network, traj_batch, config)
     pi = network.apply(full_params, traj_batch.obs, method=network.policy)
     entropy = pi.entropy().mean()
 
-    total_actor_loss = config["POLICY_COEFF"] * actor_loss + reg_coef * action_reg
+    total_actor_loss = actor_loss + reg_coef * action_reg
     return total_actor_loss, {
         "actor_loss": actor_loss,
         "entropy": entropy,

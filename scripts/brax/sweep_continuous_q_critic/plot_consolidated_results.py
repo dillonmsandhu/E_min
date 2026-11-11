@@ -48,8 +48,8 @@ except ImportError:
 def main():
     parser = argparse.ArgumentParser(description="Consolidate Continuous Q-Critic Sweep Results across Brax Environments")
     parser.add_argument("--out_dir", type=str, default="results/sweep_continuous_q_critic_brax", help="Base output directory")
-    parser.add_argument("--num_envs", type=int, default=128, help="Parallel environments")
-    parser.add_argument("--num_steps", type=int, default=64, help="Rollout length")
+    parser.add_argument("--num_envs", type=int, default=256, help="Parallel environments")
+    parser.add_argument("--num_steps", type=int, default=128, help="Rollout length")
     parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to evaluate")
 
     args = parser.parse_args()

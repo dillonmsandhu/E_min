@@ -48,7 +48,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run Continuous Q-Critic Sweep on a Single Gymnax Environment")
     parser.add_argument("--env_name", type=str, required=True, help="Deterministic Continuous Gymnax Environment Name")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
-    parser.add_argument("--actor_lr", type=float, default=1e-3, help="Fixed actor learning rate")
+    parser.add_argument("--actor_lr", type=float, default=3e-4, help="Fixed actor learning rate")
     parser.add_argument("--sarsa_lambdas", nargs="+", type=float, default=DEFAULT_SARSA_LAMBDAS, help="SARSA lambdas to sweep")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Total training timesteps (default: auto per env)")
     parser.add_argument("--num_envs", type=int, default=64, help="Parallel environments")

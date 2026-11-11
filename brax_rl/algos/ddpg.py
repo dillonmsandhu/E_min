@@ -16,11 +16,12 @@ _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
+import copy
 import jax
 import jax.numpy as jnp
 from gymnax.wrappers.purerl import LogWrapper
 
-from brax_rl.core.brax_config import config as base_default_config
+from core.ddpg_config import brax_ddpg_config as base_default_config
 from brax_rl.core.brax_utils import shuffle_and_batch
 from brax_rl.core.brax_wrappers import (
     BraxGymnaxWrapper,
@@ -65,7 +66,7 @@ class BraxDDPGTransition(NamedTuple):
 
 
 def make_train(config):
-    cfg = base_default_config.copy()
+    cfg = copy.deepcopy(base_default_config)
     cfg.update(config)
     config = cfg
     batch_size = config["NUM_STEPS"] * config["NUM_ENVS"]

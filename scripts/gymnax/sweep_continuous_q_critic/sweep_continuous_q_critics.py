@@ -61,6 +61,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
 import jax
 import jax.numpy as jnp
 
+from core.ddpg_config import gymnax_ddpg_config
 from gymnax_rl.algos.ddpg import make_train as make_ddpg_train
 
 ENV_TITLES = {
@@ -516,6 +517,7 @@ def run_sweep(args):
             env_dict["SARSA"].setdefault(lam, {})
 
         base_cfg = {
+            **gymnax_ddpg_config,
             "ENV_NAME": env_name,
             "LR": actor_lr,
             "ACTOR_LR": actor_lr,
@@ -525,9 +527,6 @@ def run_sweep(args):
             "MINIBATCH_SIZE": minibatch_size,
             "ACTOR_MINIBATCH_SIZE": minibatch_size,
             "CRITIC_MINIBATCH_SIZE": minibatch_size,
-            "NUM_EPOCHS": 4,
-            "ACTOR_EPOCHS": 1,
-            "CRITIC_EPOCHS": 4,
             "EXPLORATION_NOISE": exploration_noise,
         }
 
@@ -542,7 +541,14 @@ def run_sweep(args):
             for lr in critic_lrs:
                 if lr not in env_dict[var_name]:
                     print(f"[{var_name}] env={env_name}, critic_lr={lr}...")
-                    cfg = {**base_cfg, "CRITIC_LR": lr, "CRITIC_TYPE": critic_type, "E_VARIANT": e_var, "RETURN_LAMBDA": 1.0}
+                    cfg = {
+                        **base_cfg,
+                        "CRITIC_LR": lr,
+                        "CRITIC_LR_END": 0.1 * lr,
+                        "CRITIC_TYPE": critic_type,
+                        "E_VARIANT": e_var,
+                        "RETURN_LAMBDA": 1.0,
+                    }
                     res = run_experiment(cfg, seed_keys)
                     env_dict[var_name][lr] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
@@ -559,6 +565,7 @@ def run_sweep(args):
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
+                        "CRITIC_LR_END": 0.1 * lr,
                         "CRITIC_TYPE": critic_type,
                         "E_VARIANT": e_var,
                         "E_LAMBDA": 0.8,
@@ -578,6 +585,7 @@ def run_sweep(args):
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
+                        "CRITIC_LR_END": 0.1 * lr,
                         "CRITIC_TYPE": c_type,
                         "VALUE_LAMBDA": lam,
                         "TD_LAMBDA": 0.0,
@@ -885,15 +893,15 @@ def main():
     parser = argparse.ArgumentParser(description="Run Continuous Q-Critic (DDPG) Comprehensive Sweep on Gymnax")
     parser.add_argument("--envs", nargs="+", default=DEFAULT_ENVS, help="Gymnax Environment Names")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
-    parser.add_argument("--actor_lr", type=float, default=1e-3, help="Fixed actor learning rate")
+    parser.add_argument("--actor_lr", type=float, default=gymnax_ddpg_config["ACTOR_LR"], help="Fixed actor learning rate")
     parser.add_argument("--sarsa_lambdas", nargs="+", type=float, default=DEFAULT_SARSA_LAMBDAS, help="SARSA lambdas to sweep")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Override total timesteps per env")
-    parser.add_argument("--num_envs", type=int, default=64, help="Parallel environments")
-    parser.add_argument("--num_steps", type=int, default=64, help="Rollout length")
-    parser.add_argument("--minibatch_size", type=int, default=512, help="Minibatch size")
+    parser.add_argument("--num_envs", type=int, default=gymnax_ddpg_config["NUM_ENVS"], help="Parallel environments")
+    parser.add_argument("--num_steps", type=int, default=gymnax_ddpg_config["NUM_STEPS"], help="Rollout length")
+    parser.add_argument("--minibatch_size", type=int, default=gymnax_ddpg_config["MINIBATCH_SIZE"], help="Minibatch size")
     parser.add_argument("--n_seeds", type=int, default=3, help="Seeds per condition")
     parser.add_argument("--master_seed", type=int, default=42, help="Master RNG seed")
-    parser.add_argument("--exploration_noise", type=float, default=0.2, help="Rollout exploration noise std")
+    parser.add_argument("--exploration_noise", type=float, default=gymnax_ddpg_config["EXPLORATION_NOISE"], help="Rollout exploration noise std")
     parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to evaluate")
     parser.add_argument("--out_dir", type=str, default="results/sweep_continuous_q_critic_gymnax", help="Output directory")
     parser.add_argument("--load_existing", type=str, default=None, help="Path to existing sweep_metrics_all.pkl")

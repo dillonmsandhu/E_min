@@ -17,10 +17,11 @@ _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
+import copy
 import jax
 import jax.numpy as jnp
 
-from gymnax_rl.core.gymnax_config import config as base_default_config
+from core.ddpg_config import gymnax_ddpg_config as base_default_config
 from gymnax_rl.core.gymnax_utils import (
     shuffle_and_batch,
     merge_hparams,
@@ -78,7 +79,7 @@ def make_train(base_config):
     Factory creating the JAX-vmappable and JIT-compilable training function
     for On-Policy Continuous DDPG with modular Q-critic choices selected via config['CRITIC_TYPE'].
     """
-    cfg = base_default_config.copy()
+    cfg = copy.deepcopy(base_default_config)
     cfg.update(base_config)
     config_copy = cfg
     batch_size = config_copy["NUM_STEPS"] * config_copy["NUM_ENVS"]
