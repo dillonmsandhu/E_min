@@ -22,7 +22,7 @@ config = {
 
     # Optimization
     "ACTOR_LR": 3e-4,
-    "ACTOR_LR_END": 1e-5,
+    "ACTOR_LR_END": 3e-5,
     "CRITIC_LR": 1e-3,
     "CRITIC_LR_END": 1e-4,
     "ACTOR_EPOCHS": 4,
@@ -44,7 +44,7 @@ config = {
     # DDPG Exploration, Actor Trust-Region & Q-Critic Settings
     "CRITIC_TYPE": "sarsa",
     "E_VARIANT": "naive",
-    "EXPLORATION_NOISE": 0.1,
+    "EXPLORATION_NOISE": 0.2,
     "ACTION_REG_COEF": 0.1,
     "VALUE_LAMBDA": 0.8,
     "TD_LAMBDA": 0.0,

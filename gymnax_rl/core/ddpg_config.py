@@ -23,7 +23,7 @@ config = {
     # Network Architecture
     "NETWORK_TYPE": "mlp",
     "SHARED_TORSO": False,
-    "k": 64,
+    "k": 128,
     "LAYER_NORM": False,
     "NUM_VALUE_HEADS": 1,
     "VALUE_HEAD_AGG": "sum",
@@ -32,9 +32,9 @@ config = {
     "LR": 3e-4,
     "LR_END": None,
     "ACTOR_LR": 3e-4,
-    "ACTOR_LR_END": 1e-5,
-    "CRITIC_LR": 1e-3,
-    "CRITIC_LR_END": 1e-4,
+    "ACTOR_LR_END": 3e-4,
+    "CRITIC_LR": 3e-3,
+    "CRITIC_LR_END": 3e-3,
     "WARMUP_RATIO": 0.1,
     "MAX_GRAD_NORM": 1.0,
     "WEIGHT_DECAY": 0.0,
@@ -47,8 +47,8 @@ config = {
     "NUM_STEPS": 64,
     "TOTAL_TIMESTEPS": 300_000,
     "NUM_EPOCHS": 4,
-    "ACTOR_EPOCHS": 4,
-    "CRITIC_EPOCHS": 16,
+    "ACTOR_EPOCHS": 8,
+    "CRITIC_EPOCHS": 24,
     "MINIBATCH_SIZE": 512,
     "ACTOR_MINIBATCH_SIZE": 512,
     "CRITIC_MINIBATCH_SIZE": 512,
@@ -56,8 +56,8 @@ config = {
     # DDPG Exploration, Actor Trust-Region & Q-Critic Settings
     "CRITIC_TYPE": "sarsa",       # "sarsa", "td_0", "e_0", "e_0_basic", "e_lambda", "mc"
     "E_VARIANT": "naive",         # "aux", "e_aux", "fwd", "naive"
-    "EXPLORATION_NOISE": 0.2,
-    "ACTION_REG_COEF": 0.1,
+    "EXPLORATION_NOISE": 0.1,
+    "ACTION_REG_COEF": 0.25,
     "VALUE_LAMBDA": 0.8,
     "TD_LAMBDA": 0.0,
     "E_LAMBDA": 0.8,
