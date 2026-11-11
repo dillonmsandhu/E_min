@@ -905,6 +905,74 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         cmap="Blues",
     )
 
+    # -------------------------------------------------------------
+    # 6. STORY 4: Clean SARSA(λ*) vs E_Q(λ*) Normal Tables & Curves (.md, .csv, .tex, .pdf)
+    # -------------------------------------------------------------
+    from scripts.gymnax.sweep_comprehensive_critic.sweep_comprehensive_critics import (
+        render_analysis_plot_and_tables,
+        select_best_lr_run,
+    )
+
+    q_s4_algs = ["SARSA(λ*)", "E_Q(λ*)"]
+    q_s4_colors = {"SARSA(λ*)": "#e6550d", "E_Q(λ*)": "#2ca02c"}
+    q_s4_styles = {"SARSA(λ*)": "--", "E_Q(λ*)": "-"}
+    q_s4_res_auc, q_s4_res_final = {}, {}
+    q_s4_ann_auc, q_s4_ann_final = {}, {}
+
+    for r_idx, env in enumerate(envs):
+        env_d = all_runs[env]
+
+        # Best SARSA(lambda*) across (lr, lmb)
+        sarsa_cands = []
+        for lr, lmb_d in env_d.get("SARSA(lambda)", {}).items():
+            for lmb in lmb_d:
+                info = select_best_lr_run({lr: lmb_d[lmb]}, [lr], metric_key)
+                info["legend_label"] = f"Best SARSA (λ={lmb})"
+                info["short_ann"] = f"λ={lmb}"
+                sarsa_cands.append(info)
+        best_s_auc = max(sarsa_cands, key=lambda x: x["auc_mean"]) if sarsa_cands else select_best_lr_run({}, critic_lrs, metric_key)
+        best_s_final = max(sarsa_cands, key=lambda x: x["final_mean"]) if sarsa_cands else best_s_auc
+
+        # Best E_Q(lambda*) across (lr, lmb) + E(0)-Q
+        eq_cands = []
+        for lr, lmb_d in env_d.get("E(lambda)", {}).items():
+            for lmb in lmb_d:
+                info = select_best_lr_run({lr: lmb_d[lmb]}, [lr], metric_key)
+                info["legend_label"] = f"Best E_Q (λ={lmb})"
+                info["short_ann"] = f"λ={lmb}"
+                eq_cands.append(info)
+        if env_d.get("E(0)"):
+            info = select_best_lr_run(env_d["E(0)"], critic_lrs, metric_key)
+            info["legend_label"] = "Best E_Q (E(0))"
+            info["short_ann"] = "E(0)"
+            eq_cands.append(info)
+        best_e_auc = max(eq_cands, key=lambda x: x["auc_mean"]) if eq_cands else select_best_lr_run({}, critic_lrs, metric_key)
+        best_e_final = max(eq_cands, key=lambda x: x["final_mean"]) if eq_cands else best_e_auc
+
+        q_s4_res_auc[env] = {"SARSA(λ*)": best_s_auc, "E_Q(λ*)": best_e_auc}
+        q_s4_res_final[env] = {"SARSA(λ*)": best_s_final, "E_Q(λ*)": best_e_final}
+        q_s4_ann_auc[(r_idx, 0)] = best_s_auc.get("short_ann", "")
+        q_s4_ann_auc[(r_idx, 1)] = best_e_auc.get("short_ann", "")
+        q_s4_ann_final[(r_idx, 0)] = best_s_final.get("short_ann", "")
+        q_s4_ann_final[(r_idx, 1)] = best_e_final.get("short_ann", "")
+
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=q_s4_algs,
+        per_env_results=q_s4_res_auc,
+        colors=q_s4_colors,
+        linestyles=q_s4_styles,
+        batch_size=batch_size,
+        plot_title_suffix=" — SARSA(λ*) vs E_Q(λ*)",
+        plot_output_base=os.path.join(plots_dir, "story4_q_sarsa_vs_e_q_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story4_q_sarsa_vs_e_q"),
+        table_title_prefix="Story 4: Deterministic Q-Critic — Best SARSA(λ*) vs Best E_Q(λ*) per Environment",
+        cmap="Blues",
+        cell_annotations={"auc": q_s4_ann_auc, "final": q_s4_ann_final},
+        per_env_results_final=q_s4_res_final,
+        y_label="Episodic Return",
+    )
+
     print("\nAll Q-PPO cross-environment figures, plots, and tables generated successfully!")
 
 

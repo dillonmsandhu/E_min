@@ -79,6 +79,11 @@ ENV_TITLES = {
     "Reacher-misc": "Reacher (Continuous)",
     "Swimmer-misc": "Swimmer (Continuous)",
     "Pong-misc": "Pong",
+    # MinAtar
+    "Asterix-MinAtar": "Asterix (MinAtar)",
+    "Breakout-MinAtar": "Breakout (MinAtar)",
+    "Freeway-MinAtar": "Freeway (MinAtar)",
+    "SpaceInvaders-MinAtar": "Space Invaders (MinAtar)",
 }
 
 AUX_LAMBDAS_DEFAULT = [1.0, 0.9, 0.8]
@@ -574,126 +579,368 @@ def clean_variant_name(lbl: str) -> str:
     return lbl
 
 
-def render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap="Blues", cell_annotations=None):
-    """
-    Renders a publication-grade table with heatmap-colored cells:
-    Rows = Environments, Columns = Algorithms.
-    Saves both PDF and PNG (300 DPI).
-    """
-    n_rows, n_cols = df_mean.shape
-    fig_w = max(8.5, n_cols * 2.5 + 2.2)
-    fig_h = max(3.5, n_rows * 0.78 + 1.8)
+REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
 
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=300)
 
+def _row_real_win_tol(vals, rel_tol=REAL_WIN_REL_TOL):
+    """Computes a meaningful difference threshold relative to the row's return magnitude."""
+    vals = np.asarray(vals, dtype=float)
+    valid = vals[~np.isnan(vals)]
+    if len(valid) == 0:
+        return 1e-4
+    scale = max(float(np.max(np.abs(valid))), 1e-8)
+    return max(rel_tol * scale, 1e-6)
+
+
+def _best_col_mask(vals, rel_tol=REAL_WIN_REL_TOL):
+    """Returns boolean mask of columns within rel_tol of the row maximum (wins + ties for 1st)."""
+    vals = np.asarray(vals, dtype=float)
+    valid = ~np.isnan(vals)
+    if not np.any(valid):
+        return np.zeros(len(vals), dtype=bool)
+    mx = np.nanmax(vals)
+    tol = _row_real_win_tol(vals, rel_tol=rel_tol)
+    return valid & (vals >= mx - tol)
+
+
+def _max_int_mask(vals):
+    """Returns boolean mask of columns achieving the maximum integer/score value."""
+    vals = np.asarray(vals, dtype=float)
+    mx = np.max(vals)
+    return vals >= mx - 1e-9
+
+
+def _compute_wtl_stats(mat_mean, rel_tol=REAL_WIN_REL_TOL):
+    """
+    Computes:
+    - Top-1 (W/T/L): outright env wins, ties for 1st (within rel_tol), and losses.
+    - Pairwise (W/T/L): head-to-head wins, ties, losses across all opponent-env pairs.
+    """
+    n_rows, n_cols = mat_mean.shape
+    top_w = np.zeros(n_cols, dtype=int)
+    top_t = np.zeros(n_cols, dtype=int)
+    top_l = np.zeros(n_cols, dtype=int)
+    pw_w = np.zeros(n_cols, dtype=int)
+    pw_t = np.zeros(n_cols, dtype=int)
+    pw_l = np.zeros(n_cols, dtype=int)
+
+    for r in range(n_rows):
+        row = mat_mean[r]
+        valid = ~np.isnan(row)
+        if not np.any(valid):
+            continue
+        tol = _row_real_win_tol(row, rel_tol=rel_tol)
+        mx = np.nanmax(row)
+        is_top = valid & (row >= mx - tol)
+        n_top = int(np.sum(is_top))
+
+        for c in range(n_cols):
+            if not valid[c]:
+                continue
+            if is_top[c]:
+                if n_top == 1:
+                    top_w[c] += 1
+                else:
+                    top_t[c] += 1
+            else:
+                top_l[c] += 1
+
+            for c2 in range(n_cols):
+                if c == c2 or not valid[c2]:
+                    continue
+                if row[c] > row[c2] + tol:
+                    pw_w[c] += 1
+                elif row[c2] > row[c] + tol:
+                    pw_l[c] += 1
+                else:
+                    pw_t[c] += 1
+
+    return top_w, top_t, top_l, pw_w, pw_t, pw_l
+
+
+def render_clean_table(df_mean, df_std, title, output_base, cell_annotations=None, rel_tol=REAL_WIN_REL_TOL, focus_cols=None):
+    """
+    Renders a clean, high-contrast academic table (no heatmap backgrounds).
+    If focus_cols is provided (e.g. [2, 3] for v_aux vs e_aux with baselines on the left),
+    draws a vertical separator before focus_cols[0], highlights 1v1 winners within focus_cols,
+    and shows both Direct 1v1 (focus_cols) W/T/L and All-Column Top-1 W/T/L summary rows.
+    Saves both vector PDF (.pdf) and 300 DPI PNG (.png).
+    """
+    cols = list(df_mean.columns)
+    rows = list(df_mean.index)
     mat_mean = df_mean.values.astype(float)
     mat_std = df_std.values.astype(float) if df_std is not None else np.zeros_like(mat_mean)
 
-    row_mins = np.nanmin(mat_mean, axis=1, keepdims=True)
-    row_maxs = np.nanmax(mat_mean, axis=1, keepdims=True)
-    row_ranges = np.maximum(row_maxs - row_mins, 1e-8)
-    mat_norm = (mat_mean - row_mins) / row_ranges
+    n_rows, n_cols = mat_mean.shape
+    has_ann = bool(cell_annotations and any(v for v in cell_annotations.values()))
 
-    color_map = getattr(plt.cm, cmap)
-    im = ax.imshow(mat_norm, cmap=color_map, vmin=0.0, vmax=1.0, aspect="auto")
+    col_labels = ["Environment"] + [str(c) for c in cols]
+    table_data = []
+    best_masks = []
 
-    ax.set_xticks(np.arange(n_cols))
-    ax.set_xticklabels(df_mean.columns, fontsize=10.5, fontweight="bold", rotation=20, ha="right")
-    ax.set_yticks(np.arange(n_rows))
-    ax.set_yticklabels(df_mean.index, fontsize=10.5, fontweight="bold")
+    for r_idx, env_label in enumerate(rows):
+        if focus_cols is not None:
+            sub_mask = _best_col_mask(mat_mean[r_idx, focus_cols], rel_tol=rel_tol)
+            mask = np.zeros(n_cols, dtype=bool)
+            for idx_k, fc in enumerate(focus_cols):
+                mask[fc] = sub_mask[idx_k]
+        else:
+            mask = _best_col_mask(mat_mean[r_idx], rel_tol=rel_tol)
+        best_masks.append(mask)
 
-    ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
-    ax.set_yticks(np.arange(-0.5, n_rows, 1), minor=True)
-    ax.grid(which="minor", color="#d0d7de", linestyle="-", linewidth=1.2)
-    ax.tick_params(which="minor", bottom=False, left=False)
+        row_cells = [str(env_label)]
+        for c_idx in range(n_cols):
+            val_str = _format_val_std(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx])
+            ann = cell_annotations.get((r_idx, c_idx), "") if cell_annotations else ""
+            if ann:
+                row_cells.append(f"{val_str}\n({ann})")
+            else:
+                row_cells.append(val_str)
+        table_data.append(row_cells)
 
-    for r in range(n_rows):
-        best_c = int(np.nanargmax(mat_mean[r]))
-        for c in range(n_cols):
-            val = mat_mean[r, c]
-            std = mat_std[r, c]
-            norm_val = mat_norm[r, c]
+    if n_rows > 1:
+        col_means = np.nanmean(mat_mean, axis=0)
+        col_stds = np.nanmean(mat_std, axis=0)
+        mean_mask = _best_col_mask(col_means, rel_tol=rel_tol)
+        best_masks.append(mean_mask)
+        mean_cells = ["Mean"] + [_format_val_std(col_means[c], col_stds[c]) for c in range(n_cols)]
+        table_data.append(mean_cells)
 
-            is_best = (c == best_c)
-            txt = f"{val:.1f}\n±{std:.1f}" if abs(val) >= 10 else f"{val:.2f}\n±{std:.2f}"
-            if cell_annotations and (r, c) in cell_annotations:
-                ann = cell_annotations[(r, c)]
-                if ann:
-                    txt = f"{txt}\n[{ann}]"
+        if focus_cols is not None:
+            sub_mat = mat_mean[:, focus_cols]
+            fw, ft, fl, _, _, _ = _compute_wtl_stats(sub_mat, rel_tol=rel_tol)
+            f_scores = fw - fl
+            f_win = _max_int_mask(f_scores)
+            f_mask = np.zeros(n_cols, dtype=bool)
+            f_cells = ["Direct 1v1 (v_aux vs e_aux, 1%)"] + ["Baseline" for _ in range(n_cols)]
+            for idx_k, fc in enumerate(focus_cols):
+                f_mask[fc] = f_win[idx_k]
+                f_cells[fc + 1] = f"{fw[idx_k]}W / {ft[idx_k]}T / {fl[idx_k]}L"
+            best_masks.append(f_mask)
+            table_data.append(f_cells)
 
-            text_color = "white" if norm_val > 0.60 else "#111111"
-            weight = "bold" if is_best else "normal"
-            fsize = 8.5 if (cell_annotations and (r, c) in cell_annotations and cell_annotations[(r, c)]) else 9.5
+        top_w, top_t, top_l, pw_w, pw_t, pw_l = _compute_wtl_stats(mat_mean, rel_tol=rel_tol)
+        top_scores = top_w + 0.5 * top_t
+        best_masks.append(_max_int_mask(top_scores))
+        top_label = "Top-1 vs All (W / T / L, 1%)" if focus_cols is not None else "Top-1 (W / T / L, 1%)"
+        top_cells = [top_label] + [
+            f"{top_w[c]}W / {top_t[c]}T / {top_l[c]}L" for c in range(n_cols)
+        ]
+        table_data.append(top_cells)
 
-            if is_best:
-                rect = plt.Rectangle((c - 0.48, r - 0.48), 0.96, 0.96, fill=False, edgecolor="#0b6623", linewidth=2.5)
-                ax.add_patch(rect)
+        if n_cols > 2 and focus_cols is None:
+            pw_scores = pw_w - pw_l
+            best_masks.append(_max_int_mask(pw_scores))
+            pw_cells = ["Pairwise (W / T / L, 1%)"] + [
+                f"{pw_w[c]}W / {pw_t[c]}T / {pw_l[c]}L\n(net {pw_w[c] - pw_l[c]:+d})" for c in range(n_cols)
+            ]
+            table_data.append(pw_cells)
 
-            ax.text(c, r, txt, ha="center", va="center", color=text_color, fontsize=fsize, fontweight=weight)
+    total_rows = len(table_data)
+    total_cols = len(col_labels)
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.030, pad=0.04)
-    cbar.set_label(cbar_label, fontsize=10, fontweight="bold")
-    ax.set_title(title, fontsize=12.5, fontweight="bold", pad=14)
+    col_char_widths = []
+    for c_i in range(total_cols):
+        max_len = len(col_labels[c_i])
+        for row_cells in table_data:
+            for line in str(row_cells[c_i]).split("\n"):
+                max_len = max(max_len, len(line))
+        col_char_widths.append(max(max_len + 4, 15))
+
+    total_chars = sum(col_char_widths)
+    col_widths = [w / total_chars for w in col_char_widths]
+
+    fig_w = max(8.5, total_chars * 0.115)
+    row_unit_h = 0.56 if (has_ann or (n_cols > 2 and focus_cols is None)) else 0.44
+    fig_h = max(3.4, (total_rows + 1) * row_unit_h + 1.0)
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=300)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.axis("off")
+
+    tbl = ax.table(
+        cellText=table_data,
+        colLabels=col_labels,
+        colWidths=col_widths,
+        cellLoc="center",
+        loc="center",
+        bbox=[0.0, 0.0, 1.0, 0.92],
+    )
+    tbl.auto_set_font_size(False)
+
+    focus_set = set(focus_cols) if focus_cols is not None else None
+
+    for (r, c), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#cbd5e1")
+        cell.set_linewidth(0.75)
+
+        if r == 0:
+            val_c = c - 1
+            if focus_set is not None and c > 0 and val_c not in focus_set:
+                cell.set_facecolor("#f1f5f9")
+                cell.set_text_props(weight="bold", color="#475569", fontsize=9.8)
+            else:
+                cell.set_facecolor("#e2e8f0")
+                cell.set_text_props(weight="bold", color="#0f172a", fontsize=10.0)
+            cell.set_edgecolor("#64748b")
+            cell.set_linewidth(1.1)
+            if c == 0:
+                cell.set_text_props(ha="left")
+        else:
+            data_r = r - 1
+            is_summary = data_r >= n_rows
+            if is_summary:
+                bg = "#f1f5f9"
+                cell.set_edgecolor("#94a3b8")
+                cell.set_linewidth(0.9)
+            else:
+                bg = "#ffffff" if (data_r % 2 == 0) else "#f8fafc"
+
+            if c == 0:
+                cell.set_facecolor(bg)
+                cell.set_text_props(weight="bold", color="#0f172a", fontsize=9.5, ha="left")
+            else:
+                val_c = c - 1
+                is_baseline = focus_set is not None and val_c not in focus_set
+                is_best = bool(best_masks[data_r][val_c])
+                if is_best:
+                    cell.set_facecolor("#eff6ff")
+                    cell.set_text_props(weight="bold", color="#0f172a", fontsize=9.0 if has_ann else 9.5)
+                elif is_baseline:
+                    cell.set_facecolor("#fafafa" if not is_summary else bg)
+                    cell.set_text_props(weight="normal", color="#475569", fontsize=9.0 if has_ann else 9.5)
+                else:
+                    cell.set_facecolor(bg)
+                    cell.set_text_props(weight="normal", color="#1e293b", fontsize=9.0 if has_ann else 9.5)
+
+    # Draw crisp vertical separator before focus_cols[0] to separate baselines from unbiased methods
+    if focus_cols is not None and len(focus_cols) > 0:
+        sep_col_idx = focus_cols[0] + 1
+        x_sep = sum(col_widths[:sep_col_idx])
+        ax.plot([x_sep, x_sep], [0.0, 0.92], transform=ax.transAxes, color="#334155", linewidth=2.0, zorder=10)
+
+    ax.set_title(title, fontsize=12.0, fontweight="bold", color="#0f172a", pad=12, loc="center")
 
     plt.tight_layout()
-    png_path = f"{output_base}.png"
-    pdf_path = f"{output_base}.pdf"
-    plt.savefig(png_path, bbox_inches="tight")
-    plt.savefig(pdf_path, bbox_inches="tight")
+    plt.savefig(f"{output_base}.png", bbox_inches="tight", facecolor="white")
+    plt.savefig(f"{output_base}.pdf", bbox_inches="tight", facecolor="white")
     plt.close()
 
 
-def save_table_bundle(df_mean, df_std, title, cbar_label, output_base, cmap="Blues", cell_annotations=None):
+def save_table_bundle(df_mean, df_std, title, cbar_label, output_base, cmap="Blues", cell_annotations=None, rel_tol=REAL_WIN_REL_TOL, focus_cols=None):
     """
     Saves a cross-algorithm table (Envs = row headers, Algos = column headers) in:
     - Markdown (.md)
+    - CSV (.csv)
     - LaTeX (.tex)
-    - Vector PDF (.pdf) & PNG (.png)
+    - Clean Normal Table Vector PDF (.pdf) & PNG (.png)
+    Includes real-win (>=1%) W/T/L statistics.
     """
     os.makedirs(os.path.dirname(output_base), exist_ok=True)
     cols = list(df_mean.columns)
     rows = list(df_mean.index)
     mat_mean = df_mean.values.astype(float)
     mat_std = df_std.values.astype(float) if df_std is not None else np.zeros_like(mat_mean)
+    n_cols = len(cols)
 
-    # 1. Markdown (.md)
-    md_lines = [f"# {title}\n"]
+    # 1. Markdown (.md) & CSV assembly
+    md_lines = [f"# {title}\n", f"*Real-win threshold: >= {rel_tol*100:.0f}% of environment return scale.*\n"]
     header = "| Environment | " + " | ".join(cols) + " |"
     sep = "| :--- | " + " | ".join([":---:" for _ in cols]) + " |"
     md_lines.append(header)
     md_lines.append(sep)
 
+    csv_rows = []
     for r_idx, env_label in enumerate(rows):
-        best_c = int(np.nanargmax(mat_mean[r_idx]))
-        cells = []
-        for c_idx in range(len(cols)):
-            cell_str = _format_val_std(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx])
-            if c_idx == best_c:
-                cell_str = f"**{cell_str}**"
+        if focus_cols is not None:
+            sub_mask = _best_col_mask(mat_mean[r_idx, focus_cols], rel_tol=rel_tol)
+            best_mask = np.zeros(n_cols, dtype=bool)
+            for idx_k, fc in enumerate(focus_cols):
+                best_mask[fc] = sub_mask[idx_k]
+        else:
+            best_mask = _best_col_mask(mat_mean[r_idx], rel_tol=rel_tol)
+
+        md_cells = []
+        csv_row = {"Environment": env_label}
+        for c_idx, col_name in enumerate(cols):
+            val_std_str = _format_val_std(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx])
             ann = cell_annotations.get((r_idx, c_idx), "") if cell_annotations else ""
+
+            cell_md = f"**{val_std_str}**" if best_mask[c_idx] else val_std_str
             if ann:
-                cell_str = f"{cell_str} *({ann})*"
-            cells.append(cell_str)
-        md_lines.append(f"| **{env_label}** | " + " | ".join(cells) + " |")
+                cell_md = f"{cell_md} *({ann})*"
+            md_cells.append(cell_md)
+
+            csv_row[col_name] = f"{val_std_str} ({ann})" if ann else val_std_str
+
+        md_lines.append(f"| **{env_label}** | " + " | ".join(md_cells) + " |")
+        csv_rows.append(csv_row)
 
     if len(rows) > 1:
         col_means = np.nanmean(mat_mean, axis=0)
         col_stds = np.nanmean(mat_std, axis=0)
-        best_mean_c = int(np.nanargmax(col_means))
-        mean_cells = []
-        for c_idx in range(len(cols)):
-            cell_str = _format_val_std(col_means[c_idx], col_stds[c_idx])
-            if c_idx == best_mean_c:
-                cell_str = f"**{cell_str}**"
-            mean_cells.append(cell_str)
-        md_lines.append(f"| **Mean** | " + " | ".join(mean_cells) + " |")
+        mean_mask = _best_col_mask(col_means, rel_tol=rel_tol)
+        mean_cells_md = []
+        csv_mean = {"Environment": "Mean"}
+        for c_idx, col_name in enumerate(cols):
+            val_std_str = _format_val_std(col_means[c_idx], col_stds[c_idx])
+            mean_cells_md.append(f"**{val_std_str}**" if mean_mask[c_idx] else val_std_str)
+            csv_mean[col_name] = val_std_str
+        md_lines.append("| **Mean** | " + " | ".join(mean_cells_md) + " |")
+        csv_rows.append(csv_mean)
 
-    md_path = f"{output_base}.md"
-    with open(md_path, "w") as f:
+        if focus_cols is not None:
+            sub_mat = mat_mean[:, focus_cols]
+            fw, ft, fl, _, _, _ = _compute_wtl_stats(sub_mat, rel_tol=rel_tol)
+            f_win = _max_int_mask(fw - fl)
+            f_cells_md = ["*Baseline*" for _ in range(n_cols)]
+            csv_f = {"Environment": "Direct 1v1 (v_aux vs e_aux, 1%)"}
+            for c_idx, col_name in enumerate(cols):
+                csv_f[col_name] = "Baseline"
+            for idx_k, fc in enumerate(focus_cols):
+                s = f"{fw[idx_k]}W / {ft[idx_k]}T / {fl[idx_k]}L"
+                f_cells_md[fc] = f"**{s}**" if f_win[idx_k] else s
+                csv_f[cols[fc]] = s
+            md_lines.append("| **Direct 1v1 (v_aux vs e_aux, 1%)** | " + " | ".join(f_cells_md) + " |")
+            csv_rows.append(csv_f)
+
+        top_w, top_t, top_l, pw_w, pw_t, pw_l = _compute_wtl_stats(mat_mean, rel_tol=rel_tol)
+        top_mask = _max_int_mask(top_w + 0.5 * top_t)
+        top_cells_md = []
+        top_lbl = "Top-1 vs All (W / T / L, 1%)" if focus_cols is not None else "Top-1 (W / T / L, 1%)"
+        csv_top = {"Environment": top_lbl}
+        for c_idx, col_name in enumerate(cols):
+            s = f"{top_w[c_idx]}W / {top_t[c_idx]}T / {top_l[c_idx]}L"
+            top_cells_md.append(f"**{s}**" if top_mask[c_idx] else s)
+            csv_top[col_name] = s
+        md_lines.append(f"| **{top_lbl}** | " + " | ".join(top_cells_md) + " |")
+        csv_rows.append(csv_top)
+
+        if n_cols > 2 and focus_cols is None:
+            pw_mask = _max_int_mask(pw_w - pw_l)
+            pw_cells_md = []
+            csv_pw = {"Environment": "Pairwise (W / T / L, 1%)"}
+            for c_idx, col_name in enumerate(cols):
+                s = f"{pw_w[c_idx]}W / {pw_t[c_idx]}T / {pw_l[c_idx]}L (net {pw_w[c_idx] - pw_l[c_idx]:+d})"
+                pw_cells_md.append(f"**{s}**" if pw_mask[c_idx] else s)
+                csv_pw[col_name] = s
+            md_lines.append("| **Pairwise (W / T / L, 1%)** | " + " | ".join(pw_cells_md) + " |")
+            csv_rows.append(csv_pw)
+
+    with open(f"{output_base}.md", "w") as f:
         f.write("\n".join(md_lines) + "\n")
 
-    # 2. LaTeX (.tex)
-    col_spec = "l" + ("c" * len(cols))
+    # 2. CSV (.csv)
+    pd.DataFrame(csv_rows).to_csv(f"{output_base}.csv", index=False)
+
+    # 3. LaTeX (.tex)
+    if focus_cols is not None and len(focus_cols) > 0:
+        sep_idx = focus_cols[0]
+        col_spec = "l" + ("c" * sep_idx) + "|" + ("c" * (n_cols - sep_idx))
+    else:
+        col_spec = "l" + ("c" * n_cols)
+
     tex_lines = [
         "\\begin{table}[htbp]",
         "\\centering",
@@ -704,10 +951,16 @@ def save_table_bundle(df_mean, df_std, title, cbar_label, output_base, cmap="Blu
         "\\midrule",
     ]
     for r_idx, env_label in enumerate(rows):
-        best_c = int(np.nanargmax(mat_mean[r_idx]))
+        if focus_cols is not None:
+            sub_mask = _best_col_mask(mat_mean[r_idx, focus_cols], rel_tol=rel_tol)
+            best_mask = np.zeros(n_cols, dtype=bool)
+            for idx_k, fc in enumerate(focus_cols):
+                best_mask[fc] = sub_mask[idx_k]
+        else:
+            best_mask = _best_col_mask(mat_mean[r_idx], rel_tol=rel_tol)
         cells = []
-        for c_idx in range(len(cols)):
-            base_tex = _format_val_std_tex(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx], is_best=(c_idx == best_c))
+        for c_idx in range(n_cols):
+            base_tex = _format_val_std_tex(mat_mean[r_idx, c_idx], mat_std[r_idx, c_idx], is_best=bool(best_mask[c_idx]))
             ann = cell_annotations.get((r_idx, c_idx), "") if cell_annotations else ""
             if ann:
                 base_tex = f"{base_tex} \\scriptsize{{({_escape_tex(ann)})}}"
@@ -718,25 +971,51 @@ def save_table_bundle(df_mean, df_std, title, cbar_label, output_base, cmap="Blu
         tex_lines.append("\\midrule")
         col_means = np.nanmean(mat_mean, axis=0)
         col_stds = np.nanmean(mat_std, axis=0)
-        best_mean_c = int(np.nanargmax(col_means))
+        mean_mask = _best_col_mask(col_means, rel_tol=rel_tol)
         mean_cells = [
-            _format_val_std_tex(col_means[c_idx], col_stds[c_idx], is_best=(c_idx == best_mean_c))
-            for c_idx in range(len(cols))
+            _format_val_std_tex(col_means[c_idx], col_stds[c_idx], is_best=bool(mean_mask[c_idx]))
+            for c_idx in range(n_cols)
         ]
         tex_lines.append("\\textbf{Mean} & " + " & ".join(mean_cells) + " \\\\")
+
+        if focus_cols is not None:
+            sub_mat = mat_mean[:, focus_cols]
+            fw, ft, fl, _, _, _ = _compute_wtl_stats(sub_mat, rel_tol=rel_tol)
+            f_win = _max_int_mask(fw - fl)
+            f_cells = ["\\textit{Baseline}" for _ in range(n_cols)]
+            for idx_k, fc in enumerate(focus_cols):
+                s = f"{fw[idx_k]}W / {ft[idx_k]}T / {fl[idx_k]}L"
+                f_cells[fc] = f"\\textbf{{{s}}}" if f_win[idx_k] else s
+            tex_lines.append("\\textbf{Direct 1v1 (v\\_aux vs e\\_aux, 1\\%)} & " + " & ".join(f_cells) + " \\\\")
+
+        top_w, top_t, top_l, pw_w, pw_t, pw_l = _compute_wtl_stats(mat_mean, rel_tol=rel_tol)
+        top_mask = _max_int_mask(top_w + 0.5 * top_t)
+        top_cells = [
+            f"\\textbf{{{top_w[c]}W / {top_t[c]}T / {top_l[c]}L}}" if top_mask[c] else f"{top_w[c]}W / {top_t[c]}T / {top_l[c]}L"
+            for c in range(n_cols)
+        ]
+        top_tex_lbl = "Top-1 vs All (W/T/L, 1\\%)" if focus_cols is not None else "Top-1 (W/T/L, 1\\%)"
+        tex_lines.append(f"\\textbf{{{top_tex_lbl}}} & " + " & ".join(top_cells) + " \\\\")
+
+        if n_cols > 2 and focus_cols is None:
+            pw_mask = _max_int_mask(pw_w - pw_l)
+            pw_cells = [
+                f"\\textbf{{{pw_w[c]}W / {pw_t[c]}T / {pw_l[c]}L}}" if pw_mask[c] else f"{pw_w[c]}W / {pw_t[c]}T / {pw_l[c]}L"
+                for c in range(n_cols)
+            ]
+            tex_lines.append("\\textbf{Pairwise (W/T/L, 1\\%)} & " + " & ".join(pw_cells) + " \\\\")
 
     tex_lines.extend([
         "\\bottomrule",
         "\\end{tabular}",
         "\\end{table}",
     ])
-    tex_path = f"{output_base}.tex"
-    with open(tex_path, "w") as f:
+    with open(f"{output_base}.tex", "w") as f:
         f.write("\n".join(tex_lines) + "\n")
 
-    # 3. PDF & PNG Heatmap Table
-    render_heatmap_table(df_mean, df_std, title, cbar_label, output_base, cmap=cmap, cell_annotations=cell_annotations)
-    print(f"Saved table bundle (.md, .tex, .pdf, .png): {output_base}")
+    # 4. Clean Normal Table Vector PDF (.pdf) & PNG (.png)
+    render_clean_table(df_mean, df_std, title, output_base, cell_annotations=cell_annotations, rel_tol=rel_tol, focus_cols=focus_cols)
+    print(f"Saved table bundle (.md, .csv, .tex, .pdf, .png): {output_base}")
 
 
 def render_analysis_plot_and_tables(
@@ -753,6 +1032,8 @@ def render_analysis_plot_and_tables(
     cmap="Blues",
     cell_annotations=None,
     per_env_results_final=None,
+    focus_cols=None,
+    y_label="Discounted Return",
 ):
     """
     Renders a multi-panel learning curve plot under plots/ (.pdf and .png)
@@ -799,7 +1080,7 @@ def render_analysis_plot_and_tables(
 
         ax.set_title(f"{env_title}{plot_title_suffix}", fontsize=11, fontweight="bold", pad=8)
         ax.set_xlabel("Timesteps", fontsize=9.5)
-        ax.set_ylabel("Discounted Return", fontsize=9.5)
+        ax.set_ylabel(y_label, fontsize=9.5)
         ax.grid(True, linestyle=":", alpha=0.5)
         ax.legend(frameon=True, facecolor="white", edgecolor="#cccccc", fontsize=7.8, loc="best")
 
@@ -833,6 +1114,7 @@ def render_analysis_plot_and_tables(
         output_base=f"{table_output_base}_auc",
         cmap=cmap,
         cell_annotations=ann_auc,
+        focus_cols=focus_cols,
     )
     save_table_bundle(
         df_final_mean,
@@ -842,6 +1124,7 @@ def render_analysis_plot_and_tables(
         output_base=f"{table_output_base}_final",
         cmap=cmap,
         cell_annotations=ann_final,
+        focus_cols=focus_cols,
     )
     # Also write the primary table name (Final Return) at table_output_base.{md,tex,pdf,png}
     save_table_bundle(
@@ -852,6 +1135,7 @@ def render_analysis_plot_and_tables(
         output_base=table_output_base,
         cmap=cmap,
         cell_annotations=ann_final,
+        focus_cols=focus_cols,
     )
 
 
@@ -887,22 +1171,23 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     print(f"\n================ GENERATING AUTOMATED ANALYSES (Metric: {metric_key}, has_e_aux={has_e_aux}) ================")
 
     # =========================================================================
-    # ANALYSIS 1: E(0) Variants (Forward-Only, e_aux, v_aux, Naive)
+    # STORY 1A: E(0) Variants (Naive, Forward-Only | v_aux, e_aux) at λ_aux=1.0
     # =========================================================================
     if has_e_aux:
-        a1_algs = ["E(0) Forward-Only", "E(0) e_aux (λ_aux=1.0)", "E(0) v_aux (λ_aux=1.0)", "E(0) Naive"]
+        a1_algs = ["E(0) Naive", "E(0) Forward-Only", "E(0) v_aux (λ_aux=1.0)", "E(0) e_aux (λ_aux=1.0)"]
         a1_colors = {
-            "E(0) Forward-Only": "#ff7f0e",
-            "E(0) e_aux (λ_aux=1.0)": "#17becf",
-            "E(0) v_aux (λ_aux=1.0)": "#1f77b4",
             "E(0) Naive": "#9467bd",
+            "E(0) Forward-Only": "#ff7f0e",
+            "E(0) v_aux (λ_aux=1.0)": "#1f77b4",
+            "E(0) e_aux (λ_aux=1.0)": "#17becf",
         }
         a1_styles = {
-            "E(0) Forward-Only": "-.",
-            "E(0) e_aux (λ_aux=1.0)": "-",
-            "E(0) v_aux (λ_aux=1.0)": "-",
             "E(0) Naive": "--",
+            "E(0) Forward-Only": "-.",
+            "E(0) v_aux (λ_aux=1.0)": "-",
+            "E(0) e_aux (λ_aux=1.0)": "-",
         }
+        a1_focus = [2, 3]
     else:
         a1_algs = ["E(0) Naive", "E(0) Forward-Only", "E(0) v_aux (λ_aux=1.0)"]
         a1_colors = {
@@ -915,14 +1200,15 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             "E(0) Forward-Only": "-.",
             "E(0) v_aux (λ_aux=1.0)": "-",
         }
+        a1_focus = None
 
     a1_results = {}
     for env in envs:
         env_d = all_runs[env]
         res_d = {
+            "E(0) Naive": select_best_lr_run(env_d.get("E(0)_no_v_aux", {}), critic_lrs, metric_key),
             "E(0) Forward-Only": select_best_lr_run(env_d.get("E(0)_fwd", {}), critic_lrs, metric_key),
             "E(0) v_aux (λ_aux=1.0)": select_best_lr_run(env_d.get("E(0)_v_aux", {}), critic_lrs, metric_key),
-            "E(0) Naive": select_best_lr_run(env_d.get("E(0)_no_v_aux", {}), critic_lrs, metric_key),
         }
         if has_e_aux:
             res_d["E(0) e_aux (λ_aux=1.0)"] = select_best_lr_run(env_d.get("E(0)_e_aux", {}), critic_lrs, metric_key)
@@ -935,35 +1221,37 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         colors=a1_colors,
         linestyles=a1_styles,
         batch_size=batch_size,
-        plot_title_suffix=" — E(0) Variants",
-        plot_output_base=os.path.join(plots_dir, "e0_variants_learning_curves"),
-        table_output_base=os.path.join(tables_dir, "e0_variants"),
-        table_title_prefix="E(0) Critic Variants Comparison",
+        plot_title_suffix=" — Story 1: E(0) Variants",
+        plot_output_base=os.path.join(plots_dir, "story1_e0_variants_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story1_e0_variants"),
+        table_title_prefix="Story 1: E(0) Critic Variants (Baselines vs v_aux vs e_aux)",
         cmap="Blues",
+        focus_cols=a1_focus,
     )
 
     # =========================================================================
-    # ANALYSIS 2: E(lambda=0.8) Variants (Forward-Only, e_aux, v_aux, Naive)
+    # STORY 1B: E(lambda=0.8) Variants (Naive, Forward-Only | v_aux, e_aux) at λ_aux=1.0
     # =========================================================================
     if has_e_aux:
         a2_algs = [
-            f"E({abl_lmb}) Forward-Only",
-            f"E({abl_lmb}) e_aux (λ_aux=1.0)",
-            f"E({abl_lmb}) v_aux (λ_aux=1.0)",
             f"E({abl_lmb}) Naive",
+            f"E({abl_lmb}) Forward-Only",
+            f"E({abl_lmb}) v_aux (λ_aux=1.0)",
+            f"E({abl_lmb}) e_aux (λ_aux=1.0)",
         ]
         a2_colors = {
-            f"E({abl_lmb}) Forward-Only": "#ff7f0e",
-            f"E({abl_lmb}) e_aux (λ_aux=1.0)": "#17becf",
-            f"E({abl_lmb}) v_aux (λ_aux=1.0)": "#2ca02c",
             f"E({abl_lmb}) Naive": "#9467bd",
+            f"E({abl_lmb}) Forward-Only": "#ff7f0e",
+            f"E({abl_lmb}) v_aux (λ_aux=1.0)": "#2ca02c",
+            f"E({abl_lmb}) e_aux (λ_aux=1.0)": "#17becf",
         }
         a2_styles = {
-            f"E({abl_lmb}) Forward-Only": "-.",
-            f"E({abl_lmb}) e_aux (λ_aux=1.0)": "-",
-            f"E({abl_lmb}) v_aux (λ_aux=1.0)": "-",
             f"E({abl_lmb}) Naive": "--",
+            f"E({abl_lmb}) Forward-Only": "-.",
+            f"E({abl_lmb}) v_aux (λ_aux=1.0)": "-",
+            f"E({abl_lmb}) e_aux (λ_aux=1.0)": "-",
         }
+        a2_focus = [2, 3]
     else:
         a2_algs = [
             f"E({abl_lmb}) Naive",
@@ -980,6 +1268,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             f"E({abl_lmb}) Forward-Only": "-.",
             f"E({abl_lmb}) v_aux (λ_aux=1.0)": "-",
         }
+        a2_focus = None
 
     a2_results = {}
     for env in envs:
@@ -990,9 +1279,9 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             if abl_lmb in env_d["E(lambda)"][lr]
         }
         res_d = {
+            f"E({abl_lmb}) Naive": select_best_lr_run(env_d.get("E(lambda)_naive", {}), critic_lrs, metric_key),
             f"E({abl_lmb}) Forward-Only": select_best_lr_run(env_d.get("E(lambda)_fwd", {}), critic_lrs, metric_key),
             f"E({abl_lmb}) v_aux (λ_aux=1.0)": select_best_lr_run(el_lmb_lr_dict, critic_lrs, metric_key),
-            f"E({abl_lmb}) Naive": select_best_lr_run(env_d.get("E(lambda)_naive", {}), critic_lrs, metric_key),
         }
         if has_e_aux:
             res_d[f"E({abl_lmb}) e_aux (λ_aux=1.0)"] = select_best_lr_run(env_d.get("E(lambda)_e_aux", {}), critic_lrs, metric_key)
@@ -1005,42 +1294,46 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         colors=a2_colors,
         linestyles=a2_styles,
         batch_size=batch_size,
-        plot_title_suffix=f" — E(λ={abl_lmb}) Variants",
-        plot_output_base=os.path.join(plots_dir, "e_lambda08_variants_learning_curves"),
-        table_output_base=os.path.join(tables_dir, "e_lambda08_variants"),
-        table_title_prefix=f"E(λ={abl_lmb}) Critic Variants Comparison",
+        plot_title_suffix=f" — Story 1: E(λ={abl_lmb}) Variants",
+        plot_output_base=os.path.join(plots_dir, "story1_e_lambda08_variants_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story1_e_lambda08_variants"),
+        table_title_prefix=f"Story 1: E(λ={abl_lmb}) Critic Variants (Baselines vs v_aux vs e_aux)",
         cmap="Blues",
+        focus_cols=a2_focus,
     )
 
     # =========================================================================
-    # ANALYSIS 3: Cross-Paradigm E Variants Comparison (Forward vs e_aux vs v_aux vs Naive)
+    # STORY 1 (PRIMARY): E Variants Comparison (Naive, Forward-Only | v_aux, e_aux)
+    # Apples-to-apples over shared lambda in {0.0, ablation_lambda}
     # =========================================================================
     if has_e_aux:
-        a3_algs = ["Forward-Only", "e_aux", "v_aux", "Naive"]
+        a3_algs = ["Naive", "Forward-Only", "v_aux", "e_aux"]
         a3_colors = {
+            "Naive": "#9467bd",
             "Forward-Only": "#ff7f0e",
+            "v_aux": "#1f77b4",
             "e_aux": "#17becf",
-            "v_aux": "#1f77b4",
-            "Naive": "#9467bd",
         }
         a3_styles = {
-            "Forward-Only": "-.",
-            "e_aux": "-",
-            "v_aux": "-",
             "Naive": "--",
+            "Forward-Only": "-.",
+            "v_aux": "-",
+            "e_aux": "-",
         }
+        a3_focus = [2, 3]
     else:
-        a3_algs = ["Forward-Only", "v_aux", "Naive"]
+        a3_algs = ["Naive", "Forward-Only", "v_aux"]
         a3_colors = {
+            "Naive": "#9467bd",
             "Forward-Only": "#ff7f0e",
             "v_aux": "#1f77b4",
-            "Naive": "#9467bd",
         }
         a3_styles = {
+            "Naive": "--",
             "Forward-Only": "-.",
             "v_aux": "-",
-            "Naive": "--",
         }
+        a3_focus = None
 
     a3_results_auc = {}
     a3_results_final = {}
@@ -1050,7 +1343,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     for r_idx, env in enumerate(envs):
         env_d = all_runs[env]
 
-        # 1. Forward-Only candidates
+        # 1. Forward-Only candidates (lambda in {0.0, ablation_lambda})
         fwd_cands = []
         if env_d.get("E(0)_fwd"):
             c = select_best_lr_run(env_d["E(0)_fwd"], critic_lrs, metric_key)
@@ -1061,7 +1354,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             c["legend_label"] = f"E({abl_lmb}) Fwd"
             fwd_cands.append(c)
 
-        # 2. Naive candidates
+        # 2. Naive candidates (lambda in {0.0, ablation_lambda})
         naive_cands = []
         if env_d.get("E(0)_no_v_aux"):
             c = select_best_lr_run(env_d["E(0)_no_v_aux"], critic_lrs, metric_key)
@@ -1072,7 +1365,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             c["legend_label"] = f"E({abl_lmb}) Naive"
             naive_cands.append(c)
 
-        # 3. v_aux candidates
+        # 3. v_aux candidates (matching lambda in {0.0, ablation_lambda})
         v_aux_cands = []
         if env_d.get("E(0)_v_aux"):
             c = select_best_lr_run(env_d["E(0)_v_aux"], critic_lrs, metric_key)
@@ -1083,18 +1376,22 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
                 c = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 c["legend_label"] = f"v_aux (E(0), λ_aux={alam})"
                 v_aux_cands.append(c)
-        for lr, lmb_d in env_d.get("E(lambda)", {}).items():
-            for lmb in lmb_d:
-                c = select_best_lr_run({lr: lmb_d[lmb]}, [lr], metric_key)
-                c["legend_label"] = f"v_aux (λ={lmb}, λ_aux=1.0)"
-                v_aux_cands.append(c)
+        el_lmb_d = {
+            lr: env_d["E(lambda)"][lr][abl_lmb]
+            for lr in env_d.get("E(lambda)", {})
+            if abl_lmb in env_d["E(lambda)"][lr]
+        }
+        if el_lmb_d:
+            c = select_best_lr_run(el_lmb_d, critic_lrs, metric_key)
+            c["legend_label"] = f"v_aux (λ={abl_lmb}, λ_aux=1.0)"
+            v_aux_cands.append(c)
         for alam, lr_d in env_d.get("E(lambda)_aux_lam", {}).items():
             if lr_d:
                 c = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 c["legend_label"] = f"v_aux (λ={abl_lmb}, λ_aux={alam})"
                 v_aux_cands.append(c)
 
-        # 4. e_aux candidates
+        # 4. e_aux candidates (matching lambda in {0.0, ablation_lambda})
         e_aux_cands = []
         if env_d.get("E(0)_e_aux"):
             c = select_best_lr_run(env_d["E(0)_e_aux"], critic_lrs, metric_key)
@@ -1125,14 +1422,14 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         best_v_aux_final = max(v_aux_cands, key=lambda x: x["final_mean"]) if v_aux_cands else best_v_aux_auc
 
         res_auc = {
+            "Naive": best_naive_auc,
             "Forward-Only": best_fwd_auc,
             "v_aux": best_v_aux_auc,
-            "Naive": best_naive_auc,
         }
         res_final = {
+            "Naive": best_naive_final,
             "Forward-Only": best_fwd_final,
             "v_aux": best_v_aux_final,
-            "Naive": best_naive_final,
         }
 
         if has_e_aux:
@@ -1141,24 +1438,24 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             res_auc["e_aux"] = best_e_aux_auc
             res_final["e_aux"] = best_e_aux_final
 
-            # Annotation indices: 0: Fwd, 1: e_aux, 2: v_aux, 3: Naive
-            a3_ann_auc[(r_idx, 0)] = clean_variant_name(best_fwd_auc.get("legend_label", ""))
-            a3_ann_auc[(r_idx, 1)] = clean_variant_name(best_e_aux_auc.get("legend_label", ""))
+            # Order: 0: Naive, 1: Forward-Only, 2: v_aux, 3: e_aux
+            a3_ann_auc[(r_idx, 0)] = clean_variant_name(best_naive_auc.get("legend_label", ""))
+            a3_ann_auc[(r_idx, 1)] = clean_variant_name(best_fwd_auc.get("legend_label", ""))
             a3_ann_auc[(r_idx, 2)] = clean_variant_name(best_v_aux_auc.get("legend_label", ""))
-            a3_ann_auc[(r_idx, 3)] = clean_variant_name(best_naive_auc.get("legend_label", ""))
+            a3_ann_auc[(r_idx, 3)] = clean_variant_name(best_e_aux_auc.get("legend_label", ""))
 
-            a3_ann_final[(r_idx, 0)] = clean_variant_name(best_fwd_final.get("legend_label", ""))
-            a3_ann_final[(r_idx, 1)] = clean_variant_name(best_e_aux_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 0)] = clean_variant_name(best_naive_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 1)] = clean_variant_name(best_fwd_final.get("legend_label", ""))
             a3_ann_final[(r_idx, 2)] = clean_variant_name(best_v_aux_final.get("legend_label", ""))
-            a3_ann_final[(r_idx, 3)] = clean_variant_name(best_naive_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 3)] = clean_variant_name(best_e_aux_final.get("legend_label", ""))
         else:
-            a3_ann_auc[(r_idx, 0)] = clean_variant_name(best_fwd_auc.get("legend_label", ""))
-            a3_ann_auc[(r_idx, 1)] = clean_variant_name(best_v_aux_auc.get("legend_label", ""))
-            a3_ann_auc[(r_idx, 2)] = clean_variant_name(best_naive_auc.get("legend_label", ""))
+            a3_ann_auc[(r_idx, 0)] = clean_variant_name(best_naive_auc.get("legend_label", ""))
+            a3_ann_auc[(r_idx, 1)] = clean_variant_name(best_fwd_auc.get("legend_label", ""))
+            a3_ann_auc[(r_idx, 2)] = clean_variant_name(best_v_aux_auc.get("legend_label", ""))
 
-            a3_ann_final[(r_idx, 0)] = clean_variant_name(best_fwd_final.get("legend_label", ""))
-            a3_ann_final[(r_idx, 1)] = clean_variant_name(best_v_aux_final.get("legend_label", ""))
-            a3_ann_final[(r_idx, 2)] = clean_variant_name(best_naive_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 0)] = clean_variant_name(best_naive_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 1)] = clean_variant_name(best_fwd_final.get("legend_label", ""))
+            a3_ann_final[(r_idx, 2)] = clean_variant_name(best_v_aux_final.get("legend_label", ""))
 
         a3_results_auc[env] = res_auc
         a3_results_final[env] = res_final
@@ -1170,31 +1467,32 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         colors=a3_colors,
         linestyles=a3_styles,
         batch_size=batch_size,
-        plot_title_suffix=" — E Variants Paradigm Comparison",
-        plot_output_base=os.path.join(plots_dir, "e_variants_comparison_learning_curves"),
-        table_output_base=os.path.join(tables_dir, "e_variants_comparison"),
-        table_title_prefix="E-Minimization Critic Variants Comparison (Forward vs e_aux vs v_aux vs Naive)",
+        plot_title_suffix=f" — Story 1: E Variants (λ = 0 or {abl_lmb})",
+        plot_output_base=os.path.join(plots_dir, "story1_e_variant_comparison_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story1_e_variant_comparison"),
+        table_title_prefix=f"Story 1: E Variants (Baselines vs Unbiased v_aux vs e_aux, λ = 0 or {abl_lmb})",
         cmap="Blues",
         cell_annotations={"auc": a3_ann_auc, "final": a3_ann_final},
         per_env_results_final=a3_results_final,
+        focus_cols=a3_focus,
     )
 
     # =========================================================================
-    # ANALYSIS 4: Auxiliary Mechanism Head-to-Head (e_aux vs v_aux)
+    # STORY 2: The Use of λ_aux (v_aux, e_aux, and combined 1.0 vs 0.8)
     # =========================================================================
     if has_e_aux:
-        a4_algs = ["v_aux (λ_aux=1.0)", "e_aux (λ_aux=1.0)", "v_aux (λ_aux=0.8)", "e_aux (λ_aux=0.8)"]
+        a4_algs = ["v_aux (λ_aux=1.0)", "v_aux (λ_aux=0.8)", "e_aux (λ_aux=1.0)", "e_aux (λ_aux=0.8)"]
         a4_colors = {
             "v_aux (λ_aux=1.0)": "#1f77b4",
-            "e_aux (λ_aux=1.0)": "#17becf",
             "v_aux (λ_aux=0.8)": "#2ca02c",
-            "e_aux (λ_aux=0.8)": "#98df8a",
+            "e_aux (λ_aux=1.0)": "#17becf",
+            "e_aux (λ_aux=0.8)": "#d62728",
         }
         a4_styles = {
-            "v_aux (λ_aux=1.0)": "-",
-            "e_aux (λ_aux=1.0)": "--",
+            "v_aux (λ_aux=1.0)": "--",
             "v_aux (λ_aux=0.8)": "-",
-            "e_aux (λ_aux=0.8)": "--",
+            "e_aux (λ_aux=1.0)": "--",
+            "e_aux (λ_aux=0.8)": "-",
         }
         a4_results = {}
         for env in envs:
@@ -1208,8 +1506,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             e_aux_08 = env_d.get("E(lambda)_e_aux_lam", {}).get(0.8, {})
             a4_results[env] = {
                 "v_aux (λ_aux=1.0)": select_best_lr_run(el_lmb_lr_dict, critic_lrs, metric_key),
-                "e_aux (λ_aux=1.0)": select_best_lr_run(env_d.get("E(lambda)_e_aux", {}), critic_lrs, metric_key),
                 "v_aux (λ_aux=0.8)": select_best_lr_run(v_aux_08, critic_lrs, metric_key),
+                "e_aux (λ_aux=1.0)": select_best_lr_run(env_d.get("E(lambda)_e_aux", {}), critic_lrs, metric_key),
                 "e_aux (λ_aux=0.8)": select_best_lr_run(e_aux_08, critic_lrs, metric_key),
             }
 
@@ -1220,19 +1518,17 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             colors=a4_colors,
             linestyles=a4_styles,
             batch_size=batch_size,
-            plot_title_suffix=f" — Auxiliary Mechanism Comparison: e_aux vs v_aux (E(λ={abl_lmb}))",
-            plot_output_base=os.path.join(plots_dir, "aux_mechanism_comparison_learning_curves"),
-            table_output_base=os.path.join(tables_dir, "aux_mechanism_comparison"),
-            table_title_prefix=f"Auxiliary Critic Mechanism Comparison (e_aux vs v_aux at E(λ={abl_lmb}))",
+            plot_title_suffix=f" — Story 2: Effect of λ_aux (E(λ={abl_lmb}))",
+            plot_output_base=os.path.join(plots_dir, "story2_aux_lambda_effect_learning_curves"),
+            table_output_base=os.path.join(tables_dir, "story2_aux_lambda_effect"),
+            table_title_prefix=f"Story 2: Effect of Auxiliary Return Lambda (λ_aux=1.0 vs 0.8 at E(λ={abl_lmb}))",
             cmap="PuBuGn",
         )
 
-        # =========================================================================
-        # ANALYSIS 5: e_aux Auxiliary Return Lambda (λ_aux) Sweep
-        # =========================================================================
+        # STORY 2B: e_aux λ_aux sweep (1.0, 0.9, 0.8)
         a5_algs = [f"e_aux (λ_aux={alam})" for alam in aux_lambdas]
-        palette_a5 = ["#17becf", "#9edae5", "#393b79", "#6b6ecf"]
-        styles_a5 = ["-", "--", "-.", ":"]
+        palette_a5 = ["#7f7f7f", "#17becf", "#2ca02c", "#d62728"]
+        styles_a5 = ["--", "-.", "-", ":"]
         a5_colors = {alg: palette_a5[i % len(palette_a5)] for i, alg in enumerate(a5_algs)}
         a5_styles = {alg: styles_a5[i % len(styles_a5)] for i, alg in enumerate(a5_algs)}
         a5_results = {}
@@ -1253,18 +1549,16 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             colors=a5_colors,
             linestyles=a5_styles,
             batch_size=batch_size,
-            plot_title_suffix=f" — e_aux λ_aux Sweep (E(λ={abl_lmb}))",
-            plot_output_base=os.path.join(plots_dir, "e_aux_lambda_comparison_learning_curves"),
-            table_output_base=os.path.join(tables_dir, "e_aux_lambda_comparison"),
-            table_title_prefix=f"e_aux Auxiliary Return Lambda (λ_aux) Comparison at E(λ={abl_lmb})",
+            plot_title_suffix=f" — Story 2: e_aux λ_aux Sweep (E(λ={abl_lmb}))",
+            plot_output_base=os.path.join(plots_dir, "story2_e_aux_lambda_comparison_learning_curves"),
+            table_output_base=os.path.join(tables_dir, "story2_e_aux_lambda_comparison"),
+            table_title_prefix=f"Story 2: e_aux λ_aux Comparison at E(λ={abl_lmb})",
             cmap="BuPu",
         )
 
-    # =========================================================================
-    # ANALYSIS 6: v_aux Auxiliary Return Lambda (λ_aux) Sweep (1.0, 0.9, 0.8)
-    # =========================================================================
+    # STORY 2C: v_aux λ_aux sweep (1.0, 0.9, 0.8)
     a6_algs = [f"v_aux (λ_aux={alam})" for alam in aux_lambdas]
-    palette_a6 = ["#1f77b4", "#2ca02c", "#d62728", "#9467bd"]
+    palette_a6 = ["#7f7f7f", "#1f77b4", "#2ca02c", "#d62728"]
     styles_a6 = ["--", "-.", "-", ":"]
     a6_colors = {alg: palette_a6[i % len(palette_a6)] for i, alg in enumerate(a6_algs)}
     a6_styles = {alg: styles_a6[i % len(styles_a6)] for i, alg in enumerate(a6_algs)}
@@ -1290,16 +1584,53 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         colors=a6_colors,
         linestyles=a6_styles,
         batch_size=batch_size,
-        plot_title_suffix=f" — v_aux λ_aux Sweep (E(λ={abl_lmb}))",
-        plot_output_base=os.path.join(plots_dir, "v_aux_lambda_comparison_learning_curves"),
-        table_output_base=os.path.join(tables_dir, "v_aux_lambda_comparison"),
-        table_title_prefix=f"v_aux Auxiliary Return Lambda (λ_aux) Comparison at E(λ={abl_lmb})",
+        plot_title_suffix=f" — Story 2: v_aux λ_aux Sweep (E(λ={abl_lmb}))",
+        plot_output_base=os.path.join(plots_dir, "story2_v_aux_lambda_comparison_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story2_v_aux_lambda_comparison"),
+        table_title_prefix=f"Story 2: v_aux λ_aux Comparison at E(λ={abl_lmb})",
         cmap="YlGn",
     )
 
     # =========================================================================
-    # ANALYSIS 7: Best E Run vs Best TD Run
+    # STORY 3 (PRIMARY): Forward Winning-est Unbiased Variant (v_aux vs e_aux) vs Best TD(λ*)
+    # Selects winning-est unbiased E variant directly from Direct 1v1 (v_aux vs e_aux)
     # =========================================================================
+    unbiased_candidates = [a for a in a3_algs if a in ("v_aux", "e_aux")]
+    if len(unbiased_candidates) == 2:
+        mat_u_fin = np.array([[a3_results_final[e][a]["final_mean"] for a in unbiased_candidates] for e in envs])
+        mat_u_auc = np.array([[a3_results_auc[e][a]["auc_mean"] for a in unbiased_candidates] for e in envs])
+        uw_f, ut_f, ul_f, _, _, _ = _compute_wtl_stats(mat_u_fin, rel_tol=REAL_WIN_REL_TOL)
+        uw_a, ut_a, ul_a, _, _, _ = _compute_wtl_stats(mat_u_auc, rel_tol=REAL_WIN_REL_TOL)
+        u_net = {
+            a: int((uw_f[i] - ul_f[i]) + (uw_a[i] - ul_a[i]))
+            for i, a in enumerate(unbiased_candidates)
+        }
+        print("\n--- Story 1 Direct 1v1 Unbiased Real-Win (>=1%) W/T/L (v_aux vs e_aux) ---")
+        for i, a in enumerate(unbiased_candidates):
+            print(
+                f"  {a:<8}: Final={uw_f[i]}W/{ut_f[i]}T/{ul_f[i]}L | "
+                f"AUC={uw_a[i]}W/{ut_a[i]}T/{ul_a[i]}L | Combined Net={u_net[a]:+d}"
+            )
+        forwarded_e_name = max(unbiased_candidates, key=lambda a: u_net[a])
+        print(f"--> Forwarding Winning-est Unbiased Variant '{forwarded_e_name}' to Story 3!\n")
+    else:
+        forwarded_e_name = "v_aux"
+
+    s3v_algs = ["TD(λ*)", "Unbiased E (v_aux)"]
+    s3v_colors = {"TD(λ*)": "#e6550d", "Unbiased E (v_aux)": "#1f77b4"}
+    s3v_styles = {"TD(λ*)": "--", "Unbiased E (v_aux)": "-"}
+
+    s3e_algs = ["TD(λ*)", "Unbiased E (e_aux)"]
+    s3e_colors = {"TD(λ*)": "#e6550d", "Unbiased E (e_aux)": "#17becf"}
+    s3e_styles = {"TD(λ*)": "--", "Unbiased E (e_aux)": "-"}
+
+    s3v_results_auc, s3v_results_final = {}, {}
+    s3v_ann_auc, s3v_ann_final = {}, {}
+
+    s3e_results_auc, s3e_results_final = {}, {}
+    s3e_ann_auc, s3e_ann_final = {}, {}
+
+    # Also build comprehensive best_e_vs_best_td summary
     if has_e_aux:
         a7_algs = ["Best TD(λ*)", "Best E (v_aux)", "Best E (e_aux)", "Best E (All)"]
         a7_colors = {
@@ -1343,6 +1674,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             for lmb in lmb_dict:
                 res_info = select_best_lr_run({lr: lmb_dict[lmb]}, [lr], metric_key)
                 res_info["legend_label"] = f"Best TD (λ={lmb})"
+                res_info["short_ann"] = f"λ={lmb}"
                 td_candidates.append(res_info)
 
         best_td_auc = max(td_candidates, key=lambda x: x["auc_mean"]) if td_candidates else select_best_lr_run({}, critic_lrs, metric_key)
@@ -1353,51 +1685,87 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         if env_d.get("E(0)_v_aux"):
             info = select_best_lr_run(env_d["E(0)_v_aux"], critic_lrs, metric_key)
             info["legend_label"] = "Best E v_aux (E(0), λ_aux=1.0)"
+            info["short_ann"] = "λ=0, λ_aux=1.0"
             v_aux_candidates.append(info)
         for alam, lr_d in env_d.get("E(0)_aux_lam", {}).items():
             if lr_d:
                 info = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 info["legend_label"] = f"Best E v_aux (E(0), λ_aux={alam})"
+                info["short_ann"] = f"λ=0, λ_aux={alam}"
                 v_aux_candidates.append(info)
         for lr, lmb_dict in env_d.get("E(lambda)", {}).items():
             for lmb in lmb_dict:
                 info = select_best_lr_run({lr: lmb_dict[lmb]}, [lr], metric_key)
                 info["legend_label"] = f"Best E v_aux (λ={lmb}, λ_aux=1.0)"
+                info["short_ann"] = f"λ={lmb}, λ_aux=1.0"
                 v_aux_candidates.append(info)
         for alam, lr_d in env_d.get("E(lambda)_aux_lam", {}).items():
             if lr_d:
                 info = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 info["legend_label"] = f"Best E v_aux (λ={abl_lmb}, λ_aux={alam})"
+                info["short_ann"] = f"λ={abl_lmb}, λ_aux={alam}"
                 v_aux_candidates.append(info)
 
         best_e_v_aux_auc = max(v_aux_candidates, key=lambda x: x["auc_mean"]) if v_aux_candidates else select_best_lr_run({}, critic_lrs, metric_key)
         best_e_v_aux_final = max(v_aux_candidates, key=lambda x: x["final_mean"]) if v_aux_candidates else best_e_v_aux_auc
 
-        # 3. Best E (e_aux): best across E(0)_e_aux, E(0)_e_aux_lam, E(lambda)_e_aux, E(lambda)_e_aux_lam
+        # 3. Best E (e_aux)
         e_aux_candidates = []
         if env_d.get("E(0)_e_aux"):
             info = select_best_lr_run(env_d["E(0)_e_aux"], critic_lrs, metric_key)
             info["legend_label"] = "Best E e_aux (E(0), λ_aux=1.0)"
+            info["short_ann"] = "λ=0, λ_aux=1.0"
             e_aux_candidates.append(info)
         for alam, lr_d in env_d.get("E(0)_e_aux_lam", {}).items():
             if lr_d:
                 info = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 info["legend_label"] = f"Best E e_aux (E(0), λ_aux={alam})"
+                info["short_ann"] = f"λ=0, λ_aux={alam}"
                 e_aux_candidates.append(info)
         if env_d.get("E(lambda)_e_aux"):
             info = select_best_lr_run(env_d["E(lambda)_e_aux"], critic_lrs, metric_key)
             info["legend_label"] = f"Best E e_aux (λ={abl_lmb}, λ_aux=1.0)"
+            info["short_ann"] = f"λ={abl_lmb}, λ_aux=1.0"
             e_aux_candidates.append(info)
         for alam, lr_d in env_d.get("E(lambda)_e_aux_lam", {}).items():
             if lr_d:
                 info = select_best_lr_run(lr_d, critic_lrs, metric_key)
                 info["legend_label"] = f"Best E e_aux (λ={abl_lmb}, λ_aux={alam})"
+                info["short_ann"] = f"λ={abl_lmb}, λ_aux={alam}"
                 e_aux_candidates.append(info)
 
         best_e_e_aux_auc = max(e_aux_candidates, key=lambda x: x["auc_mean"]) if e_aux_candidates else select_best_lr_run({}, critic_lrs, metric_key)
         best_e_e_aux_final = max(e_aux_candidates, key=lambda x: x["final_mean"]) if e_aux_candidates else best_e_e_aux_auc
 
-        # 4. Best E (All): best across v_aux + e_aux + Forward-Only + Naive
+        # Populate Story 3A: TD(λ*) vs Unbiased E (v_aux)
+        s3v_results_auc[env] = {
+            "TD(λ*)": best_td_auc,
+            "Unbiased E (v_aux)": best_e_v_aux_auc,
+        }
+        s3v_results_final[env] = {
+            "TD(λ*)": best_td_final,
+            "Unbiased E (v_aux)": best_e_v_aux_final,
+        }
+        s3v_ann_auc[(r_idx, 0)] = best_td_auc.get("short_ann", "")
+        s3v_ann_auc[(r_idx, 1)] = best_e_v_aux_auc.get("short_ann", "")
+        s3v_ann_final[(r_idx, 0)] = best_td_final.get("short_ann", "")
+        s3v_ann_final[(r_idx, 1)] = best_e_v_aux_final.get("short_ann", "")
+
+        # Populate Story 3B: TD(λ*) vs Unbiased E (e_aux)
+        s3e_results_auc[env] = {
+            "TD(λ*)": best_td_auc,
+            "Unbiased E (e_aux)": best_e_e_aux_auc,
+        }
+        s3e_results_final[env] = {
+            "TD(λ*)": best_td_final,
+            "Unbiased E (e_aux)": best_e_e_aux_final,
+        }
+        s3e_ann_auc[(r_idx, 0)] = best_td_auc.get("short_ann", "")
+        s3e_ann_auc[(r_idx, 1)] = best_e_e_aux_auc.get("short_ann", "")
+        s3e_ann_final[(r_idx, 0)] = best_td_final.get("short_ann", "")
+        s3e_ann_final[(r_idx, 1)] = best_e_e_aux_final.get("short_ann", "")
+
+        # 4. Best E (All)
         all_e_candidates = list(v_aux_candidates) + list(e_aux_candidates)
         if env_d.get("E(0)_no_v_aux"):
             info = select_best_lr_run(env_d["E(0)_no_v_aux"], critic_lrs, metric_key)
@@ -1439,6 +1807,42 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         a7_annotations_auc[(r_idx, col_all_idx)] = clean_variant_name(best_e_all_auc.get("legend_label", ""))
         a7_annotations_final[(r_idx, col_all_idx)] = clean_variant_name(best_e_all_final.get("legend_label", ""))
 
+    # Render Story 3A: Best TD(λ*) vs Unbiased E (v_aux)
+    render_analysis_plot_and_tables(
+        envs=envs,
+        alg_names=s3v_algs,
+        per_env_results=s3v_results_auc,
+        colors=s3v_colors,
+        linestyles=s3v_styles,
+        batch_size=batch_size,
+        plot_title_suffix=" — Story 3A: TD(λ*) vs Unbiased E (v_aux)",
+        plot_output_base=os.path.join(plots_dir, "story3_td_vs_v_aux_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story3_td_vs_v_aux"),
+        table_title_prefix="Story 3A: Best TD(λ*) vs Best Unbiased E (v_aux) per Environment",
+        cmap="Blues",
+        cell_annotations={"auc": s3v_ann_auc, "final": s3v_ann_final},
+        per_env_results_final=s3v_results_final,
+    )
+
+    # Render Story 3B: Best TD(λ*) vs Unbiased E (e_aux)
+    if has_e_aux:
+        render_analysis_plot_and_tables(
+            envs=envs,
+            alg_names=s3e_algs,
+            per_env_results=s3e_results_auc,
+            colors=s3e_colors,
+            linestyles=s3e_styles,
+            batch_size=batch_size,
+            plot_title_suffix=" — Story 3B: TD(λ*) vs Unbiased E (e_aux)",
+            plot_output_base=os.path.join(plots_dir, "story3_td_vs_e_aux_learning_curves"),
+            table_output_base=os.path.join(tables_dir, "story3_td_vs_e_aux"),
+            table_title_prefix="Story 3B: Best TD(λ*) vs Best Unbiased E (e_aux) per Environment",
+            cmap="Blues",
+            cell_annotations={"auc": s3e_ann_auc, "final": s3e_ann_final},
+            per_env_results_final=s3e_results_final,
+        )
+
+    # Render full Best E summary
     render_analysis_plot_and_tables(
         envs=envs,
         alg_names=a7_algs,
@@ -1446,16 +1850,16 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         colors=a7_colors,
         linestyles=a7_styles,
         batch_size=batch_size,
-        plot_title_suffix=" — Best E vs Best TD",
-        plot_output_base=os.path.join(plots_dir, "best_e_vs_best_td_learning_curves"),
-        table_output_base=os.path.join(tables_dir, "best_e_vs_best_td"),
-        table_title_prefix="Best E Run vs Best TD Run Comparison",
+        plot_title_suffix=" — Best E Variants vs Best TD(λ*)",
+        plot_output_base=os.path.join(plots_dir, "story3_best_e_vs_best_td_learning_curves"),
+        table_output_base=os.path.join(tables_dir, "story3_best_e_vs_best_td"),
+        table_title_prefix="Best E Runs vs Best TD(λ*) Summary",
         cmap="Blues",
         cell_annotations={"auc": a7_annotations_auc, "final": a7_annotations_final},
         per_env_results_final=a7_results_final,
     )
 
-    print("\nAll automated analyses (learning curve plots and .md/.tex/.pdf tables) generated successfully!")
+    print("\nAll automated story analyses (learning curve plots and .md/.csv/.tex/.pdf tables) generated successfully!")
 
 
 def main():
