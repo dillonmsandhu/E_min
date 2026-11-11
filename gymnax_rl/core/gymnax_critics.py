@@ -66,6 +66,7 @@ def get_critic_target_lambda(config: dict) -> float:
     critic_type = config["CRITIC_TYPE"].lower()
     if critic_type in (
         "e_0",
+        "e_0_q",
         "e0",
         "e",
         "e_0_basic",
@@ -73,6 +74,7 @@ def get_critic_target_lambda(config: dict) -> float:
         "e_0_biased",
         "e_biased",
         "e_lambda",
+        "e_lambda_q",
         "elambda",
         "e_geometric",
         "sampled_e",
@@ -80,11 +82,11 @@ def get_critic_target_lambda(config: dict) -> float:
         "surgical",
     ):
         return config["RETURN_LAMBDA"]
-    elif critic_type in ("td_0", "td", "td0", "classic_td"):
+    elif critic_type in ("td_0", "td", "td0", "classic_td", "sarsa_0"):
         return config["TD_LAMBDA"]
     elif critic_type in ("mc", "sampled_mc"):
         return 1.0
-    elif critic_type in ("fitted", "ppo", "td_lambda", "sampled_td_lambda"):
+    elif critic_type in ("fitted", "ppo", "sarsa", "sarsa_lambda", "td_lambda", "sampled_td_lambda"):
         return config["VALUE_LAMBDA"]
     else:
         raise ValueError(f"Unrecognized CRITIC_TYPE '{config['CRITIC_TYPE']}'.")

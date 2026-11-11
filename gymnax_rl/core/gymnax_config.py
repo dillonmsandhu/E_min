@@ -51,9 +51,11 @@ config = {
     "ACTOR_MINIBATCH_SIZE": None,
     "CRITIC_MINIBATCH_SIZE": None,
 
-    # Critic & PPO Hyperparameters
-    "CRITIC_TYPE": "fitted",  # "fitted", "td_0", "td_lambda", "e_0", "e_0_basic", "e_lambda", "mc"
-    "E_VARIANT": "aux",       # "aux" (uses v_aux), "fwd" (forward-only), "naive" (symmetric without v_aux)
+    # Critic & PPO / DDPG Hyperparameters
+    "CRITIC_TYPE": "fitted",  # "fitted", "sarsa", "td_0", "td_lambda", "e_0", "e_0_basic", "e_lambda", "mc"
+    "E_VARIANT": "aux",       # "aux" (uses v_aux), "e_aux", "fwd" (forward-only), "naive" (symmetric without v_aux)
+    "EXPLORATION_NOISE": 0.1,
+    "ACTION_REG_COEF": 0.0,
     "GAE_LAMBDA": 0.8,
     "VALUE_LAMBDA": 0.9,
     "TD_LAMBDA": 0.0,
