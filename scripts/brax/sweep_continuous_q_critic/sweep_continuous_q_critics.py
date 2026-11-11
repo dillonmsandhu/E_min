@@ -60,7 +60,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
 import jax
 import jax.numpy as jnp
 
-from core.ddpg_config import brax_ddpg_config
+from brax_rl.core.ddpg_config import config as brax_ddpg_config
 from brax_rl.algos.ddpg import make_train as make_ddpg_train
 
 ENV_TITLES = {

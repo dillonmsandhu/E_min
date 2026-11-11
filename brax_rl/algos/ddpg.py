@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 from gymnax.wrappers.purerl import LogWrapper
 
-from core.ddpg_config import brax_ddpg_config as base_default_config
+from brax_rl.core.ddpg_config import config as base_default_config
 from brax_rl.core.brax_utils import shuffle_and_batch
 from brax_rl.core.brax_wrappers import (
     BraxGymnaxWrapper,

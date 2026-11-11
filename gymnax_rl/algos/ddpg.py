@@ -21,7 +21,7 @@ import copy
 import jax
 import jax.numpy as jnp
 
-from core.ddpg_config import gymnax_ddpg_config as base_default_config
+from gymnax_rl.core.ddpg_config import config as base_default_config
 from gymnax_rl.core.gymnax_utils import (
     shuffle_and_batch,
     merge_hparams,

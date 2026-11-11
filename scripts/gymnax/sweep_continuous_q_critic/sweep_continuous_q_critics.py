@@ -61,7 +61,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
 import jax
 import jax.numpy as jnp
 
-from core.ddpg_config import gymnax_ddpg_config
+from gymnax_rl.core.ddpg_config import config as gymnax_ddpg_config
 from gymnax_rl.algos.ddpg import make_train as make_ddpg_train
 
 ENV_TITLES = {
