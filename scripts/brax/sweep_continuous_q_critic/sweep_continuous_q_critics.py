@@ -564,9 +564,11 @@ def run_sweep(args):
         env_dict = all_runs[env_name]
         env_dict.setdefault("E(0)_naive", {})
         env_dict.setdefault("E(0)_v_aux", {})
+        env_dict.setdefault("E(0)_e_aux", {})
         env_dict.setdefault("E(0)_fwd", {})
         env_dict.setdefault("E(0.8)_naive", {})
         env_dict.setdefault("E(0.8)_v_aux", {})
+        env_dict.setdefault("E(0.8)_e_aux", {})
         env_dict.setdefault("E(0.8)_fwd", {})
         env_dict.setdefault("SARSA", {lam: {} for lam in sarsa_lambdas})
 
@@ -594,6 +596,7 @@ def run_sweep(args):
         for var_name, critic_type, e_var in [
             ("E(0)_naive", "e_0", "naive"),
             ("E(0)_v_aux", "e_0", "aux"),
+            ("E(0)_e_aux", "e_0", "e_aux"),
             ("E(0)_fwd", "e_0", "fwd"),
         ]:
             for lr in critic_lrs:
@@ -615,6 +618,7 @@ def run_sweep(args):
         for var_name, critic_type, e_var in [
             ("E(0.8)_naive", "e_lambda", "naive"),
             ("E(0.8)_v_aux", "e_lambda", "aux"),
+            ("E(0.8)_e_aux", "e_lambda", "e_aux"),
             ("E(0.8)_fwd", "e_lambda", "fwd"),
         ]:
             for lr in critic_lrs:
@@ -678,47 +682,41 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     n_rows_plot = int(np.ceil(n_envs / n_cols_plot))
 
     # -------------------------------------------------------------
-    # 1. ANALYSIS 1: E(0) Variants (Naive vs v_aux vs Fwd)
+    # 1. ANALYSIS 1: E(0) Variants (Naive vs v_aux vs e_aux vs Fwd)
     # -------------------------------------------------------------
-    e0_cols = ["E(0) Naive (Unbiased)", "E(0) v_aux", "E(0) Forward-Only"]
+    e0_cols = ["E(0) Naive (Unbiased)", "E(0) v_aux", "E(0) e_aux", "E(0) Forward-Only"]
+    e0_keys = ["E(0)_naive", "E(0)_v_aux", "E(0)_e_aux", "E(0)_fwd"]
+    colors_e0 = ["#2563eb", "#059669", "#0891b2", "#d97706"]
     e0_means, e0_stds, e0_annots = [], [], {}
 
     fig1, axes1 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.0 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
     for idx, env in enumerate(envs):
         r, c = divmod(idx, n_cols_plot)
         ax = axes1[r][c]
-
-        naive_res = select_best_lr_run(all_runs[env].get("E(0)_naive", {}), critic_lrs, metric_key)
-        aux_res = select_best_lr_run(all_runs[env].get("E(0)_v_aux", {}), critic_lrs, metric_key)
-        fwd_res = select_best_lr_run(all_runs[env].get("E(0)_fwd", {}), critic_lrs, metric_key)
-
-        e0_means.append([naive_res["auc_mean"], aux_res["auc_mean"], fwd_res["auc_mean"]])
-        e0_stds.append([naive_res["auc_std"], aux_res["auc_std"], fwd_res["auc_std"]])
-        e0_annots[(idx, 0)] = f"lr={naive_res['lr']}"
-        e0_annots[(idx, 1)] = f"lr={aux_res['lr']}"
-        e0_annots[(idx, 2)] = f"lr={fwd_res['lr']}"
-
-        t = np.arange(1, len(naive_res["curve"]) + 1) * batch_size
-        ax.plot(t, naive_res["curve"], label=f"Naive (lr={naive_res['lr']})", color="#2563eb", lw=2.0)
-        ax.fill_between(t, naive_res["curve"] - naive_res["std"], naive_res["curve"] + naive_res["std"], color="#2563eb", alpha=0.15)
-
-        ax.plot(t, aux_res["curve"], label=f"v_aux (lr={aux_res['lr']})", color="#059669", lw=2.0)
-        ax.fill_between(t, aux_res["curve"] - aux_res["std"], aux_res["curve"] + aux_res["std"], color="#059669", alpha=0.15)
-
-        ax.plot(t, fwd_res["curve"], label=f"Fwd (lr={fwd_res['lr']})", color="#d97706", lw=2.0, ls="--")
-        ax.fill_between(t, fwd_res["curve"] - fwd_res["std"], fwd_res["curve"] + fwd_res["std"], color="#d97706", alpha=0.15)
+        row_means, row_stds = [], []
+        for c_idx, k in enumerate(e0_keys):
+            res = select_best_lr_run(all_runs[env].get(k, {}), critic_lrs, metric_key)
+            row_means.append(res["auc_mean"])
+            row_stds.append(res["auc_std"])
+            e0_annots[(idx, c_idx)] = f"lr={res['lr']}"
+            t = np.arange(1, len(res["curve"]) + 1) * batch_size
+            ls = "--" if k == "E(0)_fwd" else "-"
+            ax.plot(t, res["curve"], label=f"{e0_cols[c_idx]} (lr={res['lr']})", color=colors_e0[c_idx], lw=2.0, ls=ls)
+            ax.fill_between(t, res["curve"] - res["std"], res["curve"] + res["std"], color=colors_e0[c_idx], alpha=0.15)
+        e0_means.append(row_means)
+        e0_stds.append(row_stds)
 
         ax.set_title(ENV_TITLES.get(env, env), fontsize=10.5, fontweight="bold")
         ax.set_xlabel("Environment Steps")
         ax.grid(True, alpha=0.3)
         if idx == 0:
-            ax.legend(loc="lower right", fontsize=8.0)
+            ax.legend(loc="lower right", fontsize=7.5)
 
     for idx in range(n_envs, n_rows_plot * n_cols_plot):
         r, c = divmod(idx, n_cols_plot)
         axes1[r][c].axis("off")
 
-    fig1.suptitle("Analysis 1: E(0) Variants (Naive vs v_aux vs Forward-Only) Learning Curves", fontsize=13.0, fontweight="bold", y=1.02)
+    fig1.suptitle("Analysis 1: E(0) Variants Learning Curves", fontsize=13.0, fontweight="bold", y=1.02)
     plt.tight_layout()
     plt.savefig(os.path.join(plots_dir, "analysis1_e0_variants_learning_curves.png"), bbox_inches="tight", dpi=300)
     plt.savefig(os.path.join(plots_dir, "analysis1_e0_variants_learning_curves.pdf"), bbox_inches="tight")
@@ -734,41 +732,35 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     )
 
     # -------------------------------------------------------------
-    # 2. ANALYSIS 2: E(lambda=0.8) Variants (Naive vs v_aux vs Fwd)
+    # 2. ANALYSIS 2: E(lambda=0.8) Variants (Naive vs v_aux vs e_aux vs Fwd)
     # -------------------------------------------------------------
-    elam_cols = ["E(0.8) Naive", "E(0.8) v_aux (Debiased)", "E(0.8) Forward-Only"]
+    elam_cols = ["E(0.8) Naive", "E(0.8) v_aux (Debiased)", "E(0.8) e_aux", "E(0.8) Forward-Only"]
+    elam_keys = ["E(0.8)_naive", "E(0.8)_v_aux", "E(0.8)_e_aux", "E(0.8)_fwd"]
+    colors_elam = ["#7c3aed", "#059669", "#0891b2", "#ea580c"]
     elam_means, elam_stds, elam_annots = [], [], {}
 
     fig2, axes2 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.0 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
     for idx, env in enumerate(envs):
         r, c = divmod(idx, n_cols_plot)
         ax = axes2[r][c]
-
-        naive_res = select_best_lr_run(all_runs[env].get("E(0.8)_naive", {}), critic_lrs, metric_key)
-        aux_res = select_best_lr_run(all_runs[env].get("E(0.8)_v_aux", {}), critic_lrs, metric_key)
-        fwd_res = select_best_lr_run(all_runs[env].get("E(0.8)_fwd", {}), critic_lrs, metric_key)
-
-        elam_means.append([naive_res["auc_mean"], aux_res["auc_mean"], fwd_res["auc_mean"]])
-        elam_stds.append([naive_res["auc_std"], aux_res["auc_std"], fwd_res["auc_std"]])
-        elam_annots[(idx, 0)] = f"lr={naive_res['lr']}"
-        elam_annots[(idx, 1)] = f"lr={aux_res['lr']}"
-        elam_annots[(idx, 2)] = f"lr={fwd_res['lr']}"
-
-        t = np.arange(1, len(naive_res["curve"]) + 1) * batch_size
-        ax.plot(t, naive_res["curve"], label=f"Naive (lr={naive_res['lr']})", color="#7c3aed", lw=2.0)
-        ax.fill_between(t, naive_res["curve"] - naive_res["std"], naive_res["curve"] + naive_res["std"], color="#7c3aed", alpha=0.15)
-
-        ax.plot(t, aux_res["curve"], label=f"v_aux (lr={aux_res['lr']})", color="#059669", lw=2.0)
-        ax.fill_between(t, aux_res["curve"] - aux_res["std"], aux_res["curve"] + aux_res["std"], color="#059669", alpha=0.15)
-
-        ax.plot(t, fwd_res["curve"], label=f"Fwd (lr={fwd_res['lr']})", color="#ea580c", lw=2.0, ls="--")
-        ax.fill_between(t, fwd_res["curve"] - fwd_res["std"], fwd_res["curve"] + fwd_res["std"], color="#ea580c", alpha=0.15)
+        row_means, row_stds = [], []
+        for c_idx, k in enumerate(elam_keys):
+            res = select_best_lr_run(all_runs[env].get(k, {}), critic_lrs, metric_key)
+            row_means.append(res["auc_mean"])
+            row_stds.append(res["auc_std"])
+            elam_annots[(idx, c_idx)] = f"lr={res['lr']}"
+            t = np.arange(1, len(res["curve"]) + 1) * batch_size
+            ls = "--" if k == "E(0.8)_fwd" else "-"
+            ax.plot(t, res["curve"], label=f"{elam_cols[c_idx]} (lr={res['lr']})", color=colors_elam[c_idx], lw=2.0, ls=ls)
+            ax.fill_between(t, res["curve"] - res["std"], res["curve"] + res["std"], color=colors_elam[c_idx], alpha=0.15)
+        elam_means.append(row_means)
+        elam_stds.append(row_stds)
 
         ax.set_title(ENV_TITLES.get(env, env), fontsize=10.5, fontweight="bold")
         ax.set_xlabel("Environment Steps")
         ax.grid(True, alpha=0.3)
         if idx == 0:
-            ax.legend(loc="lower right", fontsize=8.0)
+            ax.legend(loc="lower right", fontsize=7.5)
 
     for idx in range(n_envs, n_rows_plot * n_cols_plot):
         r, c = divmod(idx, n_cols_plot)
@@ -917,9 +909,11 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         for e_key, clean_name in [
             ("E(0)_naive", "E(0) Naive"),
             ("E(0)_v_aux", "E(0) v_aux"),
+            ("E(0)_e_aux", "E(0) e_aux"),
             ("E(0)_fwd", "E(0) Fwd"),
             ("E(0.8)_naive", "E(0.8) Naive"),
             ("E(0.8)_v_aux", "E(0.8) v_aux"),
+            ("E(0.8)_e_aux", "E(0.8) e_aux"),
             ("E(0.8)_fwd", "E(0.8) Fwd"),
         ]:
             cand = select_best_lr_run(all_runs[env].get(e_key, {}), critic_lrs, metric_key)

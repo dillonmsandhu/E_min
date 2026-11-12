@@ -507,9 +507,11 @@ def run_sweep(args):
         env_dict = all_runs[env_name]
         env_dict.setdefault("E(0)_naive", {})
         env_dict.setdefault("E(0)_v_aux", {})
+        env_dict.setdefault("E(0)_e_aux", {})
         env_dict.setdefault("E(0)_fwd", {})
         env_dict.setdefault("E(0.8)_naive", {})
         env_dict.setdefault("E(0.8)_v_aux", {})
+        env_dict.setdefault("E(0.8)_e_aux", {})
         env_dict.setdefault("E(0.8)_fwd", {})
         env_dict.setdefault("SARSA", {lam: {} for lam in sarsa_lambdas})
 
@@ -537,6 +539,7 @@ def run_sweep(args):
         for var_name, critic_type, e_var in [
             ("E(0)_naive", "e_0", "naive"),
             ("E(0)_v_aux", "e_0", "aux"),
+            ("E(0)_e_aux", "e_0", "e_aux"),
             ("E(0)_fwd", "e_0", "fwd"),
         ]:
             for lr in critic_lrs:
@@ -558,6 +561,7 @@ def run_sweep(args):
         for var_name, critic_type, e_var in [
             ("E(0.8)_naive", "e_lambda", "naive"),
             ("E(0.8)_v_aux", "e_lambda", "aux"),
+            ("E(0.8)_e_aux", "e_lambda", "e_aux"),
             ("E(0.8)_fwd", "e_lambda", "fwd"),
         ]:
             for lr in critic_lrs:
@@ -623,14 +627,14 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     n_rows_plot = int(math.ceil(n_envs / n_cols_plot))
 
     # -------------------------------------------------------------
-    # 1. ANALYSIS 1: E(0) Variants (Naive vs v_aux vs Forward-Only)
+    # 1. ANALYSIS 1: E(0) Variants (Naive vs v_aux vs e_aux vs Forward-Only)
     # -------------------------------------------------------------
-    e0_cols = ["E(0) Naive (Unbiased)", "E(0) v_aux", "E(0) Forward-Only"]
-    e0_keys = ["E(0)_naive", "E(0)_v_aux", "E(0)_fwd"]
+    e0_cols = ["E(0) Naive (Unbiased)", "E(0) v_aux", "E(0) e_aux", "E(0) Forward-Only"]
+    e0_keys = ["E(0)_naive", "E(0)_v_aux", "E(0)_e_aux", "E(0)_fwd"]
     e0_means, e0_stds, e0_annots = [], [], {}
 
     fig1, axes1 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.0 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
-    colors_e0 = ["#2563eb", "#059669", "#d97706"]
+    colors_e0 = ["#2563eb", "#059669", "#0891b2", "#d97706"]
 
     for idx, env in enumerate(envs):
         r, c = divmod(idx, n_cols_plot)
@@ -673,14 +677,14 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     )
 
     # -------------------------------------------------------------
-    # 2. ANALYSIS 2: E(lambda=0.8) Variants (Naive vs v_aux vs Forward-Only)
+    # 2. ANALYSIS 2: E(lambda=0.8) Variants (Naive vs v_aux vs e_aux vs Forward-Only)
     # -------------------------------------------------------------
-    elam_cols = ["E(0.8) Naive", "E(0.8) v_aux", "E(0.8) Forward-Only"]
-    elam_keys = ["E(0.8)_naive", "E(0.8)_v_aux", "E(0.8)_fwd"]
+    elam_cols = ["E(0.8) Naive", "E(0.8) v_aux", "E(0.8) e_aux", "E(0.8) Forward-Only"]
+    elam_keys = ["E(0.8)_naive", "E(0.8)_v_aux", "E(0.8)_e_aux", "E(0.8)_fwd"]
     elam_means, elam_stds, elam_annots = [], [], {}
 
     fig2, axes2 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.0 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
-    colors_elam = ["#4f46e5", "#0d9488", "#e11d48"]
+    colors_elam = ["#4f46e5", "#0d9488", "#0891b2", "#e11d48"]
 
     for idx, env in enumerate(envs):
         r, c = divmod(idx, n_cols_plot)
@@ -841,9 +845,11 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         for e_key, clean_name in [
             ("E(0)_naive", "E(0) Naive"),
             ("E(0)_v_aux", "E(0) v_aux"),
+            ("E(0)_e_aux", "E(0) e_aux"),
             ("E(0)_fwd", "E(0) Fwd"),
             ("E(0.8)_naive", "E(0.8) Naive"),
             ("E(0.8)_v_aux", "E(0.8) v_aux"),
+            ("E(0.8)_e_aux", "E(0.8) e_aux"),
             ("E(0.8)_fwd", "E(0.8) Fwd"),
         ]:
             cand = select_best_lr_run(all_runs[env].get(e_key, {}), critic_lrs, metric_key)

@@ -22,6 +22,7 @@ class Transition(NamedTuple):
     info: Any
     is_start: jnp.ndarray
     is_timeout: jnp.ndarray
+    v_aux: Optional[jnp.ndarray] = None
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
     next_targets: Optional[jnp.ndarray] = None

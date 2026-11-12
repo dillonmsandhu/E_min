@@ -3,8 +3,8 @@
 run_single_env.py
 
 Executes the Continuous Q-Critic (DDPG) Comparison Sweep on a single Gymnax continuous control environment:
-1. E(0) Variants (Naive, v_aux, Forward-Only)
-2. E(lambda=0.8) Variants (Naive, v_aux, Forward-Only)
+1. E(0) Variants (Naive, v_aux, e_aux, Forward-Only)
+2. E(lambda=0.8) Variants (Naive, v_aux, e_aux, Forward-Only)
 3. Expected SARSA(lambda) Grid (0.0, 0.4, 0.8, 0.95, 1.0)
 
 Outputs saved to <out_dir>/<env_name>/:

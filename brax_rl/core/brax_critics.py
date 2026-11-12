@@ -63,6 +63,24 @@ get_return = calculate_targets
 calculate_return = calculate_targets
 
 
+def compute_aux_head_loss(v_aux, aux_targets, aux_coef: float = 1.0):
+    """Pure MSE loss training the auxiliary value head toward its (stop-gradient) targets."""
+    err = jax.lax.stop_gradient(aux_targets) - v_aux
+    return aux_coef * jnp.mean(0.5 * jnp.square(err))
+
+
+def e_aux_backward_surrogate(e_phi_src, e_phi_dst, v_dst):
+    """
+    Backward-branch surrogate for the direct error head e_phi(s) ~ V(s) - v_theta(s).
+    With d = sg(e_phi_src - e_phi_dst):
+        value    = d^2
+        gradient = 2 * d * grad v_theta(s_dst)
+    """
+    sg = jax.lax.stop_gradient
+    d = sg(e_phi_src - e_phi_dst)
+    return (sg(d - v_dst) + v_dst) ** 2
+
+
 def get_critic_target_lambda(config: dict) -> float:
     """
     Returns the appropriate lambda to compute value targets based on the critic loss type:
@@ -602,143 +620,233 @@ def td_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, target
     return value_loss, {"val_loss": value_loss, "delta_mag": jnp.abs(delta).mean()}
 
 
-def e_lambda_geometric_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+def e_lambda_geometric_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
     """
-    Geometric jumping E(lambda) MSE critic loss. Differentiates strictly w.r.t. critic_params.
+    Geometric jumping E(lambda) MSE critic loss for Brax state-value PPO.
+    Dispatches explicitly on config['E_VARIANT']:
+      - 'aux': surgical v_aux on backward branch + self-bootstrapped v_aux MSE loss
+      - 'e_aux': direct error head e_phi(s) ~ V(s) - v_theta(s) on backward branch
+      - 'fwd': forward-only (e_i - stop_gradient(e_jump))^2 without v_aux
+      - 'naive': symmetric (e_i - e_jump)^2 without v_aux
     """
     full_params = {"params": {**actor_params, **critic_params}}
-    v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+    sg = jax.lax.stop_gradient
+
     obs_jump = traj_batch.info["obs_jump"]
     targets_jump = traj_batch.info["targets_jump"]
     valid_jump = traj_batch.info["valid_jump"]
     is_absorbing = traj_batch.info["is_absorbing"]
-    v_jump = network.apply(full_params, obs_jump, method=network.value)
 
-    gamma = config.get("GAMMA", 0.99)
-    e_lambda = config.get("E_LAMBDA", 0.8)
-    value_head_agg = config.get("VALUE_HEAD_AGG", "mean")
+    gamma = config["GAMMA"]
+    lmbda = config["E_LAMBDA"]
+    variant = config["E_VARIANT"].lower()
+    aux_coef = config.get("AUX_VF_COEF", 1.0)
+    vf_coef = config.get("VF_COEF", 0.5)
+    gl = gamma * lmbda
 
-    value_loss, mag_loss, dir_loss = e_lambda_geometric_critic_loss(
-        v_i=v_i,
-        targets_i=targets,
-        v_jump=v_jump,
-        targets_jump=targets_jump,
-        valid_jump=valid_jump,
-        is_absorbing=is_absorbing,
-        gamma=gamma,
-        lmbda=e_lambda,
-        value_head_agg=value_head_agg,
+    targets_i = targets if targets is not None else traj_batch.targets
+
+    if variant == "aux":
+        v_i, v_aux_i = network.apply(full_params, traj_batch.obs, method=network.both)
+        v_jump, v_aux_jump = network.apply(full_params, obs_jump, method=network.both)
+
+        e_i = targets_i - v_i
+        e_jump = jnp.where(is_absorbing, 0.0, targets_jump - v_jump)
+        e_aux_i = sg(v_aux_i) - v_i
+        e_aux_jump = jnp.where(is_absorbing, 0.0, sg(v_aux_jump) - v_jump)
+
+        inner_diff_sq = (e_i - sg(e_jump)) ** 2 + (sg(e_aux_i) - e_aux_jump) ** 2
+        aux_loss = compute_aux_head_loss(v_aux_i, traj_batch.aux_targets, aux_coef=aux_coef)
+    elif variant == "e_aux":
+        v_i, e_phi_i = network.apply(full_params, traj_batch.obs, method=network.both)
+        v_jump, e_phi_jump = network.apply(full_params, obs_jump, method=network.both)
+
+        e_i = targets_i - v_i
+        e_jump = jnp.where(is_absorbing, 0.0, targets_jump - v_jump)
+        e_phi_jump = jnp.where(is_absorbing, 0.0, e_phi_jump)
+
+        inner_diff_sq = (e_i - sg(e_jump)) ** 2 + e_aux_backward_surrogate(e_phi_i, e_phi_jump, v_jump)
+        aux_loss = compute_aux_head_loss(e_phi_i, traj_batch.aux_targets - sg(v_i), aux_coef=aux_coef)
+    elif variant == "fwd":
+        v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+        v_jump = network.apply(full_params, obs_jump, method=network.value)
+
+        e_i = targets_i - v_i
+        e_jump = jnp.where(is_absorbing, 0.0, targets_jump - v_jump)
+        inner_diff_sq = (e_i - sg(e_jump)) ** 2
+        aux_loss = 0.0
+    elif variant == "naive":
+        v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+        v_jump = network.apply(full_params, obs_jump, method=network.value)
+
+        e_i = targets_i - v_i
+        e_jump = jnp.where(is_absorbing, 0.0, targets_jump - v_jump)
+        inner_diff_sq = (e_i - e_jump) ** 2
+        aux_loss = 0.0
+    else:
+        raise ValueError(
+            f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of ('aux', 'e_aux', 'fwd', 'naive')."
+        )
+
+    diff_sq = jnp.where(
+        is_absorbing,
+        e_i ** 2,
+        jnp.where(valid_jump, inner_diff_sq, e_i ** 2),
     )
-    v_i_mean = v_i.mean(-1) if v_i.ndim > targets.ndim else v_i
-    delta_mag = jnp.abs(targets - v_i_mean).mean()
-    return value_loss, {
+
+    tilde_gamma = (gamma * (1.0 - lmbda)) / jnp.maximum(1.0 - gl, 1e-8)
+    magnitude_weight = 0.5 * (1.0 - gamma) / jnp.maximum(1.0 - gl, 1e-8)
+    dirichlet_weight = 0.5 * tilde_gamma
+
+    magnitude_loss = magnitude_weight * jnp.mean(e_i ** 2)
+    dirichlet_loss = dirichlet_weight * jnp.mean(diff_sq)
+    value_loss = magnitude_loss + dirichlet_loss + aux_loss
+    scaled_loss = vf_coef * value_loss
+
+    return scaled_loss, {
         "val_loss": value_loss,
-        "magnitude_loss": mag_loss,
-        "dirichlet_loss": dir_loss,
-        "delta_mag": delta_mag,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "aux_mc_loss": aux_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
     }
 
 
 def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
     """
-    Basic / biased 1-sample E(0) critic loss (without auxiliary critic V_aux).
-    Smooths v(s_t) directly against v(s_{t+1}) with magnitude anchoring:
-      L = (1 - gamma) * E[(targets - v(s_t))^2] + 0.5 * gamma * E[((targets - v(s_t)) - (next_targets - v(s_{t+1})))^2]
-    On true terminal states, the absorbing error is 0.
+    1-sample E(0) critic loss without auxiliary critic v_aux for Brax state-value PPO.
+    Dispatches explicitly on config['E_VARIANT']:
+      - 'fwd': forward-only (e_i - stop_gradient(e_j))^2
+      - 'naive': symmetric (e_i - e_j)^2
     """
     full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
     v_i = network.apply(full_params, traj_batch.obs, method=network.value)
     v_j = network.apply(full_params, traj_batch.next_obs, method=network.value)
 
     targets_i = targets if targets is not None else traj_batch.targets
     targets_j = traj_batch.next_targets
-    is_timeout = traj_batch.is_timeout
-    true_terminal = traj_batch.done & ~is_timeout
+    is_timeout = traj_batch.is_timeout > 0.5
+    true_terminal = (traj_batch.done > 0.5) & ~is_timeout
 
     gamma = config["GAMMA"]
+    variant = config["E_VARIANT"].lower()
+    vf_coef = config.get("VF_COEF", 0.5)
 
     e_i = targets_i - v_i
     e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
 
-    weight_mc = 1.0 - gamma
+    if variant == "fwd":
+        inner_diff_sq = (e_i - sg(e_j)) ** 2
+    elif variant in ("naive", "aux"):
+        inner_diff_sq = (e_i - e_j) ** 2
+    else:
+        raise ValueError(
+            f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of ('aux', 'e_aux', 'fwd', 'naive')."
+        )
+
+    weight_mc = 0.5 * (1.0 - gamma)
     weight_dir = 0.5 * gamma
+    start_weight = 0.25 * gamma
 
     magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
-    laplacian_loss = weight_dir * jnp.mean((e_i - e_j) ** 2)
+    diff_sq = jnp.where(true_terminal | is_timeout, e_i ** 2, inner_diff_sq)
+    laplacian_loss = weight_dir * jnp.mean(diff_sq)
+    start_anchor_loss = start_weight * jnp.mean(jnp.where(traj_batch.is_start, e_i ** 2, 0.0))
 
-    value_loss = magnitude_loss + laplacian_loss
-    scaled_loss = config.get("VF_COEF", 0.5) * value_loss
+    value_loss = magnitude_loss + laplacian_loss + start_anchor_loss
+    scaled_loss = vf_coef * value_loss
 
     delta_mag = jnp.abs(targets_i - v_i).mean()
-    aux_info = {
+    return scaled_loss, {
         "val_loss": value_loss,
         "magnitude_loss": magnitude_loss,
         "dirichlet_loss": laplacian_loss,
+        "start_anchor_loss": start_anchor_loss,
         "delta_mag": delta_mag,
     }
-    return scaled_loss, aux_info
 
 
 def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
-    if not config.get("USES_AUX", config.get("SURGICAL_V_AUX", True)):
+    """
+    Surgical auxiliary E(0) critic loss matching E(lambda=0) for Brax state-value PPO.
+    Dispatches explicitly on config['E_VARIANT']:
+      - 'aux': surgical v_aux on backward branch + self-bootstrapped v_aux MSE loss
+      - 'e_aux': direct error head e_phi(s) ~ V(s) - v_theta(s) on backward branch
+      - 'fwd' or 'naive': delegates to e_0_basic_critic_loss_fn
+    """
+    variant = config["E_VARIANT"].lower()
+    if variant in ("naive", "fwd"):
         return e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config)
-    """
-    Surgical auxiliary E(0) critic loss matching bellman_error/ppo/sampled_E.py.
-    - Uses v_aux for the backwards branch of the Dirichlet loss.
-    - Forward branch uses sample returns G_t, G_{t+1}.
-    - Corrected start-state anchor 0.5 * gamma * E_{s0}[e(s0)^2] and timeout boundary correction.
-    - Trains v_aux towards self-bootstrapped return targets.
-    """
+    elif variant not in ("aux", "e_aux"):
+        raise ValueError(
+            f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of ('aux', 'e_aux', 'fwd', 'naive')."
+        )
+
     full_params = {"params": {**actor_params, **critic_params}}
     sg = jax.lax.stop_gradient
 
-    # Evaluate main value head and auxiliary head
-    v_i, v_aux_i = network.apply(full_params, traj_batch.obs, method=network.both)
-    v_j, v_aux_j = network.apply(full_params, traj_batch.next_obs, method=network.both)
+    v_i, aux_head_i = network.apply(full_params, traj_batch.obs, method=network.both)
+    v_j, aux_head_j = network.apply(full_params, traj_batch.next_obs, method=network.both)
 
-    # First-class attributes on Transition
     targets_i = targets if targets is not None else traj_batch.targets
     targets_j = traj_batch.next_targets
     aux_targets = traj_batch.aux_targets
-    is_timeout = traj_batch.is_timeout
-    true_terminal = traj_batch.done & ~is_timeout
+    is_timeout = traj_batch.is_timeout > 0.5
+    true_terminal = (traj_batch.done > 0.5) & ~is_timeout
     is_start = traj_batch.is_start
 
     gamma = config["GAMMA"]
     aux_coef = config.get("AUX_VF_COEF", 1.0)
+    vf_coef = config.get("VF_COEF", 0.5)
 
-    # Empirical MC errors
     e_i = targets_i - v_i
     e_j = jnp.where(true_terminal, 0.0, targets_j - v_j)
 
-    # Auxiliary head loss and errors
-    aux_mc_loss = aux_coef * 0.5 * jnp.mean((sg(aux_targets) - v_aux_i) ** 2)
-    e_tilde_i = sg(v_aux_i) - v_i
-    e_tilde_j = jnp.where(true_terminal, 0.0, sg(v_aux_j) - v_j)
+    if variant == "aux":
+        aux_mc_loss = compute_aux_head_loss(aux_head_i, aux_targets, aux_coef=aux_coef)
+        e_tilde_i = sg(aux_head_i) - v_i
+        e_tilde_j = jnp.where(true_terminal, 0.0, sg(aux_head_j) - v_j)
+        backward_sq = (sg(e_tilde_i) - e_tilde_j) ** 2
+    else:  # e_aux
+        aux_mc_loss = compute_aux_head_loss(aux_head_i, aux_targets - sg(v_i), aux_coef=aux_coef)
+        e_phi_j = jnp.where(true_terminal, 0.0, aux_head_j)
+        backward_sq = e_aux_backward_surrogate(aux_head_i, e_phi_j, v_j)
 
-    # Surgical Dirichlet loss:
-    # Forward branch (v_i): main error e_i, auxiliary error e_tilde_j
-    branch_v_i = (e_i - sg(e_tilde_j)) ** 2
-    # Backward branch (v_j): auxiliary error e_tilde_i, main error e_j
-    branch_v_j = (1.0 - true_terminal) * (sg(e_tilde_i) - e_j) ** 2
+    weight_mc = 0.5 * (1.0 - gamma)
+    weight_dir = 0.5 * gamma
+    start_weight = 0.25 * gamma
 
-    dirichlet_loss = 0.5 * gamma * jnp.mean(branch_v_i + branch_v_j)
+    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
+    branch_v_i = (e_i - sg(e_j)) ** 2
+    branch_v_j = jnp.where(true_terminal, 0.0, backward_sq)
+    diff_sq = jnp.where(
+        true_terminal | is_timeout,
+        e_i ** 2,
+        branch_v_i + branch_v_j,
+    )
+    laplacian_loss = weight_dir * jnp.mean(diff_sq)
+    start_anchor_loss = start_weight * jnp.mean(jnp.where(is_start, e_i ** 2, 0.0))
 
-    # Corrected start-state anchor and timeout boundary
-    start_loss = 0.5 * gamma * jnp.mean(jnp.where(is_start, e_i ** 2, 0.0))
-    timeout_loss = -0.5 * gamma * jnp.mean(jnp.where(is_timeout, e_j ** 2, 0.0))
+    value_loss = magnitude_loss + laplacian_loss + start_anchor_loss + aux_mc_loss
+    scaled_loss = vf_coef * value_loss
 
-    total_loss = dirichlet_loss + start_loss + timeout_loss + aux_mc_loss
-
-    aux_metrics = {
-        "val_loss": total_loss,
-        "dirichlet_loss": dirichlet_loss,
-        "start_loss": start_loss,
-        "timeout_loss": timeout_loss,
+    delta_mag = jnp.abs(targets_i - v_i).mean()
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": laplacian_loss,
+        "start_anchor_loss": start_anchor_loss,
         "aux_mc_loss": aux_mc_loss,
-        "delta_mag": jnp.mean(jnp.abs(e_i)),
+        "delta_mag": delta_mag,
     }
-    return total_loss, aux_metrics
 
 
 mc_critic_loss_fn = ppo_critic_loss_fn

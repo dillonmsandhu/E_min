@@ -6,8 +6,8 @@ Consolidates outputs across all continuous Gymnax environments from single-env /
 1. Discovers completed environment runs in <out_dir>/*/data/sweep_metrics_all.pkl
 2. Combines them into a single consolidated dataset
 3. Automatically generates the full 5 publication-grade cross-environment analyses:
-   - Table 1 & Figure 1: E(0) Variants (Naive vs v_aux vs Forward-Only)
-   - Table 2 & Figure 2: E(lambda=0.8) Variants (Naive vs v_aux vs Forward-Only)
+   - Table 1 & Figure 1: E(0) Variants (Naive vs v_aux vs e_aux vs Forward-Only)
+   - Table 2 & Figure 2: E(lambda=0.8) Variants (Naive vs v_aux vs e_aux vs Forward-Only)
    - Table 3 & Figure 3: Naive Head-to-Head (E(0) Naive vs E(0.8) Naive)
    - Table 4 & Figure 4: Expected SARSA(lambda) Grid (Effect of lambda on TD)
    - Table 5 & Figure 5: Master Championship (Best E vs Best TD)
@@ -86,7 +86,10 @@ def main():
                     timesteps[env_name] = d["timesteps"][env_name]
 
                 # Detect critic_lrs and sarsa_lambdas
-                for var_key in ["E(0)_naive", "E(0)_v_aux", "E(0)_fwd", "E(0.8)_naive", "E(0.8)_v_aux", "E(0.8)_fwd"]:
+                for var_key in [
+                    "E(0)_naive", "E(0)_v_aux", "E(0)_e_aux", "E(0)_fwd",
+                    "E(0.8)_naive", "E(0.8)_v_aux", "E(0.8)_e_aux", "E(0.8)_fwd",
+                ]:
                     if var_key in env_data:
                         all_critic_lrs.update(env_data[var_key].keys())
                 if "SARSA" in env_data:

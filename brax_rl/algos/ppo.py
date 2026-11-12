@@ -74,12 +74,19 @@ def make_train(config):
 
     def train(rng):
         c_type = config.get("CRITIC_TYPE", "fitted").lower()
+        e_variant = config.get("E_VARIANT", "naive").lower()
         critic_loss_fn = get_critic_loss_fn(c_type, split=True)
         actor_loss_fn = ppo_actor_loss_fn
 
         gae_lambda = config.get("GAE_LAMBDA", 0.95)
         target_lambda = get_critic_target_lambda(config)
-        uses_aux = config.get("USES_AUX", c_type in ["e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical"])
+        uses_aux = (
+            c_type in [
+                "e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical",
+                "e_lambda", "elambda", "e_geometric",
+            ]
+            and e_variant in ["aux", "e_aux"]
+        )
 
         # INIT NETWORK
         if uses_aux:
@@ -120,7 +127,12 @@ def make_train(config):
 
                 # SELECT ACTION & VALUE
                 rng, _rng = jax.random.split(rng)
-                pi, value = network.apply(train_state.params, last_obs)
+                if uses_aux:
+                    value, v_aux = network.apply(train_state.params, last_obs, method=network.both)
+                    pi = network.apply(train_state.params, last_obs, method=network.policy)
+                else:
+                    pi, value = network.apply(train_state.params, last_obs)
+                    v_aux = jnp.zeros_like(value)
                 action = pi.sample(seed=_rng)
                 log_prob = pi.log_prob(action)
 
@@ -145,6 +157,7 @@ def make_train(config):
                     info=info,
                     is_start=is_start,
                     is_timeout=is_timeout,
+                    v_aux=v_aux,
                 )
                 return (train_state, env_state, obsv, true_terminal, rng), transition
 
@@ -154,8 +167,8 @@ def make_train(config):
             )
 
             # 2. CALCULATE ADVANTAGES & TARGETS
-            _, last_val = network.apply(train_state.params, last_obs)
-            regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val[None]], axis=0)
+            last_val_raw = network.apply(train_state.params, last_obs, method=network.value)
+            regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val_raw[None]], axis=0)
             timeout_next_val = network.apply(train_state.params, traj_batch.next_obs, method=network.value)
             if timeout_next_val.ndim > regular_next_val.ndim:
                 timeout_next_val = timeout_next_val.squeeze(-1)
@@ -177,30 +190,40 @@ def make_train(config):
                     target_lambda=target_lambda,
                 )
 
-            # AUXILIARY TARGETS (Self-bootstrapped via v_aux matching ppo/sampled_E.py)
-            if uses_aux:
+            # AUXILIARY TARGETS
+            if uses_aux and e_variant == "aux":
                 final_next_aux_val = network.apply(
                     train_state.params, traj_batch.next_obs[-1], method=network.v_aux
                 )
                 if final_next_aux_val.ndim > 1:
                     final_next_aux_val = final_next_aux_val.squeeze(-1)
-                regular_aux_next = jnp.concatenate([traj_batch.value[1:], final_next_aux_val[None]], axis=0)
+                regular_aux_next = jnp.concatenate([traj_batch.v_aux[1:], final_next_aux_val[None]], axis=0)
                 timeout_aux_next = network.apply(train_state.params, traj_batch.next_obs, method=network.v_aux)
                 if timeout_aux_next.ndim > regular_aux_next.ndim:
                     timeout_aux_next = timeout_aux_next.squeeze(-1)
                 aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
                 aux_lambda = config.get("AUX_LAMBDA", 1.0)
+                traj_batch_aux = traj_batch._replace(value=traj_batch.v_aux)
                 _, aux_targets = calculate_gae(
-                    traj_batch,
+                    traj_batch_aux,
                     aux_next_value,
                     gamma=config["GAMMA"],
                     gae_lambda=aux_lambda,
+                )
+            elif uses_aux and e_variant == "e_aux":
+                aux_lambda = config.get("AUX_LAMBDA", 1.0)
+                aux_targets = calculate_targets(
+                    traj_batch,
+                    next_value,
+                    gamma=config["GAMMA"],
+                    target_lambda=aux_lambda,
                 )
             else:
                 aux_targets = targets
 
             # Align next targets G_{t+1} matching ppo/sampled_E.py
             true_terminal = traj_batch.done & ~traj_batch.is_timeout
+            last_val = jnp.where(true_terminal[-1], 0.0, next_value[-1])
             next_targets = jnp.roll(targets, shift=-1, axis=0)
             next_targets = next_targets.at[-1].set(last_val)
             next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
