@@ -576,7 +576,11 @@ def run_sweep(args):
         for lam in td_lambdas:
             env_dict["TD"].setdefault(lam, {})
 
-        critic_decay_ratio = brax_ppo_config["CRITIC_LR_END"] / brax_ppo_config["CRITIC_LR"]
+        critic_decay_ratio = brax_ppo_config.get(
+            "CRITIC_LR_END", brax_ppo_config["NETWORK_CONFIG"]["LR_END"]
+        ) / brax_ppo_config.get(
+            "CRITIC_LR", brax_ppo_config["NETWORK_CONFIG"]["LR"]
+        )
         base_cfg = {
             **brax_ppo_config,
             "ENV_NAME": env_name,
@@ -968,12 +972,24 @@ def main():
     parser = argparse.ArgumentParser(description="Run PPO Comprehensive Critic Sweep on Brax")
     parser.add_argument("--envs", nargs="+", default=DEFAULT_ENVS, help="Brax Environment Names")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
-    parser.add_argument("--actor_lr", type=float, default=brax_ppo_config["ACTOR_LR"], help="Fixed actor learning rate")
+    parser.add_argument(
+        "--actor_lr",
+        type=float,
+        default=brax_ppo_config.get("ACTOR_LR", brax_ppo_config["NETWORK_CONFIG"]["LR"]),
+        help="Fixed actor learning rate",
+    )
     parser.add_argument("--td_lambdas", nargs="+", type=float, default=DEFAULT_TD_LAMBDAS, help="TD/GAE lambdas to sweep")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Override total timesteps per env")
     parser.add_argument("--num_envs", type=int, default=brax_ppo_config["NUM_ENVS"], help="Parallel environments")
     parser.add_argument("--num_steps", type=int, default=brax_ppo_config["NUM_STEPS"], help="Rollout length")
-    parser.add_argument("--minibatch_size", type=int, default=brax_ppo_config["ACTOR_MINIBATCH_SIZE"], help="Minibatch size")
+    parser.add_argument(
+        "--minibatch_size",
+        type=int,
+        default=brax_ppo_config.get(
+            "ACTOR_MINIBATCH_SIZE", brax_ppo_config["NETWORK_CONFIG"]["MINIBATCH_SIZE"]
+        ),
+        help="Minibatch size",
+    )
     parser.add_argument("--n_seeds", type=int, default=3, help="Seeds per condition")
     parser.add_argument("--master_seed", type=int, default=42, help="Master RNG seed")
     parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to evaluate")
