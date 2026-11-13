@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-5
+#SBATCH --array=0-10
 
 # ==============================================================================
 # Continuous Q-Critic (DDPG) Comparison Sweep: Brax Per-Environment Array Task
@@ -16,13 +16,18 @@
 #   2. E(lambda=0.8) Variants (Naive, v_aux, Forward-Only)
 #   3. Expected SARSA(lambda) Sensitivity Grid (0.0, 0.4, 0.8, 0.95, 1.0)
 #
-# Environments: 6 Deterministic Continuous Brax Environments:
+# Environments: 11 Deterministic Continuous Brax Environments:
 #   0: hopper (10M steps)
 #   1: halfcheetah (10M steps)
 #   2: walker2d (10M steps)
 #   3: ant (10M steps)
-#   4: inverted_pendulum (2M steps)
-#   5: reacher (5M steps)
+#   4: humanoid (20M steps)
+#   5: humanoidstandup (20M steps)
+#   6: inverted_pendulum (2M steps)
+#   7: inverted_double_pendulum (2M steps)
+#   8: pusher (5M steps)
+#   9: reacher (5M steps)
+#   10: swimmer (10M steps)
 # ==============================================================================
 
 set -e
@@ -59,8 +64,13 @@ ALL_ENVS=(
     "halfcheetah"
     "walker2d"
     "ant"
+    "humanoid"
+    "humanoidstandup"
     "inverted_pendulum"
+    "inverted_double_pendulum"
+    "pusher"
     "reacher"
+    "swimmer"
 )
 
 # Select environment from CLI argument or SLURM_ARRAY_TASK_ID
@@ -82,10 +92,12 @@ if [ -z "$ENV_NAME" ]; then
 fi
 
 if [ -z "$TOTAL_TIMESTEPS" ] || [ "$TOTAL_TIMESTEPS" = "auto" ]; then
-    if [ "$ENV_NAME" = "inverted_pendulum" ]; then
+    if [ "$ENV_NAME" = "inverted_pendulum" ] || [ "$ENV_NAME" = "inverted_double_pendulum" ]; then
         ENV_TIMESTEPS=2000000
-    elif [ "$ENV_NAME" = "reacher" ]; then
+    elif [ "$ENV_NAME" = "reacher" ] || [ "$ENV_NAME" = "pusher" ]; then
         ENV_TIMESTEPS=5000000
+    elif [ "$ENV_NAME" = "humanoid" ] || [ "$ENV_NAME" = "humanoidstandup" ]; then
+        ENV_TIMESTEPS=20000000
     else
         ENV_TIMESTEPS=10000000
     fi

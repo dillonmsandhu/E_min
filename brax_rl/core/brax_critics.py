@@ -88,21 +88,22 @@ def get_critic_target_lambda(config: dict) -> float:
     - Fitted PPO / SARSA(lambda): VALUE_LAMBDA (default 0.95).
     - TD(0) / SARSA(0): TD_LAMBDA (default 0.0).
     """
-    critic_type = config["CRITIC_TYPE"].lower()
+    critic_type = config.get("CRITIC_TYPE", "fitted").lower()
     if critic_type in [
         "e_0", "e_0_q", "e_0_basic", "e_basic", "e_0_biased", "e_biased", "e0", "e",
         "sampled_e", "surgical_v_aux", "surgical",
         "e_lambda", "e_lambda_q", "elambda", "e_geometric",
+        "e_inner", "e_bilinear", "e_double", "e_min",
     ]:
         return config["RETURN_LAMBDA"]
-    elif critic_type in ["td_0", "td", "td0", "sarsa_0"]:
+    elif critic_type in ["td_0", "td", "td0", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe"]:
         return config["TD_LAMBDA"]
     elif critic_type in ["mc", "sampled_mc"]:
         return 1.0
     elif critic_type in ["fitted", "ppo", "sarsa", "sarsa_lambda", "td_lambda"]:
-        return config["VALUE_LAMBDA"]
+        return config.get("VALUE_LAMBDA", config["GAE_LAMBDA"])
     else:
-        raise ValueError(f"Unrecognized CRITIC_TYPE '{config['CRITIC_TYPE']}'.")
+        raise ValueError(f"Unrecognized CRITIC_TYPE '{critic_type}'.")
 
 
 def ppo_value_loss(value, targets, value_old=None, vf_clip=None):
@@ -851,6 +852,228 @@ def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
 
 mc_critic_loss_fn = ppo_critic_loss_fn
 
+
+def double_sample_msbe_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """
+    Baird double-sampled Mean Squared Bellman Error (MSBE) critic loss:
+        L(theta) = 0.5 * [ sg(delta_1) * delta_2 + sg(delta_2) * delta_1 ]
+    where delta_1 and delta_2 are 1-step Bellman errors from the same state s_t
+    evaluated along two independent transitions (branch 1 and branch 2).
+    In expectation conditional on s_t, E[grad L] = E[delta] * grad E[delta] = grad (0.5 * E[delta]^2).
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+
+    v = network.apply(full_params, traj_batch.obs, method=network.value)
+    v_next_1 = network.apply(full_params, traj_batch.next_obs, method=network.value)
+    v_next_2 = network.apply(full_params, traj_batch.probe_next_obs, method=network.value)
+
+    true_term_1 = traj_batch.done & ~traj_batch.is_timeout
+    true_term_2 = traj_batch.probe_done & ~traj_batch.probe_is_timeout
+
+    if v.ndim > traj_batch.reward.ndim:
+        reward_1 = traj_batch.reward[..., None]
+        reward_2 = traj_batch.probe_reward[..., None]
+        true_term_1 = true_term_1[..., None]
+        true_term_2 = true_term_2[..., None]
+    else:
+        reward_1 = traj_batch.reward
+        reward_2 = traj_batch.probe_reward
+
+    bootstrap_1 = 1.0 - true_term_1
+    bootstrap_2 = 1.0 - true_term_2
+
+    delta_1 = reward_1 + gamma * bootstrap_1 * v_next_1 - v
+    delta_2 = reward_2 + gamma * bootstrap_2 * v_next_2 - v
+
+    loss = 0.5 * (sg(delta_1) * delta_2 + sg(delta_2) * delta_1)
+    value_loss = jnp.mean(loss)
+    diagnostic_msbe = jnp.mean(delta_1 * delta_2)
+
+    return value_loss, {
+        "val_loss": value_loss,
+        "delta_mag": jnp.mean(jnp.abs(delta_1)),
+        "delta2_mag": jnp.mean(jnp.abs(delta_2)),
+        "diagnostic_msbe": diagnostic_msbe,
+    }
+
+
+def double_sample_e_inner_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """
+    Double-sampled Bilinear Energy Minimization critic loss:
+        E = 0.5 * <e, bar_delta>_D
+    Using branch 1 for empirical error e_hat_1 = targets_1 - v(s_t) (where targets_1 = G_t^(1)),
+    and branch 2 (probe) for independent next state s_(t+1)^(2) and delta_2.
+    Surrogate loss:
+        L(theta) = -0.5 * [ sg(bar_delta) + sg(e_hat_1) ] * v(s_t)
+                 + 0.5 * gamma * sg(e_hat_1) * (1 - true_terminal_2) * v(s_(t+1)^(2))
+    where bar_delta = 0.5 * (delta_1 + delta_2).
+    In expectation conditional on s_t, grad L matches grad E with ZERO double-sampling bias
+    and requires no auxiliary value network (v_aux).
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+
+    targets_i = targets if targets is not None else traj_batch.targets
+
+    v = network.apply(full_params, traj_batch.obs, method=network.value)
+    v_next_1 = network.apply(full_params, traj_batch.next_obs, method=network.value)
+    v_next_2 = network.apply(full_params, traj_batch.probe_next_obs, method=network.value)
+
+    true_term_1 = traj_batch.done & ~traj_batch.is_timeout
+    true_term_2 = traj_batch.probe_done & ~traj_batch.probe_is_timeout
+
+    if v.ndim > traj_batch.reward.ndim:
+        reward_1 = traj_batch.reward[..., None]
+        reward_2 = traj_batch.probe_reward[..., None]
+        true_term_1 = true_term_1[..., None]
+        true_term_2 = true_term_2[..., None]
+        targets_i = targets_i[..., None]
+    else:
+        reward_1 = traj_batch.reward
+        reward_2 = traj_batch.probe_reward
+
+    bootstrap_1 = 1.0 - true_term_1
+    bootstrap_2 = 1.0 - true_term_2
+
+    delta_1 = reward_1 + gamma * bootstrap_1 * v_next_1 - v
+    delta_2 = reward_2 + gamma * bootstrap_2 * v_next_2 - v
+    delta_bar = 0.5 * (delta_1 + delta_2)
+
+    e_hat_1 = targets_i - v
+
+    loss = (
+        -0.5 * (sg(delta_bar) + sg(e_hat_1)) * v
+        + 0.5 * gamma * sg(e_hat_1) * bootstrap_2 * v_next_2
+    )
+
+    value_loss = jnp.mean(loss)
+    diagnostic_msbe = jnp.mean(delta_1 * delta_2)
+
+    return value_loss, {
+        "val_loss": value_loss,
+        "delta_mag": jnp.mean(jnp.abs(delta_1)),
+        "delta2_mag": jnp.mean(jnp.abs(delta_2)),
+        "e_mag": jnp.mean(jnp.abs(e_hat_1)),
+        "diagnostic_msbe": diagnostic_msbe,
+    }
+
+
+def double_sample_mspbe_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """
+    Nonlinear Mean Squared Projected Bellman Error (MSPBE) with 1-step Double Sampling.
+    Formally projects the Bellman error onto the tangent space (Jacobian span) of the
+    value function manifold, as derived in Maei et al. (NeurIPS 2009):
+        grad_theta MSPBE = - E[ (psi(s) - gamma * psi(s'_2)) * (psi(s)^T w*) ]
+                           - E[ (delta_2 - psi(s)^T w*) * (nabla_theta^2 V_theta(s) w*) ]
+    where:
+      - w* is the optimal tangent projection weight vector estimated on Branch 1 (delta_1)
+        via conjugate gradient without constructing full Jacobian/Gram matrices.
+      - delta_2 and s'_2 are from the conditionally independent Branch 2 (probe), eliminating
+        sampling bias on both the tangent projection and the Hessian-vector product.
+      - nabla_theta^2 V_theta(s) w* is the exact Hessian-vector product (HVP) computed via
+        forward-over-reverse autodiff: d/d theta [ <nabla_theta V_theta(s), w*> ].
+    """
+    full_params_fn = lambda p: {"params": {**actor_params, **p}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+    lambda_ridge = config.get("MSPBE_RIDGE", 1e-4)
+    cg_iters = config.get("MSPBE_CG_ITERS", 10)
+
+    obs = traj_batch.obs
+    batch_size = obs.shape[0]
+
+    def v_batch(p, x):
+        val = network.apply(full_params_fn(p), x, method=network.value)
+        if val.ndim > 1:
+            val = jnp.squeeze(val, axis=-1)
+        return val
+
+    # Continuation values (Branch 1 and Branch 2)
+    v_s_old = sg(v_batch(critic_params, obs))
+    v_next_1_old = sg(v_batch(critic_params, traj_batch.next_obs))
+    v_next_2_old = sg(v_batch(critic_params, traj_batch.probe_next_obs))
+
+    true_term_1 = traj_batch.done & ~traj_batch.is_timeout
+    true_term_2 = traj_batch.probe_done & ~traj_batch.probe_is_timeout
+
+    boot_1 = 1.0 - true_term_1
+    boot_2 = 1.0 - true_term_2
+
+    reward_1 = traj_batch.reward
+    reward_2 = traj_batch.probe_reward
+    if reward_1.ndim > 1:
+        reward_1 = jnp.squeeze(reward_1, axis=-1)
+    if reward_2.ndim > 1:
+        reward_2 = jnp.squeeze(reward_2, axis=-1)
+
+    delta_1 = reward_1 + gamma * boot_1 * v_next_1_old - v_s_old
+    delta_2 = reward_2 + gamma * boot_2 * v_next_2_old - v_s_old
+
+    # 1. Solve for tangent projection weights w* using Branch 1
+    _, vjp_fn = jax.vjp(lambda p: v_batch(p, obs), critic_params)
+    b = vjp_fn(delta_1 / batch_size)[0]
+
+    def matvec(w):
+        _, jv = jax.jvp(lambda p: v_batch(p, obs), (critic_params,), (w,))
+        vj = vjp_fn(jv / batch_size)[0]
+        return jax.tree_util.tree_map(lambda v, w_: v + lambda_ridge * w_, vj, w)
+
+    w_init = jax.tree_util.tree_map(jnp.zeros_like, critic_params)
+    w_star, _ = jax.scipy.sparse.linalg.cg(matvec, b, x0=w_init, maxiter=cg_iters)
+    w_star = sg(w_star)
+
+    # 2. Projected Bellman error and orthogonal residual on Branch 2
+    _, delta_proj = jax.jvp(lambda p: v_batch(p, obs), (critic_params,), (w_star,))
+    delta_proj = sg(delta_proj)
+    r_perp = sg(delta_2 - delta_proj)
+
+    # 3. Live surrogate terms w.r.t critic_params
+    v_s_live = v_batch(critic_params, obs)
+    v_next_2_live = v_batch(critic_params, traj_batch.probe_next_obs)
+    _, jvp_live = jax.jvp(lambda p: v_batch(p, obs), (critic_params,), (w_star,))
+
+    term1 = delta_proj * (gamma * boot_2 * v_next_2_live - v_s_live)
+    term2 = - r_perp * jvp_live
+
+    value_loss = jnp.mean(term1 + term2)
+    diagnostic_msbe = jnp.mean(delta_1 * delta_2)
+    diagnostic_mspbe = jnp.mean(delta_proj ** 2)
+
+    return value_loss, {
+        "val_loss": value_loss,
+        "delta_mag": jnp.mean(jnp.abs(delta_1)),
+        "delta2_mag": jnp.mean(jnp.abs(delta_2)),
+        "delta_proj_mag": jnp.mean(jnp.abs(delta_proj)),
+        "r_perp_mag": jnp.mean(jnp.abs(r_perp)),
+        "diagnostic_msbe": diagnostic_msbe,
+        "diagnostic_mspbe": diagnostic_mspbe,
+    }
+
+
 SPLIT_CRITIC_LOSS_FNS = {
     "fitted": ppo_critic_loss_fn,
     "ppo": ppo_critic_loss_fn,
@@ -873,6 +1096,14 @@ SPLIT_CRITIC_LOSS_FNS = {
     "elambda": e_lambda_geometric_critic_loss_fn,
     "mc": mc_critic_loss_fn,
     "sampled_mc": mc_critic_loss_fn,
+    "msbe": double_sample_msbe_critic_loss_fn,
+    "double_msbe": double_sample_msbe_critic_loss_fn,
+    "e_inner": double_sample_e_inner_critic_loss_fn,
+    "e_bilinear": double_sample_e_inner_critic_loss_fn,
+    "e_double": double_sample_e_inner_critic_loss_fn,
+    "e_min": double_sample_e_inner_critic_loss_fn,
+    "mspbe": double_sample_mspbe_critic_loss_fn,
+    "double_mspbe": double_sample_mspbe_critic_loss_fn,
 }
 
 

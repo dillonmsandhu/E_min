@@ -2,7 +2,7 @@
 # ==============================================================================
 # E_min/scripts/brax/sweep_continuous_q_critic/submit_array.sh
 #
-# Launches the 6-environment SLURM array job for the continuous Q-critic (DDPG) sweep
+# Launches the 11-environment SLURM array job for the continuous Q-critic (DDPG) sweep
 # across deterministic continuous-control Brax domains.
 # Automatically chains the consolidated post-processing job to run upon completion.
 #
@@ -76,7 +76,7 @@ SBATCH_ARRAY_CMD="sbatch --parsable \
     \"$ARRAY_SCRIPT\""
 
 ARRAY_JOB_ID=$(eval "$SBATCH_ARRAY_CMD")
-echo "Submitted Array Job ID: $ARRAY_JOB_ID (6 continuous Brax environments)"
+echo "Submitted Array Job ID: $ARRAY_JOB_ID (11 continuous Brax environments)"
 
 POST_SCRIPT="scripts/brax/sweep_continuous_q_critic/plot_consolidated_results.py"
 

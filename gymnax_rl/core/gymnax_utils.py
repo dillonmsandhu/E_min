@@ -33,6 +33,33 @@ class Transition(NamedTuple):
     v_aux: Optional[jnp.ndarray] = None
 
 
+class Double_Sample_Transition(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    next_obs: jnp.ndarray
+    info: Any
+    is_start: jnp.ndarray
+    is_timeout: jnp.ndarray
+    probe_action: jnp.ndarray
+    probe_reward: jnp.ndarray
+    probe_done: jnp.ndarray
+    probe_next_obs: jnp.ndarray
+    probe_is_timeout: jnp.ndarray
+    v_aux: Optional[jnp.ndarray] = None
+    next_value: Optional[jnp.ndarray] = None
+    targets: Optional[jnp.ndarray] = None
+    next_targets: Optional[jnp.ndarray] = None
+    aux_targets: Optional[jnp.ndarray] = None
+    probe_next_value: Optional[jnp.ndarray] = None
+
+
+DoubleSampleTransition = Double_Sample_Transition
+
+
 def scale_rms(x):
     """
     Scales input by its Root Mean Square (RMS) without centering.

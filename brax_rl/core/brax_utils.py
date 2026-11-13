@@ -28,6 +28,32 @@ class Transition(NamedTuple):
     next_targets: Optional[jnp.ndarray] = None
     aux_targets: Optional[jnp.ndarray] = None
 
+
+class Double_Sample_Transition(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    next_obs: jnp.ndarray
+    info: Any
+    is_start: jnp.ndarray
+    is_timeout: jnp.ndarray
+    probe_action: jnp.ndarray
+    probe_reward: jnp.ndarray
+    probe_done: jnp.ndarray
+    probe_next_obs: jnp.ndarray
+    probe_is_timeout: jnp.ndarray
+    v_aux: Optional[jnp.ndarray] = None
+    next_value: Optional[jnp.ndarray] = None
+    targets: Optional[jnp.ndarray] = None
+    next_targets: Optional[jnp.ndarray] = None
+    aux_targets: Optional[jnp.ndarray] = None
+    probe_next_value: Optional[jnp.ndarray] = None
+
+DoubleSampleTransition = Double_Sample_Transition
+
 def load_config_dict(file_path: str) -> dict:
     import importlib.util
     spec = importlib.util.spec_from_file_location("config", file_path)

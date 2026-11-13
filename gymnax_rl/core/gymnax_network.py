@@ -41,6 +41,14 @@ NON_AUX_CRITICS = (
     "sampled_td_lambda",
     "mc",
     "sampled_mc",
+    "msbe",
+    "double_msbe",
+    "mspbe",
+    "double_mspbe",
+    "e_inner",
+    "e_bilinear",
+    "e_double",
+    "e_min",
 )
 
 VALID_E_VARIANTS = ("aux", "e_aux", "fwd", "naive")

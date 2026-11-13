@@ -1,0 +1,1 @@
+/Users/dillonsandhu/Documents/Research/bellman_error/.agents/rules/non_defensive_coding.md

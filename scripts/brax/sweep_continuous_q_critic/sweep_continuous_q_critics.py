@@ -68,11 +68,28 @@ ENV_TITLES = {
     "halfcheetah": "HalfCheetah",
     "walker2d": "Walker2d",
     "ant": "Ant",
+    "humanoid": "Humanoid",
+    "humanoidstandup": "HumanoidStandup",
     "inverted_pendulum": "Inverted Pendulum",
+    "inverted_double_pendulum": "Inverted Double Pendulum",
+    "pusher": "Pusher",
     "reacher": "Reacher",
+    "swimmer": "Swimmer",
 }
 
-DEFAULT_ENVS = ["hopper", "halfcheetah", "walker2d", "ant", "inverted_pendulum", "reacher"]
+DEFAULT_ENVS = [
+    "hopper",
+    "halfcheetah",
+    "walker2d",
+    "ant",
+    "humanoid",
+    "humanoidstandup",
+    "inverted_pendulum",
+    "inverted_double_pendulum",
+    "pusher",
+    "reacher",
+    "swimmer",
+]
 DEFAULT_CRITIC_LRS = [3e-4, 1e-3, 3e-3]
 DEFAULT_SARSA_LAMBDAS = [0.0, 0.4, 0.8, 0.95, 1.0]
 REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
@@ -82,11 +99,13 @@ def get_env_default_timesteps(env_name: str, fallback_timesteps: int | None = No
     """Returns environment-specific timesteps for Brax."""
     if fallback_timesteps is not None:
         return fallback_timesteps
-    if env_name in ["inverted_pendulum"]:
+    if env_name in ["inverted_pendulum", "inverted_double_pendulum"]:
         return 2_000_000
-    elif env_name in ["reacher"]:
+    elif env_name in ["reacher", "pusher"]:
         return 5_000_000
-    elif env_name in ["hopper", "walker2d", "halfcheetah", "ant"]:
+    elif env_name in ["humanoid", "humanoidstandup"]:
+        return 20_000_000
+    elif env_name in ["hopper", "walker2d", "halfcheetah", "ant", "swimmer"]:
         return 10_000_000
     else:
         return 5_000_000
