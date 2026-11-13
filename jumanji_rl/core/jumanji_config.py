@@ -17,7 +17,7 @@ config = {
     # Optimization
     "LR": 0.0003,
     "LR_END": None,
-    "ACTOR_LR": 0.0003,
+    "ACTOR_LR": 0.001,
     "ACTOR_LR_END": None,
     "CRITIC_LR": 0.0003,
     "CRITIC_LR_END": None,
@@ -45,8 +45,9 @@ config = {
     "AUX_VF_COEF": 1.0,
     "CLIP_EPS": 0.1,
     "VF_COEF": 0.5,
-    "ENT_COEF": 0.01,
+    "ENT_COEF": 0.005,
     "POLICY_COEFF": 1.0,
     "ANNEAL_LR": False,
     "NORMALIZE_ADVANTAGE": True,
 }
+
