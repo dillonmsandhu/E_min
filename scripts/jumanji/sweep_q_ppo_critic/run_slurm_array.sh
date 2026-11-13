@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-2
+#SBATCH --array=0-5
 
 # ==============================================================================
 # Q-PPO Critic Comparison Sweep: Jumanji Per-Environment Array Task
@@ -19,7 +19,10 @@
 # Environments:
 #   0: Sokoban-v0 (2M steps)
 #   1: Snake-v1 (2M steps)
-#   2: Game2048-v1 (2M steps)
+#   2: Maze-v0 (2M steps)
+#   3: SlidingTilePuzzle-v0 (2M steps)
+#   4: RubiksCube-partly-scrambled-v0 (2M steps)
+#   5: Game2048-v1 (2M steps)
 # ==============================================================================
 
 set -e
@@ -53,6 +56,9 @@ fi
 ALL_ENVS=(
     "Sokoban-v0"
     "Snake-v1"
+    "Maze-v0"
+    "SlidingTilePuzzle-v0"
+    "RubiksCube-partly-scrambled-v0"
     "Game2048-v1"
 )
 

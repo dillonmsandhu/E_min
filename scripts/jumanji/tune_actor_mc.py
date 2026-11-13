@@ -43,7 +43,14 @@ import jax
 from jumanji_rl.core.jumanji_config import config as base_default_config
 from jumanji_rl.algos.q_ppo import make_train
 
-DEFAULT_ENVS = ["Sokoban-v0", "Snake-v1", "Game2048-v1"]
+DEFAULT_ENVS = [
+    "Sokoban-v0",
+    "Snake-v1",
+    "Maze-v0",
+    "SlidingTilePuzzle-v0",
+    "RubiksCube-partly-scrambled-v0",
+    "Game2048-v1",
+]
 
 DEFAULT_SEARCH_SPACE = {
     "ACTOR_LR": [0.0001, 0.0003, 0.001],

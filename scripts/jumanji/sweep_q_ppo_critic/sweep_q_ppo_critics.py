@@ -41,14 +41,19 @@ from jumanji_rl.algos.q_ppo import make_train
 DEFAULT_ENVS = [
     "Sokoban-v0",
     "Snake-v1",
+    "Maze-v0",
+    "SlidingTilePuzzle-v0",
+    "RubiksCube-partly-scrambled-v0",
     "Game2048-v1",
 ]
 
 ENV_TITLES = {
     "Sokoban-v0": "Sokoban (10x10)",
     "Snake-v1": "Snake (12x12)",
+    "Maze-v0": "Maze Navigation (10x10)",
+    "SlidingTilePuzzle-v0": "Sliding Tile Puzzle (5x5)",
+    "RubiksCube-partly-scrambled-v0": "Rubik's Cube (3x3x3, 18-Action)",
     "Game2048-v1": "Game 2048 (4x4)",
-    "SlidingTilePuzzle-v0": "Sliding Tile Puzzle (3x3)",
 }
 
 DEFAULT_CRITIC_LRS = [0.0001, 0.0003, 0.001]
@@ -57,8 +62,10 @@ DEFAULT_TD_LAMBDAS = [0.0, 0.4, 0.8, 0.95, 1.0]
 ENV_DEFAULT_TIMESTEPS = {
     "Sokoban-v0": 2_000_000,
     "Snake-v1": 2_000_000,
-    "Game2048-v1": 2_000_000,
+    "Maze-v0": 2_000_000,
     "SlidingTilePuzzle-v0": 2_000_000,
+    "RubiksCube-partly-scrambled-v0": 2_000_000,
+    "Game2048-v1": 2_000_000,
 }
 
 REAL_WIN_REL_TOL = 0.01  # 1% relative tolerance for ties
