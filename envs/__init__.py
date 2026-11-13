@@ -8,6 +8,11 @@ from envs.point_robot import (
     PointRobotDiscrete,
     EnvParams as PointRobotParams,
 )
+from envs.jumanji_wrapper import (
+    JumanjiEnvironment,
+    JumanjiEnvParams,
+    JumanjiEnvState,
+)
 
 __all__ = [
     "MountainCarDenseContinuous",
@@ -16,4 +21,7 @@ __all__ = [
     "PointRobot",
     "PointRobotDiscrete",
     "PointRobotParams",
+    "JumanjiEnvironment",
+    "JumanjiEnvParams",
+    "JumanjiEnvState",
 ]
