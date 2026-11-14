@@ -662,7 +662,7 @@ def run_sweep(args):
             "MINIBATCH_SIZE": minibatch_size,
             "ACTOR_MINIBATCH_SIZE": minibatch_size,
             "CRITIC_MINIBATCH_SIZE": minibatch_size,
-            "GAE_LAMBDA": 0.95,
+            "GAE_LAMBDA": brax_ppo_config["GAE_LAMBDA"],
             "VALUE_LAMBDA": 0.95,
             "RETURN_LAMBDA": 1.0,
             "TD_LAMBDA": 0.0,

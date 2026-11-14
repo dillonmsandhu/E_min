@@ -75,7 +75,7 @@ def make_train(config):
         critic_loss_fn = get_critic_loss_fn(c_type, split=True)
         actor_loss_fn = ppo_actor_loss_fn
 
-        gae_lambda = config.get("GAE_LAMBDA", 0.95)
+        gae_lambda = config.get("ACTOR_GAE_LAMBDA", config["GAE_LAMBDA"])
         target_lambda = get_critic_target_lambda(config)
 
         # Standard ActorCritic network (single value head, no auxiliary head needed)

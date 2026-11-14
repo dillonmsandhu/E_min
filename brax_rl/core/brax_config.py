@@ -4,7 +4,7 @@ config = {
     "NUM_ENVS": 512,
     "NUM_STEPS": 128,
     "GAMMA": 0.99,
-    "GAE_LAMBDA": 0.95,
+    "GAE_LAMBDA": 0.8,
     "CLIP_EPS": 0.2,
     "ENT_COEF": 0.001,
     "ENV_NAME": "hopper",
