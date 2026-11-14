@@ -34,12 +34,14 @@ try:
     from scripts.brax.sweep_double_sample.sweep_double_sample_critics import (
         generate_diagnostics_and_plots,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
         CRITIC_VARIANTS,
     )
 except ImportError:
     from sweep_double_sample_critics import (
         generate_diagnostics_and_plots,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
         CRITIC_VARIANTS,
     )
 
@@ -71,6 +73,7 @@ def main():
     consolidated_runs = {}
     timesteps = {}
     all_critic_lrs = set()
+    all_critic_epochs = set()
 
     for pkl_path in sorted(env_pickles):
         try:
@@ -83,10 +86,15 @@ def main():
                 if "timesteps" in d and env_name in d["timesteps"]:
                     timesteps[env_name] = d["timesteps"][env_name]
 
-                # Detect critic_lrs
+                # Detect critic_lrs and critic_epochs
                 for var_key, _ in CRITIC_VARIANTS:
                     if var_key in env_data:
-                        all_critic_lrs.update(env_data[var_key].keys())
+                        for k in env_data[var_key].keys():
+                            if isinstance(k, tuple):
+                                all_critic_lrs.add(k[0])
+                                all_critic_epochs.add(k[1])
+                            elif isinstance(k, (int, float)):
+                                all_critic_lrs.add(k)
         except Exception as e:
             print(f"  [Error] Failed loading {pkl_path}: {e}")
 
@@ -95,11 +103,13 @@ def main():
         return
 
     critic_lrs = sorted(list(all_critic_lrs)) if all_critic_lrs else DEFAULT_CRITIC_LRS
+    critic_epochs = sorted(list(all_critic_epochs)) if all_critic_epochs else DEFAULT_CRITIC_EPOCHS
     envs = list(consolidated_runs.keys())
 
     print("\nConsolidated Summary:")
     print(f"  Environments ({len(envs)}): {envs}")
-    print(f"  Critic LRs:   {critic_lrs}")
+    print(f"  Critic LRs:    {critic_lrs}")
+    print(f"  Critic Epochs: {critic_epochs}")
 
     # Save consolidated dataset
     cons_data_dir = os.path.join(out_dir, "data")
@@ -111,7 +121,7 @@ def main():
 
     # Generate Publication Analyses
     generate_diagnostics_and_plots(
-        consolidated_runs, timesteps, out_dir, envs, critic_lrs, args.metric_key, batch_size
+        consolidated_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, args.metric_key, batch_size
     )
 
 

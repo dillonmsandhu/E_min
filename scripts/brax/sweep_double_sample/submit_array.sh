@@ -4,10 +4,12 @@
 #
 # Launches the 11-environment SLURM array job for the Double-Sampling Critic Sweep
 # across deterministic continuous-control Brax domains:
-#   1. Fitted Value Iteration (GAE baseline)
-#   2. MSBE (Baird double-sampled Bellman error)
-#   3. E-Min (Double-sampled bilinear energy minimization <e, bar_delta>_D)
-#   4. MSPBE (Tangent space projection with CG & exact Hessian-vector products)
+#   1. Online TD(0) (semi-gradient with live target sg(V_θ(s')))
+#   2. Fitted TD(0) (pure 1-step TD, λ=0 baseline)
+#   3. MSBE (Baird double-sampled Bellman error)
+#   4. E-Min (Double-sampled bilinear energy minimization <e, bar_delta>_D)
+#   5. MSPBE (Tangent space projection with CG & exact Hessian-vector products)
+#   6. Fitted GAE (λ=0.95 empirical reference)
 #
 # Automatically chains the consolidated post-processing job to run upon completion.
 #
@@ -32,12 +34,13 @@ N_SEEDS=${2:-5}
 OUT_DIR=${3:-"results/sweep_double_sample_brax"}
 MASTER_SEED=${MASTER_SEED:-42}
 CRITIC_LRS=${CRITIC_LRS:-"0.0003 0.001 0.003"}
-ACTOR_LR=${ACTOR_LR:-0.0003}
+CRITIC_EPOCHS=${CRITIC_EPOCHS:-"4 8 16"}
+ACTOR_LR=${ACTOR_LR:-0.0001}
 NUM_ENVS=${NUM_ENVS:-256}
 NUM_STEPS=${NUM_STEPS:-256}
 MINIBATCH_SIZE=${MINIBATCH_SIZE:-1024}
 
-export TOTAL_TIMESTEPS N_SEEDS MASTER_SEED CRITIC_LRS ACTOR_LR NUM_ENVS NUM_STEPS MINIBATCH_SIZE OUT_DIR REPO_ROOT
+export TOTAL_TIMESTEPS N_SEEDS MASTER_SEED CRITIC_LRS CRITIC_EPOCHS ACTOR_LR NUM_ENVS NUM_STEPS MINIBATCH_SIZE OUT_DIR REPO_ROOT
 
 # Resolve Python interpreter
 if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
@@ -58,8 +61,9 @@ echo "================================================================"
 echo "Submitting Brax Double-Sampling Critic SLURM Array"
 echo "  Timesteps:         $TOTAL_TIMESTEPS (auto per env)"
 echo "  Seeds:             $N_SEEDS (Master: $MASTER_SEED)"
-echo "  Algorithms:        Fitted, MSBE, E-Min, MSPBE"
+echo "  Algorithms:        Online TD(0), Fitted TD(0), MSBE, E-Min, MSPBE, Fitted GAE"
 echo "  Critic LRs:        $CRITIC_LRS"
+echo "  Critic Epochs:     $CRITIC_EPOCHS"
 echo "  Actor LR:          $ACTOR_LR"
 echo "  Rollout:           $NUM_ENVS envs x $NUM_STEPS steps | MB: $MINIBATCH_SIZE"
 echo "  Output Directory:  $OUT_DIR"
@@ -74,7 +78,7 @@ SBATCH_ARRAY_CMD="sbatch --parsable \
     --chdir=\"$REPO_ROOT\" \
     --output=\"${LOG_DIR}/%A_%a.out\" \
     --error=\"${LOG_DIR}/%A_%a.err\" \
-    --export=ALL,TOTAL_TIMESTEPS=$TOTAL_TIMESTEPS,N_SEEDS=$N_SEEDS,MASTER_SEED=$MASTER_SEED,CRITIC_LRS=\"$CRITIC_LRS\",ACTOR_LR=$ACTOR_LR,NUM_ENVS=$NUM_ENVS,NUM_STEPS=$NUM_STEPS,MINIBATCH_SIZE=$MINIBATCH_SIZE,OUT_DIR=\"$OUT_DIR\",REPO_ROOT=\"$REPO_ROOT\" \
+    --export=ALL,TOTAL_TIMESTEPS=$TOTAL_TIMESTEPS,N_SEEDS=$N_SEEDS,MASTER_SEED=$MASTER_SEED,CRITIC_LRS=\"$CRITIC_LRS\",CRITIC_EPOCHS=\"$CRITIC_EPOCHS\",ACTOR_LR=$ACTOR_LR,NUM_ENVS=$NUM_ENVS,NUM_STEPS=$NUM_STEPS,MINIBATCH_SIZE=$MINIBATCH_SIZE,OUT_DIR=\"$OUT_DIR\",REPO_ROOT=\"$REPO_ROOT\" \
     \"$ARRAY_SCRIPT\""
 
 ARRAY_JOB_ID=$(eval "$SBATCH_ARRAY_CMD")

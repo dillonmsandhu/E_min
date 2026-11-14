@@ -49,6 +49,10 @@ NON_AUX_CRITICS = (
     "e_bilinear",
     "e_double",
     "e_min",
+    "online_td0",
+    "semi_gradient_td0",
+    "fitted_td0",
+    "fitted_gae",
 )
 
 VALID_E_VARIANTS = ("aux", "e_aux", "fwd", "naive")

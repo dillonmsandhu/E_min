@@ -86,10 +86,14 @@ def get_critic_target_lambda(config: dict) -> float:
         "e_min",
     ):
         return config["RETURN_LAMBDA"]
-    elif critic_type in ("td_0", "td", "td0", "classic_td", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe"):
-        return config["TD_LAMBDA"]
+    elif critic_type in ("td_0", "td", "td0", "classic_td", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe", "online_td0", "semi_gradient_td0"):
+        return config.get("TD_LAMBDA", 0.0)
     elif critic_type in ("mc", "sampled_mc"):
         return 1.0
+    elif critic_type in ("fitted_td0",):
+        return 0.0
+    elif critic_type in ("fitted_gae",):
+        return config.get("VALUE_LAMBDA", config.get("GAE_LAMBDA", 0.95))
     elif critic_type in ("fitted", "ppo", "sarsa", "sarsa_lambda", "td_lambda", "sampled_td_lambda"):
         return config["VALUE_LAMBDA"]
     else:
@@ -834,10 +838,14 @@ def double_sample_mspbe_critic_loss_fn(
 
 SPLIT_CRITIC_LOSS_FNS = {
     "fitted": ppo_critic_loss_fn,
+    "fitted_td0": ppo_critic_loss_fn,
+    "fitted_gae": ppo_critic_loss_fn,
     "ppo": ppo_critic_loss_fn,
     "td": td_0_critic_loss_fn,
     "td_0": td_0_critic_loss_fn,
     "td0": td_0_critic_loss_fn,
+    "online_td0": td_0_critic_loss_fn,
+    "semi_gradient_td0": td_0_critic_loss_fn,
     "classic_td": td_0_critic_loss_fn,
     "td_lambda": ppo_critic_loss_fn,
     "sampled_td_lambda": ppo_critic_loss_fn,

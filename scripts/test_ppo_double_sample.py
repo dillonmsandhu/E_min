@@ -71,6 +71,6 @@ def test_critic_variant(critic_type: str):
 
 
 if __name__ == "__main__":
-    for critic in ["fitted", "msbe", "e_inner", "mspbe"]:
+    for critic in ["online_td0", "fitted_td0", "fitted_gae", "msbe", "e_inner", "mspbe"]:
         test_critic_variant(critic)
     print("\n All ppo_double_sample tests PASSED successfully!")

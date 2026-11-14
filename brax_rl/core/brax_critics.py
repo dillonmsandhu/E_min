@@ -96,10 +96,14 @@ def get_critic_target_lambda(config: dict) -> float:
         "e_inner", "e_bilinear", "e_double", "e_min",
     ]:
         return config["RETURN_LAMBDA"]
-    elif critic_type in ["td_0", "td", "td0", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe"]:
-        return config["TD_LAMBDA"]
+    elif critic_type in ["td_0", "td", "td0", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe", "online_td0", "semi_gradient_td0"]:
+        return config.get("TD_LAMBDA", 0.0)
     elif critic_type in ["mc", "sampled_mc"]:
         return 1.0
+    elif critic_type in ["fitted_td0"]:
+        return 0.0
+    elif critic_type in ["fitted_gae"]:
+        return config.get("VALUE_LAMBDA", config.get("GAE_LAMBDA", 0.95))
     elif critic_type in ["fitted", "ppo", "sarsa", "sarsa_lambda", "td_lambda"]:
         return config.get("VALUE_LAMBDA", config["GAE_LAMBDA"])
     else:
@@ -595,18 +599,25 @@ def ppo_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
 
 def td_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
     """
-    Online 1-step TD(0) MSE critic loss. Differentiates strictly w.r.t. critic_params.
+    Online 1-step TD(0) MSE critic loss where the target is recomputed online during the loss
+    with stop-gradient: target = stop_gradient(r + gamma * (1 - true_terminal) * V_theta(s')).
+    Differentiates strictly w.r.t. critic_params.
     """
     full_params = {"params": {**actor_params, **critic_params}}
     value = network.apply(full_params, traj_batch.obs, method=network.value)
     next_value = network.apply(full_params, traj_batch.next_obs, method=network.value)
-    vf_clip = config.get("VF_CLIP", config.get("CLIP_EPS", None))
+    if next_value.ndim > traj_batch.reward.ndim:
+        next_value = next_value.squeeze(-1)
+    if value.ndim > traj_batch.reward.ndim:
+        value = value.squeeze(-1)
+
+    vf_clip = config.get("VF_CLIP", None)
     gamma = config.get("GAMMA", 0.99)
     value_head_agg = config.get("VALUE_HEAD_AGG", "mean")
-    truncation = (
-        traj_batch.info.get("truncation", traj_batch.info.get("is_timeout", None))
-        if isinstance(traj_batch.info, dict) else None
-    )
+    truncation = getattr(traj_batch, "is_timeout", None)
+    if truncation is None and hasattr(traj_batch, "info") and isinstance(traj_batch.info, dict):
+        truncation = traj_batch.info.get("truncation", traj_batch.info.get("is_timeout", None))
+
     value_loss, delta = td_0_value_loss(
         value=value,
         next_value=next_value,
@@ -618,7 +629,20 @@ def td_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, target
         value_head_agg=value_head_agg,
         truncation=truncation,
     )
-    return value_loss, {"val_loss": value_loss, "delta_mag": jnp.abs(delta).mean()}
+
+    metrics = {"val_loss": value_loss, "delta_mag": jnp.abs(delta).mean()}
+    if hasattr(traj_batch, "probe_next_obs") and hasattr(traj_batch, "probe_reward"):
+        probe_next_val = network.apply(full_params, traj_batch.probe_next_obs, method=network.value)
+        if probe_next_val.ndim > traj_batch.probe_reward.ndim:
+            probe_next_val = probe_next_val.squeeze(-1)
+        true_term_1 = (traj_batch.done > 0.5) & ~(truncation > 0.5) if truncation is not None else traj_batch.done > 0.5
+        probe_timeout = getattr(traj_batch, "probe_is_timeout", None)
+        true_term_2 = (traj_batch.probe_done > 0.5) & ~(probe_timeout > 0.5) if probe_timeout is not None else traj_batch.probe_done > 0.5
+        d1 = traj_batch.reward + gamma * (1.0 - true_term_1.astype(jnp.float32)) * next_value - value
+        d2 = traj_batch.probe_reward + gamma * (1.0 - true_term_2.astype(jnp.float32)) * probe_next_val - value
+        metrics["diagnostic_msbe"] = jnp.mean(d1 * d2)
+
+    return value_loss, metrics
 
 
 def e_lambda_geometric_critic_loss_fn(
@@ -1076,10 +1100,14 @@ def double_sample_mspbe_critic_loss_fn(
 
 SPLIT_CRITIC_LOSS_FNS = {
     "fitted": ppo_critic_loss_fn,
+    "fitted_td0": ppo_critic_loss_fn,
+    "fitted_gae": ppo_critic_loss_fn,
     "ppo": ppo_critic_loss_fn,
     "td": td_0_critic_loss_fn,
     "td_0": td_0_critic_loss_fn,
     "td0": td_0_critic_loss_fn,
+    "online_td0": td_0_critic_loss_fn,
+    "semi_gradient_td0": td_0_critic_loss_fn,
     "classic_td": td_0_critic_loss_fn,
     "e_0": e_0_critic_loss_fn,
     "e_0_basic": e_0_basic_critic_loss_fn,

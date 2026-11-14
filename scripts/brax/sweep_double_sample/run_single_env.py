@@ -34,12 +34,16 @@ try:
         run_sweep,
         get_env_default_timesteps,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
+        DEFAULT_ACTOR_LR,
     )
 except ImportError:
     from sweep_double_sample_critics import (
         run_sweep,
         get_env_default_timesteps,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
+        DEFAULT_ACTOR_LR,
     )
 
 
@@ -47,7 +51,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run Double Sampling Critic Sweep on a Single Brax Environment")
     parser.add_argument("--env_name", type=str, required=True, help="Continuous Brax Environment Name")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
-    parser.add_argument("--actor_lr", type=float, default=3e-4, help="Fixed actor learning rate")
+    parser.add_argument("--critic_epochs", nargs="+", type=int, default=DEFAULT_CRITIC_EPOCHS, help="Critic epochs per update")
+    parser.add_argument("--actor_lr", type=float, default=DEFAULT_ACTOR_LR, help="Fixed actor learning rate (two-timescale default: 1e-4)")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Total training timesteps (default: auto per env)")
     parser.add_argument("--num_envs", type=int, default=256, help="Parallel environments")
     parser.add_argument("--num_steps", type=int, default=256, help="Rollout length")
@@ -67,6 +72,7 @@ def main():
     class SweepArgs:
         envs = [cli_args.env_name]
         critic_lrs = cli_args.critic_lrs
+        critic_epochs = cli_args.critic_epochs
         actor_lr = cli_args.actor_lr
         total_timesteps = env_timesteps
         num_envs = cli_args.num_envs
@@ -82,7 +88,9 @@ def main():
     print(f"Starting Double-Sampling Critic Worker: {cli_args.env_name}")
     print(f"Output Directory: {env_out_dir}")
     print(f"Timesteps:        {env_timesteps:,}")
-    print(f"Algorithms:       Fitted, MSBE, E-Min, MSPBE")
+    print(f"Algorithms:       Online TD(0), Fitted TD(0), MSBE, E-Min, MSPBE, Fitted GAE (Ref)")
+    print(f"Critic Epochs:    {cli_args.critic_epochs}")
+    print(f"Actor LR:         {cli_args.actor_lr}")
     print("=" * 64)
 
     run_sweep(SweepArgs())
