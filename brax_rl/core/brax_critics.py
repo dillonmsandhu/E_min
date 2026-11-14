@@ -1081,7 +1081,7 @@ def double_sample_mspbe_critic_loss_fn(
     _, jvp_live = jax.jvp(lambda p: v_batch(p, obs), (critic_params,), (w_star,))
 
     term1 = delta_proj * (gamma * boot_2 * v_next_2_live - v_s_live)
-    term2 = - r_perp * jvp_live
+    term2 = r_perp * jvp_live
 
     value_loss = jnp.mean(term1 + term2)
     diagnostic_msbe = jnp.mean(delta_1 * delta_2)
