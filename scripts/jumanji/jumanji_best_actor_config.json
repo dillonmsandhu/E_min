@@ -1,5 +1,5 @@
 {
-    "ACTOR_LR": 0.0001,
-    "ENT_COEF": 0.001,
+    "ACTOR_LR": 0.001,
+    "ENT_COEF": 0.005,
     "CLIP_EPS": 0.1
 }
