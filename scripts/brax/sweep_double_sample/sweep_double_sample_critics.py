@@ -27,7 +27,7 @@ Evaluated across 11 deterministic continuous-control Brax environments:
 - swimmer (10M steps)
 
 Swept across:
-- CRITIC_EPOCHS in [4, 8, 16]
+- CRITIC_EPOCHS in [4, 8]
 - CRITIC_LRS in [3e-4, 1e-3, 3e-3]
 - Slower default ACTOR_LR (1e-4) to enforce the two-timescale stochastic approximation condition.
 
@@ -35,7 +35,7 @@ Automatically generates 4 publication-grade analyses:
 - Table 1 & Figure 1: 1-Step Critic Benchmark vs GAE Reference (Learning Curves & Final Return)
 - Table 2 & Figure 2: True Bellman Error Diagnostics (Unbiased Diagnostic MSBE E[delta_1 * delta_2] Reduction)
 - Table 3 & Figure 3: Master Championship & Normalized Performance Profiles
-- Table 4 & Figure 4: Two-Timescale Sensitivity (Impact of Critic Epochs in [4, 8, 16])
+- Table 4 & Figure 4: Two-Timescale Sensitivity (Impact of Critic Epochs in [4, 8])
 """
 
 from __future__ import annotations
@@ -112,7 +112,7 @@ CRITIC_VARIANTS = [
 ]
 
 DEFAULT_CRITIC_LRS = [3e-4, 1e-3, 3e-3]
-DEFAULT_CRITIC_EPOCHS = [4, 8, 16]
+DEFAULT_CRITIC_EPOCHS = [4, 8]
 DEFAULT_ACTOR_LR = 1e-4  # Slower actor for two-timescale separation
 REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
 
@@ -991,7 +991,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         r, c = divmod(idx, n_cols_plot)
         axes4[r][c].axis("off")
 
-    fig4.suptitle("Analysis 4: Two-Timescale Sensitivity — Impact of Critic Epochs E_c ∈ {4, 8, 16}", fontsize=13, fontweight="bold", y=1.02)
+    fig4.suptitle("Analysis 4: Two-Timescale Sensitivity — Impact of Critic Epochs E_c ∈ {4, 8}", fontsize=13, fontweight="bold", y=1.02)
     plt.tight_layout()
     plt.savefig(os.path.join(plots_dir, "analysis4_critic_epoch_sensitivity.png"), bbox_inches="tight", dpi=300)
     plt.savefig(os.path.join(plots_dir, "analysis4_critic_epoch_sensitivity.pdf"), bbox_inches="tight")

@@ -11,11 +11,13 @@
 
 # ==============================================================================
 # Double-Sampling Critic Comparison Sweep: Gymnax Per-Environment Array Task
-# Runs the 4 double sampling critic algorithms on the designated Gymnax environment:
-#   1. Fitted (GAE regression baseline)
-#   2. MSBE (Baird double-sampled Bellman error)
-#   3. E-Min (Double-sampled bilinear energy minimization <e, bar_delta>_D)
-#   4. MSPBE (Tangent space projection with CG & exact Hessian-vector products)
+# Runs the 6 double sampling critic algorithms on the designated Gymnax environment:
+#   1. Online TD(0) (Semi-gradient live target batch TD(0))
+#   2. Fitted TD(0) (Fitted Value Iteration λ=0 baseline)
+#   3. MSBE (Baird double-sampled Bellman error)
+#   4. E-Min (Double-sampled bilinear energy minimization <e, bar_delta>_D)
+#   5. MSPBE (Tangent space projection with CG & exact Hessian-vector products)
+#   6. Fitted GAE (GAE λ=0.95 reference)
 #
 # Environments: 16 Deterministic Discrete, Continuous & MinAtar Gymnax Environments:
 #   MinAtar (10M steps):
@@ -126,7 +128,8 @@ OUT_DIR="${OUT_DIR:-results/sweep_double_sample_gymnax}"
 N_SEEDS="${N_SEEDS:-3}"
 MASTER_SEED="${MASTER_SEED:-42}"
 CRITIC_LRS="${CRITIC_LRS:-0.0003 0.001 0.003}"
-ACTOR_LR="${ACTOR_LR:-0.0003}"
+CRITIC_EPOCHS="${CRITIC_EPOCHS:-4 8}"
+ACTOR_LR="${ACTOR_LR:-0.0001}"
 NUM_ENVS="${NUM_ENVS:-64}"
 NUM_STEPS="${NUM_STEPS:-128}"
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-512}"
@@ -139,8 +142,9 @@ echo "  Date:              $(date)"
 echo "  Python:            $PYTHON"
 echo "  Timesteps:         $ENV_TIMESTEPS"
 echo "  Seeds:             $N_SEEDS (Master: $MASTER_SEED)"
-echo "  Algorithms:        Fitted, MSBE, E-Min, MSPBE"
+echo "  Algorithms:        Online TD(0), Fitted TD(0), MSBE, E-Min, MSPBE, Fitted GAE"
 echo "  Critic LRs:        $CRITIC_LRS"
+echo "  Critic Epochs:     $CRITIC_EPOCHS"
 echo "  Actor LR:          $ACTOR_LR"
 echo "  Rollout:           $NUM_ENVS envs x $NUM_STEPS steps | MB: $MINIBATCH_SIZE"
 echo "  Output Directory:  $OUT_DIR"
@@ -149,6 +153,7 @@ echo "=================================================================="
 $PYTHON -u scripts/gymnax/sweep_double_sample/run_single_env.py \
     --env_name "$ENV_NAME" \
     --critic_lrs $CRITIC_LRS \
+    --critic_epochs $CRITIC_EPOCHS \
     --actor_lr "$ACTOR_LR" \
     --total_timesteps "$ENV_TIMESTEPS" \
     --num_envs "$NUM_ENVS" \

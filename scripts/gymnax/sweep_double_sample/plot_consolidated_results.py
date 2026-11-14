@@ -34,12 +34,14 @@ try:
     from scripts.gymnax.sweep_double_sample.sweep_double_sample_critics import (
         generate_diagnostics_and_plots,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
         CRITIC_VARIANTS,
     )
 except ImportError:
     from sweep_double_sample_critics import (
         generate_diagnostics_and_plots,
         DEFAULT_CRITIC_LRS,
+        DEFAULT_CRITIC_EPOCHS,
         CRITIC_VARIANTS,
     )
 
@@ -71,6 +73,8 @@ def main():
     consolidated_runs = {}
     consolidated_timesteps = {}
     found_envs = []
+    all_critic_lrs = set()
+    all_critic_epochs = set()
 
     for pkl_file in sorted(env_pickles):
         try:
@@ -84,6 +88,14 @@ def main():
                     consolidated_timesteps[env_name] = timesteps[env_name]
                 found_envs.append(env_name)
                 print(f"Loaded {env_name} from {pkl_file}")
+                for var_key, _ in CRITIC_VARIANTS:
+                    if var_key in env_data:
+                        for k in env_data[var_key].keys():
+                            if isinstance(k, tuple):
+                                all_critic_lrs.add(k[0])
+                                all_critic_epochs.add(k[1])
+                            elif isinstance(k, (int, float)):
+                                all_critic_lrs.add(k)
         except Exception as e:
             print(f"Error loading {pkl_file}: {e}")
 
@@ -92,7 +104,12 @@ def main():
         print("[Error] No valid environment runs found to consolidate.")
         return
 
+    critic_lrs = sorted(list(all_critic_lrs)) if all_critic_lrs else DEFAULT_CRITIC_LRS
+    critic_epochs = sorted(list(all_critic_epochs)) if all_critic_epochs else DEFAULT_CRITIC_EPOCHS
+
     print(f"\nSuccessfully discovered {len(found_envs)} completed Gymnax environments: {found_envs}")
+    print(f"  Critic LRs:    {critic_lrs}")
+    print(f"  Critic Epochs: {critic_epochs}")
 
     # Save consolidated dataset
     consolidated_data_dir = os.path.join(out_dir, "data")
@@ -103,13 +120,13 @@ def main():
     print(f"Saved consolidated metrics to {consolidated_pkl}")
 
     # Generate full suite plots and tables
-    critic_lrs = DEFAULT_CRITIC_LRS
     generate_diagnostics_and_plots(
         consolidated_runs,
         consolidated_timesteps,
         out_dir,
         found_envs,
         critic_lrs,
+        critic_epochs,
         args.metric_key,
         batch_size,
     )

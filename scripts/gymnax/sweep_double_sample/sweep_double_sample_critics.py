@@ -109,13 +109,17 @@ DEFAULT_ENVS = [
 ]
 
 CRITIC_VARIANTS = [
-    ("fitted", "Fitted Value (GAE)"),
+    ("online_td0", "Online TD(0) (Semi-Gradient)"),
+    ("fitted_td0", "Fitted TD(0) (λ=0 Baseline)"),
     ("msbe", "MSBE (Baird Double)"),
     ("e_inner", "E-Min (Bilinear Inner)"),
     ("mspbe", "MSPBE (Tangent CG + HVP)"),
+    ("fitted_gae", "Fitted GAE (λ=0.95 Ref)"),
 ]
 
 DEFAULT_CRITIC_LRS = [3e-4, 1e-3, 3e-3]
+DEFAULT_CRITIC_EPOCHS = [4, 8]
+DEFAULT_ACTOR_LR = 1e-4  # Slower actor for two-timescale separation
 REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
 
 
@@ -153,11 +157,15 @@ def get_metric_curve(run_dict, metric_key="returned_episode_returns"):
     raise KeyError(f"Metric {metric_key} not found in run data keys: {list(run_dict.keys())}")
 
 
-def select_best_lr_run(lr_dict, critic_lrs, metric_key):
-    """Selects the run with the highest mean AUC across available critic_lrs."""
-    if not lr_dict:
+def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key):
+    """
+    Selects the run with the highest mean AUC across the (critic_lr, critic_epoch) grid.
+    Supports either nested dict config_dict[epoch][lr] or flat config_dict[(lr, epoch)] or config_dict[lr].
+    """
+    if not config_dict:
         return {
             "lr": "N/A",
+            "epochs": "N/A",
             "curve": np.zeros(1),
             "std": np.zeros(1),
             "final_mean": np.nan,
@@ -168,6 +176,7 @@ def select_best_lr_run(lr_dict, critic_lrs, metric_key):
         }
 
     best_lr = None
+    best_epoch = None
     best_auc = -np.inf
     best_curve = None
     best_std = None
@@ -175,37 +184,48 @@ def select_best_lr_run(lr_dict, critic_lrs, metric_key):
     best_final_std = np.nan
     best_auc_std = np.nan
 
-    for lr in critic_lrs:
-        if lr not in lr_dict:
-            continue
-        run_data = lr_dict[lr]
-        raw_curve = get_metric_curve(run_data, metric_key)
-        # raw_curve shape: (n_seeds, n_updates)
-        mean_curve = np.mean(raw_curve, axis=0)
-        std_curve = np.std(raw_curve, axis=0)
-        sem_curve = std_curve / np.sqrt(max(1, raw_curve.shape[0]))
+    for ep in critic_epochs:
+        for lr in critic_lrs:
+            run_data = None
+            if (lr, ep) in config_dict:
+                run_data = config_dict[(lr, ep)]
+            elif ep in config_dict and isinstance(config_dict[ep], dict) and lr in config_dict[ep]:
+                run_data = config_dict[ep][lr]
+            elif lr in config_dict and isinstance(config_dict[lr], dict) and ("returned_episode_returns" in config_dict[lr] or "metrics" in config_dict[lr]):
+                run_data = config_dict[lr]
+                ep = config_dict[lr].get("critic_epochs", 4)
 
-        auc_per_seed = np.mean(raw_curve, axis=1)
-        mean_auc = float(np.mean(auc_per_seed))
+            if run_data is None:
+                continue
 
-        if mean_auc > best_auc or best_lr is None:
-            best_auc = mean_auc
-            best_auc_std = float(np.std(auc_per_seed))
-            best_lr = lr
-            best_curve = mean_curve
-            best_std = sem_curve
-            best_final_mean = float(mean_curve[-1])
-            best_final_std = float(np.std(raw_curve[:, -1]))
+            raw_curve = get_metric_curve(run_data, metric_key)
+            mean_curve = np.mean(raw_curve, axis=0)
+            std_curve = np.std(raw_curve, axis=0)
+            sem_curve = std_curve / np.sqrt(max(1, raw_curve.shape[0]))
+
+            auc_per_seed = np.mean(raw_curve, axis=1)
+            mean_auc = float(np.mean(auc_per_seed))
+
+            if mean_auc > best_auc or best_lr is None:
+                best_auc = mean_auc
+                best_auc_std = float(np.std(auc_per_seed))
+                best_lr = lr
+                best_epoch = ep
+                best_curve = mean_curve
+                best_std = sem_curve
+                best_final_mean = float(mean_curve[-1])
+                best_final_std = float(np.std(raw_curve[:, -1]))
 
     return {
-        "lr": best_lr,
-        "curve": best_curve,
-        "std": best_std,
+        "lr": best_lr if best_lr is not None else "N/A",
+        "epochs": best_epoch if best_epoch is not None else 4,
+        "curve": best_curve if best_curve is not None else np.zeros(1),
+        "std": best_std if best_std is not None else np.zeros(1),
         "final_mean": best_final_mean,
         "final_std": best_final_std,
         "auc_mean": best_auc,
         "auc_std": best_auc_std,
-        "all_runs": lr_dict,
+        "all_runs": config_dict,
     }
 
 
@@ -562,6 +582,7 @@ def save_table_bundle(df_mean, df_std, title, base_path, cell_annotations=None, 
 def run_sweep(args):
     envs = args.envs
     critic_lrs = args.critic_lrs
+    critic_epochs = args.critic_epochs
     actor_lr = args.actor_lr
     num_envs = args.num_envs
     num_steps = args.num_steps
@@ -614,7 +635,7 @@ def run_sweep(args):
             "MINIBATCH_SIZE": minibatch_size,
             "ACTOR_MINIBATCH_SIZE": minibatch_size,
             "CRITIC_MINIBATCH_SIZE": minibatch_size,
-            "GAE_LAMBDA": 0.95,
+            "GAE_LAMBDA": gymnax_ppo_config.get("GAE_LAMBDA", 0.95),
             "VALUE_LAMBDA": 0.95,
             "RETURN_LAMBDA": 1.0,
             "TD_LAMBDA": 0.0,
@@ -623,16 +644,26 @@ def run_sweep(args):
         print(f"\n>>> Running Double-Sampling Sweep: {env_name} ({env_timesteps:,} steps) <<<")
 
         for var_key, var_label in CRITIC_VARIANTS:
-            for lr in critic_lrs:
-                if lr not in env_dict[var_key]:
-                    print(f"[{var_label}] env={env_name}, critic_lr={lr}...")
+            for ep in critic_epochs:
+                for lr in critic_lrs:
+                    cfg_key = (lr, ep)
+                    if cfg_key in env_dict[var_key]:
+                        continue
+
+                    print(f"[{var_label}] env={env_name}, critic_lr={lr}, critic_epochs={ep} (actor_lr={actor_lr})...")
                     cfg = {
                         **base_cfg,
                         "CRITIC_LR": lr,
+                        "CRITIC_EPOCHS": ep,
                         "CRITIC_TYPE": var_key,
                     }
+                    if var_key == "fitted_td0":
+                        cfg["VALUE_LAMBDA"] = 0.0
+                    elif var_key == "fitted_gae":
+                        cfg["VALUE_LAMBDA"] = 0.95
+
                     res = run_experiment(cfg, seed_keys)
-                    env_dict[var_key][lr] = res
+                    env_dict[var_key][cfg_key] = res
                     final_ret = float(res["returned_episode_returns"].mean(axis=0)[-1])
                     final_msbe = float(res["diagnostic_msbe"].mean(axis=0)[-1])
                     print(f"   -> Final Return: {final_ret:.2f} | Diagnostic MSBE: {final_msbe:.5e}")
@@ -644,14 +675,14 @@ def run_sweep(args):
         print(f"Checkpointed sweep data to {pkl_path}")
 
     # Generate Publication Analyses
-    generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, metric_key, batch_size)
+    generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, metric_key, batch_size)
 
 
 # ==============================================================================
 # Automated Cross-Algorithm Diagnostics and Publication Tables
 # ==============================================================================
 
-def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, metric_key, batch_size):
+def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, metric_key, batch_size):
     plots_dir = os.path.join(out_dir, "plots")
     tables_dir = os.path.join(out_dir, "tables")
     os.makedirs(plots_dir, exist_ok=True)
@@ -663,8 +694,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
 
     var_keys = [k for k, _ in CRITIC_VARIANTS]
     var_labels = [label for _, label in CRITIC_VARIANTS]
-    colors = ["#2563eb", "#dc2626", "#059669", "#7c3aed"]  # Blue (Fitted), Red (MSBE), Green (E-Min), Purple (MSPBE)
-    linestyles = ["-", "--", "-.", ":"]
+    colors = ["#f59e0b", "#64748b", "#dc2626", "#059669", "#7c3aed", "#2563eb"]
+    linestyles = ["-", "--", "-.", ":", "-", "--"]
 
     # -------------------------------------------------------------
     # 1. ANALYSIS 1: Double Sampling Critic Comparison (Learning Curves & Return)
@@ -680,17 +711,17 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         row_auc_m, row_auc_s = [], []
 
         for c_idx, k in enumerate(var_keys):
-            res = select_best_lr_run(all_runs[env].get(k, {}), critic_lrs, metric_key)
+            res = select_best_config_run(all_runs[env].get(k, {}), critic_lrs, critic_epochs, metric_key)
             row_means.append(res["final_mean"])
             row_stds.append(res["final_std"])
             row_auc_m.append(res["auc_mean"])
             row_auc_s.append(res["auc_std"])
-            annots_ret[(idx, c_idx)] = f"lr={res['lr']}"
+            annots_ret[(idx, c_idx)] = f"lr={res['lr']}, ep={res['epochs']}"
 
             t = np.arange(1, len(res["curve"]) + 1) * batch_size
             ax.plot(
                 t, res["curve"],
-                label=f"{var_labels[c_idx]} (lr={res['lr']})",
+                label=f"{var_labels[c_idx]} (lr={res['lr']}, ep={res['epochs']})",
                 color=colors[c_idx],
                 lw=2.0,
                 ls=linestyles[c_idx],
@@ -710,7 +741,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         ax.set_ylabel("Episode Return", fontsize=9)
         ax.grid(True, alpha=0.3)
         if idx == 0:
-            ax.legend(loc="lower right", fontsize=7.5)
+            ax.legend(loc="lower right", fontsize=7.0)
 
     for idx in range(n_envs, n_rows_plot * n_cols_plot):
         r, c = divmod(idx, n_cols_plot)
@@ -754,7 +785,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         row_msbe_m, row_msbe_s = [], []
 
         for c_idx, k in enumerate(var_keys):
-            res = select_best_lr_run(all_runs[env].get(k, {}), critic_lrs, metric_key="diagnostic_msbe")
+            res = select_best_config_run(all_runs[env].get(k, {}), critic_lrs, critic_epochs, metric_key="diagnostic_msbe")
             row_msbe_m.append(res["final_mean"])
             row_msbe_s.append(res["final_std"])
 
@@ -777,7 +808,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         ax.set_ylabel("Diagnostic MSBE (log)", fontsize=9)
         ax.grid(True, alpha=0.3, which="both")
         if idx == 0:
-            ax.legend(loc="upper right", fontsize=7.5)
+            ax.legend(loc="upper right", fontsize=7.0)
 
     for idx in range(n_envs, n_rows_plot * n_cols_plot):
         r, c = divmod(idx, n_cols_plot)
@@ -801,13 +832,14 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     # -------------------------------------------------------------
     # 3. ANALYSIS 3: Master Championship & Performance Profiles
     # -------------------------------------------------------------
-    fitted_vals = df_ret_mean["Fitted Value (GAE)"].values
+    ref_col = "Fitted TD(0) (λ=0 Baseline)" if "Fitted TD(0) (λ=0 Baseline)" in df_ret_mean.columns else var_labels[0]
+    ref_vals = df_ret_mean[ref_col].values
     norm_scores = {}
     for col in var_labels:
         raw_vals = df_ret_mean[col].values
         norm = np.where(
-            np.abs(fitted_vals) > 1e-4,
-            (raw_vals / np.maximum(fitted_vals, 1e-4)) * 100.0,
+            np.abs(ref_vals) > 1e-4,
+            (raw_vals / np.maximum(ref_vals, 1e-4)) * 100.0,
             100.0,
         )
         norm_scores[col] = norm
@@ -820,11 +852,16 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     for col in var_labels:
         vals = df_norm[col].values
         valid_vals = vals[~np.isnan(vals)]
-        q25, q75 = np.percentile(valid_vals, [25, 75])
-        iqm_mask = (valid_vals >= q25) & (valid_vals <= q75)
-        iqm_scores[col] = float(np.mean(valid_vals[iqm_mask])) if np.any(iqm_mask) else float(np.mean(valid_vals))
-        median_scores[col] = float(np.median(valid_vals))
-        mean_norm_scores[col] = float(np.mean(valid_vals))
+        if len(valid_vals) > 0:
+            q25, q75 = np.percentile(valid_vals, [25, 75])
+            iqm_mask = (valid_vals >= q25) & (valid_vals <= q75)
+            iqm_scores[col] = float(np.mean(valid_vals[iqm_mask])) if np.any(iqm_mask) else float(np.mean(valid_vals))
+            median_scores[col] = float(np.median(valid_vals))
+            mean_norm_scores[col] = float(np.mean(valid_vals))
+        else:
+            iqm_scores[col] = np.nan
+            median_scores[col] = np.nan
+            mean_norm_scores[col] = np.nan
 
     fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(13, 5))
 
@@ -833,13 +870,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     bar_width = 0.35
     ax3a.bar(x_indices - bar_width / 2, [mean_norm_scores[c] for c in var_labels], width=bar_width, label="Mean Normalized Score", color=colors, alpha=0.85)
     ax3a.bar(x_indices + bar_width / 2, [iqm_scores[c] for c in var_labels], width=bar_width, label="Interquartile Mean (IQM)", color=colors, alpha=0.45, hatch="//")
-    ax3a.axhline(100.0, color="gray", linestyle="--", lw=1.2, label="Fitted Baseline (100%)")
+    ax3a.axhline(100.0, color="gray", linestyle="--", lw=1.2, label=f"Baseline ({ref_col} = 100%)")
     ax3a.set_xticks(x_indices)
     ax3a.set_xticklabels(var_labels, rotation=15, ha="right", fontsize=9.5, fontweight="bold")
-    ax3a.set_ylabel("Normalized Return (% of Fitted)", fontsize=10)
+    ax3a.set_ylabel(f"Normalized Return (% of {ref_col})", fontsize=10)
     ax3a.set_title(f"Championship Aggregate Performance ({n_envs} Gymnax Domains)", fontsize=11, fontweight="bold")
     ax3a.grid(True, alpha=0.3, axis="y")
-    ax3a.legend(loc="upper left", fontsize=8.5)
+    ax3a.legend(loc="upper left", fontsize=8.0)
 
     # Panel B: Performance Profiles (Empirical CDF of Normalized Scores)
     tau_vals = np.linspace(50.0, 150.0, 100)
@@ -853,7 +890,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     ax3b.set_ylabel("Fraction of Envs with Score ≥ τ", fontsize=10)
     ax3b.set_title(f"Performance Profile across {n_envs} Gymnax Domains", fontsize=11, fontweight="bold")
     ax3b.grid(True, alpha=0.3)
-    ax3b.legend(loc="lower left", fontsize=8.5)
+    ax3b.legend(loc="lower left", fontsize=8.0)
 
     plt.tight_layout()
     plt.savefig(os.path.join(plots_dir, "analysis3_master_championship_profile.png"), bbox_inches="tight", dpi=300)
@@ -880,7 +917,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     print(f"Generated Table 3 summary: {os.path.join(tables_dir, 'table3_master_championship.md')}")
 
     # -------------------------------------------------------------
-    # 4. ANALYSIS 4: Critic Learning Rate Sensitivity
+    # 4. ANALYSIS 4: Two-Timescale Sensitivity (Critic Epochs in [4, 8])
     # -------------------------------------------------------------
     fig4, axes4 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.2 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
     for idx, env in enumerate(envs):
@@ -888,37 +925,48 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         ax = axes4[r][c]
 
         for c_idx, k in enumerate(var_keys):
-            lr_run = all_runs[env].get(k, {})
-            lr_means = []
-            for lr in critic_lrs:
-                if lr in lr_run:
-                    crv = get_metric_curve(lr_run[lr], metric_key)
-                    lr_means.append(float(np.mean(crv[:, -1])))
-                else:
-                    lr_means.append(np.nan)
+            cfg_run = all_runs[env].get(k, {})
+            epoch_means = []
+            for ep in critic_epochs:
+                best_ep_ret = -np.inf
+                for lr in critic_lrs:
+                    run_entry = None
+                    if (lr, ep) in cfg_run:
+                        run_entry = cfg_run[(lr, ep)]
+                    elif ep in cfg_run and isinstance(cfg_run[ep], dict) and lr in cfg_run[ep]:
+                        run_entry = cfg_run[ep][lr]
+                    elif lr in cfg_run and isinstance(cfg_run[lr], dict) and ("returned_episode_returns" in cfg_run[lr] or "metrics" in cfg_run[lr]):
+                        if ep == 4:
+                            run_entry = cfg_run[lr]
+                    if run_entry is not None:
+                        crv = get_metric_curve(run_entry, metric_key)
+                        ret = float(np.mean(crv[:, -1]))
+                        if ret > best_ep_ret:
+                            best_ep_ret = ret
+                epoch_means.append(best_ep_ret if best_ep_ret != -np.inf else np.nan)
 
             ax.plot(
-                critic_lrs, lr_means,
+                critic_epochs, epoch_means,
                 marker="o", label=var_labels[c_idx],
                 color=colors[c_idx], lw=1.8, ls=linestyles[c_idx],
             )
 
-        ax.set_xscale("log")
-        ax.set_title(ENV_TITLES.get(env, env), fontsize=11, fontweight="bold")
-        ax.set_xlabel("Critic Learning Rate", fontsize=9)
-        ax.set_ylabel("Final Return", fontsize=9)
+        ax.set_title(ENV_TITLES.get(env, env), fontsize=10.5, fontweight="bold")
+        ax.set_xlabel("Critic Epochs (E_c)", fontsize=8.5)
+        ax.set_ylabel("Final Return", fontsize=8.5)
+        ax.set_xticks(critic_epochs)
         ax.grid(True, alpha=0.3)
         if idx == 0:
-            ax.legend(loc="lower left", fontsize=7.5)
+            ax.legend(loc="lower left", fontsize=6.5)
 
     for idx in range(n_envs, n_rows_plot * n_cols_plot):
         r, c = divmod(idx, n_cols_plot)
         axes4[r][c].axis("off")
 
-    fig4.suptitle("Analysis 4: Critic Learning Rate Sensitivity Curves across Algorithms", fontsize=13, fontweight="bold", y=1.02)
+    fig4.suptitle("Analysis 4: Two-Timescale Sensitivity — Impact of Critic Epochs E_c ∈ {4, 8}", fontsize=13, fontweight="bold", y=1.02)
     plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, "analysis4_critic_lr_sensitivity.png"), bbox_inches="tight", dpi=300)
-    plt.savefig(os.path.join(plots_dir, "analysis4_critic_lr_sensitivity.pdf"), bbox_inches="tight")
+    plt.savefig(os.path.join(plots_dir, "analysis4_critic_epoch_sensitivity.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(plots_dir, "analysis4_critic_epoch_sensitivity.pdf"), bbox_inches="tight")
     plt.close()
 
 
@@ -926,7 +974,8 @@ def main():
     parser = argparse.ArgumentParser(description="Double-Sampling Critic Comparison Suite on Gymnax")
     parser.add_argument("--envs", nargs="+", default=DEFAULT_ENVS, help="Environments to evaluate")
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
-    parser.add_argument("--actor_lr", type=float, default=3e-4, help="Fixed actor learning rate")
+    parser.add_argument("--critic_epochs", nargs="+", type=int, default=DEFAULT_CRITIC_EPOCHS, help="Critic epochs per update")
+    parser.add_argument("--actor_lr", type=float, default=DEFAULT_ACTOR_LR, help="Fixed actor learning rate (two-timescale default: 1e-4)")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Timesteps override per env")
     parser.add_argument("--num_envs", type=int, default=64, help="Parallel environments")
     parser.add_argument("--num_steps", type=int, default=128, help="Rollout steps")
