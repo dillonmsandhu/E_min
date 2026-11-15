@@ -2,7 +2,7 @@
 #SBATCH --job-name=double_s_brax
 #SBATCH --output=slurm/%A_%a.out
 #SBATCH --error=slurm/%A_%a.err
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --partition=compsci-gpu
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
@@ -112,8 +112,10 @@ OUT_DIR="${OUT_DIR:-results/sweep_double_sample_brax}"
 N_SEEDS="${N_SEEDS:-5}"
 MASTER_SEED="${MASTER_SEED:-42}"
 CRITIC_LRS="${CRITIC_LRS:-0.0003 0.001 0.003}"
-CRITIC_EPOCHS="${CRITIC_EPOCHS:-4 8}"
+CRITIC_EPOCHS="${CRITIC_EPOCHS:-4 8 12}"
 ACTOR_LR="${ACTOR_LR:-0.0001}"
+ACTOR_GAE_LAMBDA="${ACTOR_GAE_LAMBDA:-0.4}"
+RETURN_LAMBDAS="${RETURN_LAMBDAS:-1.0 0.95}"
 NUM_ENVS="${NUM_ENVS:-256}"
 NUM_STEPS="${NUM_STEPS:-256}"
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-1024}"
@@ -129,6 +131,8 @@ echo "  Seeds:             $N_SEEDS (Master: $MASTER_SEED)"
 echo "  Critic LRs:        $CRITIC_LRS"
 echo "  Critic Epochs:     $CRITIC_EPOCHS"
 echo "  Actor LR:          $ACTOR_LR"
+echo "  Actor GAE Lambda:  $ACTOR_GAE_LAMBDA"
+echo "  Return Lambdas:    $RETURN_LAMBDAS"
 echo "  Rollout:           $NUM_ENVS envs x $NUM_STEPS steps | MB: $MINIBATCH_SIZE"
 echo "  Output Directory:  $OUT_DIR"
 echo "=================================================================="
@@ -138,6 +142,8 @@ $PYTHON -u scripts/brax/sweep_double_sample/run_single_env.py \
     --critic_lrs $CRITIC_LRS \
     --critic_epochs $CRITIC_EPOCHS \
     --actor_lr "$ACTOR_LR" \
+    --actor_gae_lambda "$ACTOR_GAE_LAMBDA" \
+    --return_lambdas $RETURN_LAMBDAS \
     --total_timesteps "$ENV_TIMESTEPS" \
     --num_envs "$NUM_ENVS" \
     --num_steps "$NUM_STEPS" \

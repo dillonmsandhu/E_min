@@ -68,11 +68,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
     if not (os.path.exists(os.path.join(p, "fixed_policy")) or (p == "" and os.path.exists(os.path.join(os.getcwd(), "fixed_policy"))))
 ]
 
-import jax
-import jax.numpy as jnp
-
-from brax_rl.core.brax_config import config as brax_ppo_config
-from brax_rl.algos.ppo_double_sample import make_train as make_double_sample_train
+# Lazy-loaded in run_experiment / run_sweep so plotting-only workflows do not require brax/jax.
 
 ENV_TITLES = {
     "hopper": "Hopper",
@@ -106,14 +102,17 @@ CRITIC_VARIANTS = [
     ("online_td0", "Online TD(0) (Semi-Gradient)"),
     ("fitted_td0", "Fitted TD(0) (λ=0 Baseline)"),
     ("msbe", "MSBE (Baird Double)"),
-    ("e_inner", "E-Min (Bilinear Inner)"),
+    ("e_inner_rl1.0", "E-Min (λ_ret=1.0)"),
+    ("e_inner_rl0.95", "E-Min (λ_ret=0.95)"),
     ("mspbe", "MSPBE (Tangent CG + HVP)"),
     ("fitted_gae", "Fitted GAE (λ=0.95 Ref)"),
 ]
 
 DEFAULT_CRITIC_LRS = [3e-4, 1e-3, 3e-3]
-DEFAULT_CRITIC_EPOCHS = [4, 8]
+DEFAULT_CRITIC_EPOCHS = [4, 8, 12]
 DEFAULT_ACTOR_LR = 1e-4  # Slower actor for two-timescale separation
+DEFAULT_ACTOR_GAE_LAMBDA = 0.4
+DEFAULT_RETURN_LAMBDAS = [1.0, 0.95]
 REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
 
 
@@ -155,9 +154,9 @@ def get_metric_curve(run_dict, metric_key="returned_episode_returns"):
     raise KeyError(f"Metric {metric_key} not found in run data keys: {list(run_dict.keys())}")
 
 
-def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key):
+def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key, higher_is_better=True):
     """
-    Selects the run with the highest mean AUC across the (critic_lr, critic_epoch) grid.
+    Selects the run with the best mean AUC across the (critic_lr, critic_epoch) grid.
     Supports either nested dict config_dict[epoch][lr] or flat config_dict[(lr, epoch)] or config_dict[lr].
     """
     if not config_dict:
@@ -175,7 +174,7 @@ def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key):
 
     best_lr = None
     best_epoch = None
-    best_auc = -np.inf
+    best_auc = -np.inf if higher_is_better else np.inf
     best_curve = None
     best_std = None
     best_final_mean = np.nan
@@ -204,7 +203,8 @@ def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key):
             auc_per_seed = np.mean(raw_curve, axis=1)
             mean_auc = float(np.mean(auc_per_seed))
 
-            if mean_auc > best_auc or best_lr is None:
+            is_better = (mean_auc > best_auc) if higher_is_better else (mean_auc < best_auc)
+            if is_better or best_lr is None:
                 best_auc = mean_auc
                 best_auc_std = float(np.std(auc_per_seed))
                 best_lr = lr
@@ -229,6 +229,9 @@ def select_best_config_run(config_dict, critic_lrs, critic_epochs, metric_key):
 
 def run_experiment(config, seed_keys):
     """JIT-compiles and runs vmapped training across random seeds."""
+    import jax
+    from brax_rl.algos.ppo_double_sample import make_train as make_double_sample_train
+
     train_fn = make_double_sample_train(config)
     vmapped_fn = jax.jit(jax.vmap(train_fn))
     start_t = time.time()
@@ -623,9 +626,6 @@ def run_sweep(args):
     os.makedirs(tables_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
 
-    rng = jax.random.PRNGKey(master_seed)
-    seed_keys = jax.random.split(rng, n_seeds)
-
     all_runs = {}
     timesteps = {env: get_env_default_timesteps(env, args.total_timesteps) for env in envs}
 
@@ -636,6 +636,12 @@ def run_sweep(args):
             all_runs = saved["runs"]
             if "timesteps" in saved:
                 timesteps.update(saved["timesteps"])
+    else:
+        import jax
+        from brax_rl.core.brax_config import config as brax_ppo_config
+
+        rng = jax.random.PRNGKey(master_seed)
+        seed_keys = jax.random.split(rng, n_seeds)
 
     for env_name in envs:
         env_timesteps = get_env_default_timesteps(env_name, args.total_timesteps)
@@ -663,14 +669,24 @@ def run_sweep(args):
             "ACTOR_MINIBATCH_SIZE": minibatch_size,
             "CRITIC_MINIBATCH_SIZE": minibatch_size,
             "GAE_LAMBDA": brax_ppo_config["GAE_LAMBDA"],
+            "ACTOR_GAE_LAMBDA": getattr(args, "actor_gae_lambda", DEFAULT_ACTOR_GAE_LAMBDA),
             "VALUE_LAMBDA": 0.95,
             "RETURN_LAMBDA": 1.0,
             "TD_LAMBDA": 0.0,
         }
 
-        print(f"\n>>> Running Double-Sampling Sweep: {env_name} ({env_timesteps:,} steps) <<<")
+        print(f"\n>>> Running Double-Sampling Sweep: {env_name} ({env_timesteps:,} steps, actor_gae_lambda={base_cfg['ACTOR_GAE_LAMBDA']}) <<<")
 
         for var_key, var_label in CRITIC_VARIANTS:
+            if var_key.startswith("e_inner_rl"):
+                ret_lam = float(var_key.replace("e_inner_rl", ""))
+                if ret_lam not in getattr(args, "return_lambdas", DEFAULT_RETURN_LAMBDAS):
+                    continue
+                critic_type = "e_inner"
+            else:
+                ret_lam = 1.0
+                critic_type = var_key
+
             for ep in critic_epochs:
                 for lr in critic_lrs:
                     cfg_key = (lr, ep)
@@ -683,7 +699,8 @@ def run_sweep(args):
                         "CRITIC_LR": lr,
                         "CRITIC_LR_END": critic_decay_ratio * lr,
                         "CRITIC_EPOCHS": ep,
-                        "CRITIC_TYPE": var_key,
+                        "CRITIC_TYPE": critic_type,
+                        "RETURN_LAMBDA": ret_lam,
                     }
                     if var_key == "fitted_td0":
                         cfg["VALUE_LAMBDA"] = 0.0
@@ -722,13 +739,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
 
     var_keys = [k for k, _ in CRITIC_VARIANTS]
     var_labels = [label for _, label in CRITIC_VARIANTS]
-    colors = ["#f59e0b", "#64748b", "#dc2626", "#059669", "#7c3aed", "#2563eb"]
-    linestyles = ["-", "--", "-.", ":", "-", "--"]
+    colors = ["#f59e0b", "#64748b", "#dc2626", "#059669", "#10b981", "#7c3aed", "#2563eb"]
+    linestyles = ["-", "--", "-.", ":", "-.", "-", "--"]
 
     # -------------------------------------------------------------
     # 1. ANALYSIS 1: Double Sampling Critic Comparison (Learning Curves & Return)
     # -------------------------------------------------------------
-    means_ret, stds_ret, annots_ret = [], [], {}
+    means_ret, stds_ret, annots_ret, best_cfgs = [], [], {}, {}
     auc_means, auc_stds = [], []
 
     fig1, axes1 = plt.subplots(n_rows_plot, n_cols_plot, figsize=(4.3 * n_cols_plot, 3.2 * n_rows_plot), squeeze=False)
@@ -745,6 +762,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
             row_auc_m.append(res["auc_mean"])
             row_auc_s.append(res["auc_std"])
             annots_ret[(idx, c_idx)] = f"lr={res['lr']}, ep={res['epochs']}"
+            best_cfgs[(idx, c_idx)] = (res["lr"], res["epochs"])
 
             t = np.arange(1, len(res["curve"]) + 1) * batch_size
             ax.plot(
@@ -813,7 +831,14 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         row_msbe_m, row_msbe_s = [], []
 
         for c_idx, k in enumerate(var_keys):
-            res = select_best_config_run(all_runs[env].get(k, {}), critic_lrs, critic_epochs, metric_key="diagnostic_msbe")
+            best_lr, best_ep = best_cfgs[(idx, c_idx)]
+            res = select_best_config_run(
+                all_runs[env].get(k, {}),
+                [best_lr] if best_lr != "N/A" else critic_lrs,
+                [best_ep] if best_lr != "N/A" else critic_epochs,
+                metric_key="diagnostic_msbe",
+                higher_is_better=False,
+            )
             row_msbe_m.append(res["final_mean"])
             row_msbe_s.append(res["final_std"])
 
@@ -842,7 +867,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         r, c = divmod(idx, n_cols_plot)
         axes2[r][c].axis("off")
 
-    fig2.suptitle("Analysis 2: Bellman Error Diagnostics — Unbiased MSBE E[δ₁ · δ₂] over Training", fontsize=13, fontweight="bold", y=1.02)
+    fig2.suptitle("Analysis 2: Bellman Error Diagnostics — Unbiased MSBE E[δ₁ · δ₂] on Best-Return Configs", fontsize=13, fontweight="bold", y=1.02)
     plt.tight_layout()
     plt.savefig(os.path.join(plots_dir, "analysis2_diagnostic_msbe_curves.png"), bbox_inches="tight", dpi=300)
     plt.savefig(os.path.join(plots_dir, "analysis2_diagnostic_msbe_curves.pdf"), bbox_inches="tight")
@@ -852,8 +877,9 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     df_msbe_std = pd.DataFrame(stds_msbe, index=envs, columns=var_labels)
     save_table_bundle(
         df_msbe_mean, df_msbe_std,
-        "Analysis 2: Diagnostic MSBE Reduction (Lower is Better, Mean ± Std over Seeds)",
+        "Analysis 2: Diagnostic MSBE on Best-Return Configs (Lower is Better, Mean ± Std over Seeds)",
         os.path.join(tables_dir, "table2_diagnostic_msbe_reduction"),
+        cell_annotations=annots_ret,
         higher_is_better=False,
     )
 
@@ -868,7 +894,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         raw_vals = df_ret_mean[col].values
         norm = np.where(
             np.abs(ref_vals) > 1e-4,
-            (raw_vals / np.maximum(ref_vals, 1e-4)) * 100.0,
+            100.0 + ((raw_vals - ref_vals) / np.maximum(np.abs(ref_vals), 1e-4)) * 100.0,
             100.0,
         )
         norm_scores[col] = norm
@@ -902,7 +928,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     ax3a.set_xticks(x_indices)
     ax3a.set_xticklabels(var_labels, rotation=20, ha="right", fontsize=9.0, fontweight="bold")
     ax3a.set_ylabel("Normalized Return (% of Fitted TD0)", fontsize=10)
-    ax3a.set_title("Championship Aggregate Performance (11 Brax Domains)", fontsize=11, fontweight="bold")
+    ax3a.set_title(f"Championship Aggregate Performance ({n_envs} Brax Domains)", fontsize=11, fontweight="bold")
     ax3a.grid(True, alpha=0.3, axis="y")
     ax3a.legend(loc="upper left", fontsize=8.0)
 
@@ -915,7 +941,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     ax3b.axvline(100.0, color="gray", linestyle="--", lw=1.0)
     ax3b.set_xlabel("Normalized Score Threshold (τ %)", fontsize=10)
     ax3b.set_ylabel("Fraction of Envs with Score ≥ τ", fontsize=10)
-    ax3b.set_title("Performance Profile across 11 Continuous Domains", fontsize=11, fontweight="bold")
+    ax3b.set_title(f"Performance Profile across {n_envs} Continuous Domains", fontsize=11, fontweight="bold")
     ax3b.grid(True, alpha=0.3)
     ax3b.legend(loc="lower left", fontsize=8.0)
 
@@ -938,7 +964,7 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
 
     df_champ = pd.DataFrame(champ_summary)
     with open(os.path.join(tables_dir, "table3_master_championship.md"), "w") as f:
-        f.write("### Analysis 3: Master Championship Summary (11 Continuous Brax Domains)\n\n")
+        f.write(f"### Analysis 3: Master Championship Summary ({n_envs} Continuous Brax Domains)\n\n")
         f.write(df_champ.to_markdown(index=False))
         f.write("\n")
     print(f"Generated Table 3 summary: {os.path.join(tables_dir, 'table3_master_championship.md')}")

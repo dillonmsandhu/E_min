@@ -36,6 +36,8 @@ try:
         DEFAULT_CRITIC_LRS,
         DEFAULT_CRITIC_EPOCHS,
         DEFAULT_ACTOR_LR,
+        DEFAULT_ACTOR_GAE_LAMBDA,
+        DEFAULT_RETURN_LAMBDAS,
     )
 except ImportError:
     from sweep_double_sample_critics import (
@@ -44,6 +46,8 @@ except ImportError:
         DEFAULT_CRITIC_LRS,
         DEFAULT_CRITIC_EPOCHS,
         DEFAULT_ACTOR_LR,
+        DEFAULT_ACTOR_GAE_LAMBDA,
+        DEFAULT_RETURN_LAMBDAS,
     )
 
 
@@ -53,6 +57,8 @@ def main():
     parser.add_argument("--critic_lrs", nargs="+", type=float, default=DEFAULT_CRITIC_LRS, help="Critic learning rates")
     parser.add_argument("--critic_epochs", nargs="+", type=int, default=DEFAULT_CRITIC_EPOCHS, help="Critic epochs per update")
     parser.add_argument("--actor_lr", type=float, default=DEFAULT_ACTOR_LR, help="Fixed actor learning rate (two-timescale default: 1e-4)")
+    parser.add_argument("--actor_gae_lambda", type=float, default=DEFAULT_ACTOR_GAE_LAMBDA, help="Actor GAE lambda (default: 0.4)")
+    parser.add_argument("--return_lambdas", nargs="+", type=float, default=DEFAULT_RETURN_LAMBDAS, help="Return lambdas for E-Min (default: 1.0 0.95)")
     parser.add_argument("--total_timesteps", type=int, default=None, help="Total training timesteps (default: auto per env)")
     parser.add_argument("--num_envs", type=int, default=256, help="Parallel environments")
     parser.add_argument("--num_steps", type=int, default=256, help="Rollout length")
@@ -74,6 +80,8 @@ def main():
         critic_lrs = cli_args.critic_lrs
         critic_epochs = cli_args.critic_epochs
         actor_lr = cli_args.actor_lr
+        actor_gae_lambda = cli_args.actor_gae_lambda
+        return_lambdas = cli_args.return_lambdas
         total_timesteps = env_timesteps
         num_envs = cli_args.num_envs
         num_steps = cli_args.num_steps
