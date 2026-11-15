@@ -33,7 +33,7 @@
 set -e
 
 # Working directory resolution
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
+if [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/gymnax_rl/core/gymnax_config.py" ]; then
     cd "$SLURM_SUBMIT_DIR"
 fi
 [ -f "core/config.py" ] || cd "$(dirname "$0")/../../.."
