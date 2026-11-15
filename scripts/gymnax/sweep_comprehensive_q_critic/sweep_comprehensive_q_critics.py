@@ -6,13 +6,14 @@ Comprehensive Q-PPO Critic Comparison Sweep & Diagnostic Suite:
 Applies to deterministic, discrete-action domains:
 1. E(lambda)-Q with geometric lookahead jumps (sweeping lambda, selecting best)
 2. SARSA(lambda) fitted Q-iteration (sweeping lambda, selecting best)
-3. E(0)-Q via Dirichlet energy on state-action pairs
+3. E(0)-Q via the bilinear loss with exact successor-action marginalization
 4. MC-Q via Monte Carlo rollout return regression
 
-Notice: In deterministic MDPs with discrete actions, Q-PPO does not require
-an auxiliary network V_aux because:
-  R_{t:t+K} = G_t - gamma^K G_{t+K}
-is exact with zero transition noise along the rollout trajectory.
+For E(0), exact successor-action marginalization removes the shared-action
+covariance when transitions are deterministic, without V_aux. Finite-return
+approximation remains. The legacy E(lambda) loss samples jump endpoints and
+can retain covariance bias even in deterministic environments; it is not the
+same corrected estimator. Stochastic transitions also leave covariance in E(0).
 
 Visualizations (Modeled after sampled_lambda_sweep):
 - main_comparison_learning_curves: 2x3 grid comparing the 4 key Q-critic algorithms.
@@ -55,6 +56,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
 import jax
 import jax.numpy as jnp
 
+from gymnax_rl.algos.ppo import make_train as make_ppo_train
 from gymnax_rl.algos.q_ppo import make_train as make_q_ppo_train
 
 ENV_TITLES = {
@@ -107,9 +109,9 @@ def get_metric_curve(run_dict, metric_key="returned_episode_returns"):
     raise KeyError(f"Metric {metric_key} not found in run data.")
 
 
-def run_experiment(config, seed_keys):
-    """JIT-compiles and runs vmapped Q-PPO training across random seeds."""
-    train_fn = make_q_ppo_train(config)
+def run_experiment(config, seed_keys, make_fn=make_q_ppo_train):
+    """JIT-compiles and runs vmapped training across random seeds."""
+    train_fn = make_fn(config)
     vmapped_fn = jax.jit(jax.vmap(train_fn))
     start_t = time.time()
     out = vmapped_fn(seed_keys)
@@ -283,19 +285,22 @@ def run_sweep(args):
                     all_runs[env_name]["SARSA(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 
-        # 4. E(lambda)-Q Grid
+        # 4. E(lambda) + v_aux Grid (PPO with surgical v_aux)
         for lr in critic_lrs:
             for lmb in lambdas:
                 if lmb not in all_runs[env_name]["E(lambda)"][lr]:
-                    print(f"[E(λ)-Q] env={env_name}, lambda={lmb}, critic_lr={lr}...")
+                    print(f"[E(λ)+v_aux] env={env_name}, lambda={lmb}, critic_lr={lr}...")
                     cfg = {
                         "ENV_NAME": env_name,
                         "LR": actor_lr,
                         "ACTOR_LR": actor_lr,
                         "CRITIC_LR": lr,
-                        "CRITIC_TYPE": "e_lambda_q",
+                        "CRITIC_TYPE": "e_lambda",
+                        "E_VARIANT": "aux",
                         "E_LAMBDA": lmb,
-                        "JUMP_MODE": "full_mc_invalid_jump",
+                        "RETURN_LAMBDA": 1.0,
+                        "AUX_LAMBDA": 1.0,
+                        "VF_COEF": 0.5,
                         "GAE_LAMBDA": 0.8,
                         "NUM_ENVS": num_envs,
                         "NUM_STEPS": num_steps,
@@ -308,7 +313,7 @@ def run_sweep(args):
                         "CRITIC_EPOCHS": 4,
                         "DEBUG": False,
                     }
-                    res = run_experiment(cfg, seed_keys)
+                    res = run_experiment(cfg, seed_keys, make_fn=make_ppo_train)
                     all_runs[env_name]["E(lambda)"][lr][lmb] = res
                     print(f"   -> Final Return: {res['returned_episode_returns'].mean(axis=0)[-1]:.2f}")
 

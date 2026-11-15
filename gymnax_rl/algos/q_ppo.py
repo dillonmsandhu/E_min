@@ -1,10 +1,11 @@
 # q_ppo.py
-# PPO with Action-Value Function Q(s, a) and Closed-Form Marginalized State Value:
-# V(s) = sum_{a in A} pi(a | s) * Q(s, a)
+# PPO with Action-Value Function Q(s, a):
+# - Discrete actions: Closed-form Marginalized State Value V(s) = sum_{a in A} pi(a | s) * Q(s, a)
+# - Continuous actions: K-action sampling (K=2 default) with zero-bias probe E(0) and LOO/Hybrid GAE
 # Critic can be trained via:
 # 1. SARSA(lambda) regression (fitted)
-# 2. E(0) State-Action Dirichlet Minimization (No V_aux needed!)
-# 3. E(lambda) Geometric Jump State-Action Dirichlet Minimization
+# 2. Bilinear E(0) with exact successor marginalization (discrete) or independent probe action (continuous)
+# 3. Legacy sampled E(lambda) Geometric Jump State-Action Dirichlet Minimization
 from __future__ import annotations
 import os
 import sys
@@ -17,6 +18,7 @@ if _repo_root not in sys.path:
 
 import jax
 import jax.numpy as jnp
+from gymnax.environments import spaces
 
 from gymnax_rl.core.gymnax_config import config as base_default_config
 from gymnax_rl.core.gymnax_utils import (
@@ -46,6 +48,9 @@ class QTransition(NamedTuple):
     info: Any
     is_start: jnp.ndarray
     is_timeout: jnp.ndarray
+    actions_k: Optional[jnp.ndarray] = None
+    q_all_k: Optional[jnp.ndarray] = None
+    next_probe_actions: Optional[jnp.ndarray] = None
     next_action: Optional[jnp.ndarray] = None
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
@@ -92,11 +97,18 @@ def prepare_q_jump_transitions(traj_batch, targets, last_obs, last_action, gamma
     idx_expanded = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.obs.ndim - 2))
     idx_broadcast = jnp.broadcast_to(idx_expanded, (T, B) + traj_batch.obs.shape[2:])
     dest_obs_gathered = jnp.take_along_axis(obs_ext, idx_broadcast, axis=0)
-    dest_act_gathered = jnp.take_along_axis(act_ext, t_clamped, axis=0)
+
+    act_idx_expanded = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.action.ndim - 2))
+    act_idx_broadcast = jnp.broadcast_to(act_idx_expanded, (T, B) + traj_batch.action.shape[2:])
+    dest_act_gathered = jnp.take_along_axis(act_ext, act_idx_broadcast, axis=0)
+
     dest_targets_gathered = jnp.take_along_axis(targets_ext, t_clamped, axis=0)
 
     dest_obs = jnp.where(traj_batch.is_timeout[..., None], traj_batch.next_obs, dest_obs_gathered)
-    dest_act = jnp.where(traj_batch.is_timeout, traj_batch.next_action, dest_act_gathered)
+    timeout_act_mask = traj_batch.is_timeout.reshape(
+        traj_batch.is_timeout.shape + (1,) * (traj_batch.action.ndim - 2)
+    )
+    dest_act = jnp.where(timeout_act_mask, traj_batch.next_action, dest_act_gathered)
     dest_targets = jnp.where(traj_batch.is_timeout, traj_batch.next_value, dest_targets_gathered)
 
     valid_jump = jnp.where(
@@ -116,8 +128,9 @@ def prepare_q_jump_transitions(traj_batch, targets, last_obs, last_action, gamma
 
 def make_train(base_config):
     """
-    Factory creating the Q-PPO training function with marginalized GAE
-    and modular Q-critic loss (SARSA, E(0)-Q, E(lambda)-Q).
+    Factory creating the Q-PPO training function (Discrete marginalized GAE /
+    Continuous K-action sampling GAE) with modular Q-critic loss (SARSA,
+    bilinear E(0), sampled E(lambda)).
     """
     cfg = base_default_config.copy()
     cfg.update(base_config)
@@ -128,12 +141,33 @@ def make_train(base_config):
 
     env, env_params = make_env(config_copy)
     obs_shape = env.observation_space(env_params).shape
+    act_space = env.action_space(env_params)
+    is_continuous = isinstance(act_space, spaces.Box)
 
     def train(rng, hparams=None):
         config = merge_hparams(config_copy, hparams)
         c_type = config.get("CRITIC_TYPE", "sarsa").lower()
+        if c_type in ("e_0", "e_0_q", "e0", "e"):
+            # E(0) uses action marginalization (discrete) or probe sampling (continuous),
+            # with no auxiliary branch. The shared scalar-PPO default E_VARIANT='aux'
+            # must not request an auxiliary optimizer for this Q network.
+            config = {**config, "E_VARIANT": "naive"}
         critic_loss_fn = get_q_critic_loss_fn(c_type)
         actor_loss_fn = ppo_actor_loss_fn
+
+        if is_continuous:
+            k_actions = config["K_ACTIONS"]
+            if k_actions < 2:
+                raise ValueError(f"Continuous Q-PPO requires K_ACTIONS >= 2, got {k_actions}.")
+            gae_mode = config["GAE_CONTINUOUS_MODE"].lower()
+            if gae_mode not in ("loo", "hybrid"):
+                raise ValueError(
+                    f"Unrecognized GAE_CONTINUOUS_MODE '{config['GAE_CONTINUOUS_MODE']}'. "
+                    "Expected 'loo' or 'hybrid'."
+                )
+        else:
+            k_actions = None
+            gae_mode = None
 
         actor_epochs = config.get("ACTOR_EPOCHS")
         if actor_epochs is None:
@@ -168,6 +202,17 @@ def make_train(base_config):
         )
         train_state = initialize_split_flax_train_state(config, network, network_params)
 
+        def _sample_and_eval_k(params, obs_batch, key):
+            pi = network.apply(params, obs_batch, method=network.policy)
+            act_keys = jax.random.split(key, k_actions)
+            actions_k = jnp.moveaxis(jax.vmap(lambda k: pi.sample(seed=k))(act_keys), 0, -2)
+            q_all_k = jax.vmap(
+                lambda a: network.apply(params, obs_batch, a, method=network.q_value),
+                in_axes=-2,
+                out_axes=-1,
+            )(actions_k)
+            return pi, actions_k, q_all_k
+
         rng, reset_rng = jax.random.split(rng)
         reset_keys = jax.random.split(reset_rng, config["NUM_ENVS"])
         obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_keys, env_params)
@@ -182,16 +227,27 @@ def make_train(base_config):
                 train_state, env_state, last_obs, last_true_terminal, rng = env_scan_state
 
                 rng, _rng = jax.random.split(rng)
-                pi, value, q_all = network.apply(train_state.params, last_obs)
-                action = pi.sample(seed=_rng)
-                log_prob = pi.log_prob(action)
-                q_taken = extract_q_taken(q_all, action)
+                if is_continuous:
+                    pi, actions_k, q_all_k = _sample_and_eval_k(train_state.params, last_obs, _rng)
+                    action = actions_k[..., 0, :]
+                    log_prob = pi.log_prob(action)
+                    q_taken = q_all_k[..., 0]
+                    value = jnp.mean(q_all_k[..., 1:], axis=-1)
+                    action_env = action.reshape((config["NUM_ENVS"],) + act_space.shape)
+                else:
+                    pi, value, q_all = network.apply(train_state.params, last_obs)
+                    action = pi.sample(seed=_rng)
+                    log_prob = pi.log_prob(action)
+                    q_taken = extract_q_taken(q_all, action)
+                    actions_k = None
+                    q_all_k = None
+                    action_env = action
 
                 rng, _rng = jax.random.split(rng)
                 step_keys = jax.random.split(_rng, config["NUM_ENVS"])
                 obsv, env_state, reward, done, info = jax.vmap(
                     env.step, in_axes=(0, 0, 0, None)
-                )(step_keys, env_state, action, env_params)
+                )(step_keys, env_state, action_env, env_params)
 
                 next_obs = info["real_next_obs"]
                 is_timeout = info["is_timeout"]
@@ -210,6 +266,8 @@ def make_train(base_config):
                     info=info,
                     is_start=is_start,
                     is_timeout=is_timeout,
+                    actions_k=actions_k,
+                    q_all_k=q_all_k,
                 )
                 return (train_state, env_state, obsv, true_terminal, rng), transition
 
@@ -218,42 +276,102 @@ def make_train(base_config):
                 _env_step, env_step_state, None, config["NUM_STEPS"]
             )
 
-            # Next-action alignment along rollout
-            rng, _rng = jax.random.split(rng)
-            pi_last, last_val, q_last = network.apply(train_state.params, last_obs)
-            last_action = pi_last.sample(seed=_rng)
-            next_action = jnp.concatenate([traj_batch.action[1:], last_action[None]], axis=0)
+            # 2. ADVANTAGE & VALUE TARGET CALCULATION
+            if is_continuous:
+                rng, last_rng, timeout_rng = jax.random.split(rng, 3)
+                _, last_actions_k, last_q_k = _sample_and_eval_k(train_state.params, last_obs, last_rng)
+                _, timeout_actions_k, timeout_q_k = _sample_and_eval_k(
+                    train_state.params, traj_batch.next_obs, timeout_rng
+                )
 
-            # 2. ADVANTAGE & VALUE TARGET CALCULATION (Analytical Marginalized GAE)
-            regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val[None]], axis=0)
-            timeout_next_val = network.apply(train_state.params, traj_batch.next_obs, method=network.value)
-            if timeout_next_val.ndim > regular_next_val.ndim:
-                timeout_next_val = timeout_next_val.squeeze(-1)
-            next_value = jnp.where(traj_batch.is_timeout, timeout_next_val, regular_next_val)
+                regular_next_actions_k = jnp.concatenate([traj_batch.actions_k[1:], last_actions_k[None]], axis=0)
+                next_actions_k = jnp.where(
+                    traj_batch.is_timeout[..., None, None], timeout_actions_k, regular_next_actions_k
+                )
+                regular_next_q_k = jnp.concatenate([traj_batch.q_all_k[1:], last_q_k[None]], axis=0)
+                next_q_k = jnp.where(
+                    traj_batch.is_timeout[..., None], timeout_q_k, regular_next_q_k
+                )
 
-            advantages, gae_targets = calculate_gae(
-                traj_batch,
-                next_value,
-                gamma=config["GAMMA"],
-                gae_lambda=gae_lambda,
-            )
-            if target_lambda == gae_lambda:
-                targets = gae_targets
-            else:
+                last_action = last_actions_k[..., 0, :]
+                next_action = next_actions_k[..., 0, :]
+                next_probe_actions = next_actions_k[..., 1:, :]
+
+                # Return targets use slot 0 only so targets remain strictly independent
+                # of probe actions (slots 1..K-1) at interior, timeout, and final steps.
+                v_ret = traj_batch.q_all_k[..., 0]
+                next_v_ret = next_q_k[..., 0]
                 targets = calculate_targets(
-                    traj_batch,
-                    next_value,
+                    traj_batch._replace(value=v_ret),
+                    next_v_ret,
                     gamma=config["GAMMA"],
                     target_lambda=target_lambda,
                 )
+                last_val = last_q_k[..., 0]
+                timeout_target_val = next_v_ret
+
+                v_loo = jnp.mean(traj_batch.q_all_k[..., 1:], axis=-1)
+                next_v_loo = jnp.mean(next_q_k[..., 1:], axis=-1)
+                if gae_mode == "loo":
+                    advantages, _ = calculate_gae(
+                        traj_batch._replace(value=v_loo),
+                        next_v_loo,
+                        gamma=config["GAMMA"],
+                        gae_lambda=gae_lambda,
+                    )
+                    next_value = next_v_loo
+                else:
+                    # Hybrid GAE: averaged bootstrap target + leave-one-out baseline
+                    v_bar = jnp.mean(traj_batch.q_all_k, axis=-1)
+                    next_v_bar = jnp.mean(next_q_k, axis=-1)
+                    v_loo_from_bar = (k_actions * v_bar - traj_batch.q_taken) / (k_actions - 1)
+                    _, gae_returns_bar = calculate_gae(
+                        traj_batch._replace(value=v_bar),
+                        next_v_bar,
+                        gamma=config["GAMMA"],
+                        gae_lambda=gae_lambda,
+                    )
+                    advantages = gae_returns_bar - v_loo_from_bar
+                    next_value = next_v_bar
+            else:
+                # Discrete: Analytical Marginalized GAE
+                rng, _rng = jax.random.split(rng)
+                pi_last, last_val, q_last = network.apply(train_state.params, last_obs)
+                last_action = pi_last.sample(seed=_rng)
+                next_action = jnp.concatenate([traj_batch.action[1:], last_action[None]], axis=0)
+                next_probe_actions = None
+
+                regular_next_val = jnp.concatenate([traj_batch.value[1:], last_val[None]], axis=0)
+                timeout_next_val = network.apply(train_state.params, traj_batch.next_obs, method=network.value)
+                if timeout_next_val.ndim > regular_next_val.ndim:
+                    timeout_next_val = timeout_next_val.squeeze(-1)
+                next_value = jnp.where(traj_batch.is_timeout, timeout_next_val, regular_next_val)
+
+                advantages, gae_targets = calculate_gae(
+                    traj_batch,
+                    next_value,
+                    gamma=config["GAMMA"],
+                    gae_lambda=gae_lambda,
+                )
+                if target_lambda == gae_lambda:
+                    targets = gae_targets
+                else:
+                    targets = calculate_targets(
+                        traj_batch,
+                        next_value,
+                        gamma=config["GAMMA"],
+                        target_lambda=target_lambda,
+                    )
+                timeout_target_val = next_value
 
             true_terminal = traj_batch.done & ~traj_batch.is_timeout
             next_targets = jnp.roll(targets, shift=-1, axis=0)
             next_targets = next_targets.at[-1].set(last_val)
-            next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
+            next_targets = jnp.where(traj_batch.is_timeout, timeout_target_val, next_targets)
             next_targets = jnp.where(true_terminal, 0.0, next_targets)
 
             traj_batch = traj_batch._replace(
+                next_probe_actions=next_probe_actions,
                 next_action=next_action,
                 next_value=next_value,
                 targets=targets,

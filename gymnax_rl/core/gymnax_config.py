@@ -56,6 +56,8 @@ config = {
     "E_VARIANT": "aux",       # "aux" (uses v_aux), "e_aux", "fwd" (forward-only), "naive" (symmetric without v_aux)
     "EXPLORATION_NOISE": 0.1,
     "ACTION_REG_COEF": 0.0,
+    "K_ACTIONS": 2,
+    "GAE_CONTINUOUS_MODE": "loo",
     "GAE_LAMBDA": 0.8,
     "VALUE_LAMBDA": 0.9,
     "TD_LAMBDA": 0.0,

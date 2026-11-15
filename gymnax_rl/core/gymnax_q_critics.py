@@ -1,6 +1,6 @@
 # gymnax_q_critics.py
 # Q-function critic and actor losses for:
-# 1. Discrete Q-PPO (SARSA(lambda), E(0)-Q, E(lambda)-Q)
+# 1. Discrete Q-PPO (SARSA(lambda), marginalized bilinear E(0), sampled E(lambda))
 # 2. Continuous On-Policy DDPG (Expected SARSA(lambda), Expected SARSA(0), E(0)-Q, E(lambda)-Q + DPG Actor)
 from __future__ import annotations
 import jax
@@ -11,6 +11,7 @@ from gymnax_rl.core.gymnax_critics import (
     compute_aux_head_loss,
     e_aux_backward_surrogate,
 )
+from gymnax_rl.algos.sac import sampled_soft_e_loss
 
 
 def extract_q_taken(q_all: jnp.ndarray, action: jnp.ndarray) -> jnp.ndarray:
@@ -18,19 +19,28 @@ def extract_q_taken(q_all: jnp.ndarray, action: jnp.ndarray) -> jnp.ndarray:
     return jnp.take_along_axis(q_all, action[..., None], axis=-1).squeeze(-1)
 
 
+def _eval_q_taken(full_params, network, obs, action) -> jnp.ndarray:
+    """Evaluates Q(s, a) for either discrete (q_values) or continuous (q_value) networks."""
+    if hasattr(network, "q_values"):
+        q_all = network.apply(full_params, obs, method=network.q_values)
+        return extract_q_taken(q_all, action)
+    if hasattr(network, "q_value"):
+        return network.apply(full_params, obs, action, method=network.q_value)
+    raise AttributeError(f"Network {type(network)} must implement 'q_values' or 'q_value'.")
+
+
 # ==============================================================================
-# Discrete Q-PPO Critic Losses
+# Q-PPO Critic Losses (Discrete & Continuous)
 # ==============================================================================
 
 def sarsa_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
     """
-    Fitted on-policy SARSA(lambda) regression loss for discrete Q(s_t, a_t):
+    Fitted on-policy SARSA(lambda) regression loss for Q(s_t, a_t):
         L = 0.5 * (targets - Q(s_t, a_t))^2
     targets are lambda-returns G_t.
     """
     full_params = {"params": {**actor_params, **critic_params}}
-    q_all = network.apply(full_params, traj_batch.obs, method=network.q_values)
-    q_taken = extract_q_taken(q_all, traj_batch.action)
+    q_taken = _eval_q_taken(full_params, network, traj_batch.obs, traj_batch.action)
 
     targets_i = targets if targets is not None else traj_batch.targets
     loss = 0.5 * jnp.mean((targets_i - q_taken) ** 2)
@@ -40,61 +50,83 @@ def sarsa_critic_loss_fn(critic_params, actor_params, network, traj_batch, targe
 
 
 def e_0_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
-    """
-    Sampled E(0) Dirichlet error loss on discrete state-action pairs:
-        e_i = G_t - Q(s_t, a_t)
-        e_j = G_{t+1} - Q(s_{t+1}, a_{t+1})  (0.0 on terminals/timeouts)
-        L = (1 - gamma) * E[e_i^2] + 0.5 * gamma * E[(e_i - e_j)^2]
+    """Half the bilinear E(0) estimate.
+
+    Discrete actions: exact successor-action averaging:
+      V_theta(s') = sum_a' sg(pi(a'|s')) Q_theta(s',a').
+    Continuous actions: independent probe action(s) from K-action rollout:
+      V_theta(s') ~ mean_{k=2..K} Q_theta(s', a'_{k}), re-using sac.sampled_soft_e_loss(alpha=0.0).
+
+    L = 0.5 mean((sg(G) - Q(s,a)) * (r + gamma V_theta(s') - Q(s,a)))
+
+    Both current-Q occurrences and successor Q receive critic gradients. The
+    actor is fixed during critic fitting; probabilities, probe actions, and returns are detached.
     """
     full_params = {"params": {**actor_params, **critic_params}}
-    q_all_i = network.apply(full_params, traj_batch.obs, method=network.q_values)
-    q_i = extract_q_taken(q_all_i, traj_batch.action)
-
-    q_all_j = network.apply(full_params, traj_batch.next_obs, method=network.q_values)
-    q_j = extract_q_taken(q_all_j, traj_batch.next_action)
-
-    targets_i = targets if targets is not None else traj_batch.targets
-    targets_j = traj_batch.next_targets
-    is_timeout = traj_batch.is_timeout
-    true_terminal = traj_batch.done & ~is_timeout
-
+    q_i = _eval_q_taken(full_params, network, traj_batch.obs, traj_batch.action)
+    targets_i = jax.lax.stop_gradient(targets if targets is not None else traj_batch.targets)
+    true_terminal = traj_batch.done & ~traj_batch.is_timeout
     gamma = config["GAMMA"]
 
-    e_i = targets_i - q_i
-    e_j = jnp.where(true_terminal | is_timeout, 0.0, targets_j - q_j)
+    if hasattr(network, "q_values"):
+        q_all_j = network.apply(full_params, traj_batch.next_obs, method=network.q_values)
+        pi_j = network.apply(full_params, traj_batch.next_obs, method=network.policy)
+        probs_j = jax.lax.stop_gradient(pi_j.probs)
+        v_j = jnp.sum(probs_j * q_all_j, axis=-1)
+        e_i = targets_i - q_i
+        delta = traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_j) - q_i
+        value_loss = 0.5 * jnp.mean(e_i * delta)
+    elif hasattr(network, "q_value"):
+        if traj_batch.next_probe_actions is None:
+            raise ValueError("Continuous E(0) Q-critic loss requires traj_batch.next_probe_actions.")
+        probe_actions = jax.lax.stop_gradient(traj_batch.next_probe_actions)
+        probe_q_all = jax.vmap(
+            lambda a: network.apply(full_params, traj_batch.next_obs, a, method=network.q_value),
+            in_axes=-2,
+            out_axes=-1,
+        )(probe_actions)
+        v_j = jnp.mean(probe_q_all, axis=-1)
+        value_loss = sampled_soft_e_loss(
+            q_taken=q_i,
+            probe_q=v_j,
+            probe_logp=jnp.zeros_like(v_j),
+            reward=traj_batch.reward,
+            done=traj_batch.done,
+            is_timeout=traj_batch.is_timeout,
+            returns=targets_i,
+            gamma=gamma,
+            alpha=0.0,
+        )
+        e_i = targets_i - q_i
+        delta = traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_j) - q_i
+    else:
+        raise AttributeError(f"Network {type(network)} must implement 'q_values' or 'q_value'.")
 
-    weight_mc = 1.0 - gamma
-    weight_dir = 0.5 * gamma
-
-    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
-    laplacian_loss = weight_dir * jnp.mean((e_i - e_j) ** 2)
-
-    value_loss = magnitude_loss + laplacian_loss
     scaled_loss = config["VF_COEF"] * value_loss
 
-    delta_mag = jnp.abs(targets_i - q_i).mean()
     aux_info = {
         "val_loss": value_loss,
-        "magnitude_loss": magnitude_loss,
-        "dirichlet_loss": laplacian_loss,
-        "delta_mag": delta_mag,
+        "delta_mag": jnp.abs(e_i).mean(),
+        "sampled_value_error_sq": jnp.mean(e_i ** 2),
+        "bellman_residual_sq": jnp.mean(delta ** 2),
     }
     return scaled_loss, aux_info
 
 
 def e_lambda_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
     """
-    Sampled E(lambda) Geometric Jump critic loss on discrete state-action pairs:
+    Legacy sampled E(lambda) Geometric Jump loss on state-action pairs.
+    Unlike E(0) above, this does not marginalize policy randomness along the jump.
+    Shared trajectory returns/endpoints can therefore introduce covariance bias,
+    including with deterministic environment transitions.
+
         e_i = G_t - Q(s_t, a_t)
         e_jump = G_{t+m} - Q(s_{t+m}, a_{t+m})
     Jump horizon m ~ Geometric(1 - gamma * lambda).
     """
     full_params = {"params": {**actor_params, **critic_params}}
-    q_all_i = network.apply(full_params, traj_batch.obs, method=network.q_values)
-    q_i = extract_q_taken(q_all_i, traj_batch.action)
-
-    q_all_jump = network.apply(full_params, traj_batch.dest_obs, method=network.q_values)
-    q_jump = extract_q_taken(q_all_jump, traj_batch.dest_action)
+    q_i = _eval_q_taken(full_params, network, traj_batch.obs, traj_batch.action)
+    q_jump = _eval_q_taken(full_params, network, traj_batch.dest_obs, traj_batch.dest_action)
 
     targets_i = targets if targets is not None else traj_batch.targets
     targets_jump = traj_batch.dest_targets

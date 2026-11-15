@@ -28,8 +28,8 @@ MASTER_SEED=${3:-42}
 LAMBDAS=${4:-"0.0 0.4 0.8 0.95"}
 CRITIC_LRS=${5:-"0.0001 0.0003 0.001"}
 ACTOR_LR=${6:-0.0003}
-NUM_ENVS=${7:-32}
-NUM_STEPS=${8:-256}
+NUM_ENVS=${7:-64}
+NUM_STEPS=${8:-128}
 MINIBATCH_SIZE=${9:-512}
 OUT_DIR=${10:-"results/sweep_comprehensive_q_critic"}
 

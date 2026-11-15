@@ -16,10 +16,12 @@ from gymnax.environments import spaces
 
 from gymnax_rl.core.gymnax_network import (
     MLP,
+    PolicyHead,
     DualTrainState,
     initialize_split_flax_train_state,
     uses_aux_network,
 )
+from gymnax_rl.algos.sac import ContinuousQ
 
 
 class DiscretePolicyHead(nn.Module):
@@ -250,22 +252,91 @@ class ContinuousDDPGDualCritic(nn.Module):
         return pi, v
 
 
-def initialize_q_actor_critic(rng, obs_shape, env, env_params, config):
-    """Initializes Q-Actor-Critic for discrete action spaces (Q-PPO)."""
-    act_space = env.action_space(env_params)
-    if not isinstance(act_space, spaces.Discrete):
-        raise ValueError(f"Q-PPO requires discrete action space for closed-form marginalization, got {type(act_space)}")
+class ContinuousMLP_Q_AC(nn.Module):
+    """
+    Continuous Actor-Critic architecture for Q-PPO:
+      - Actor: Stochastic Gaussian policy pi(. | s) via PolicyHead(is_continuous=True)
+      - Critic: State-action Q(s, a) reusing sac.ContinuousQ (or LayerNorm MLP)
+    """
+    action_dim: int
+    final_hidden_dim: int
+    norm_type: str = "none"
+    action_low: Any = -1.0
+    action_high: Any = 1.0
 
-    action_dim = act_space.n
+    def setup(self):
+        self.actor_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+        self.actor_head = PolicyHead(self.action_dim, is_continuous=True)
+        if self.norm_type == "none":
+            self.critic_q = ContinuousQ(hidden_dims=(64, self.final_hidden_dim))
+        else:
+            self.critic_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.q_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+
+    def policy(self, x: jnp.ndarray):
+        phi_a = self.actor_mlp(x)
+        return self.actor_head(phi_a)
+
+    def q_value(self, x: jnp.ndarray, a: jnp.ndarray) -> jnp.ndarray:
+        a = a.reshape(x.shape[:-1] + (-1,))
+        low = jnp.asarray(self.action_low, dtype=a.dtype)
+        high = jnp.asarray(self.action_high, dtype=a.dtype)
+        a_clipped = jnp.clip(a, low, high)
+        if self.norm_type == "none":
+            return self.critic_q(x, a_clipped)
+        sa = jnp.concatenate([x, a_clipped], axis=-1)
+        phi_c = self.critic_mlp(sa)
+        q = self.q_head(phi_c).squeeze(-1)
+        if x.ndim == 1:
+            q = q.squeeze(0)
+        return q
+
+    def value(self, x: jnp.ndarray) -> jnp.ndarray:
+        """Deterministic-mean Q(s, mu(s)) for start-state / runtime metric logging."""
+        pi = self.policy(x)
+        loc = pi.loc[0] if x.ndim == 1 else pi.loc
+        return self.q_value(x, loc)
+
+    def __call__(self, x: jnp.ndarray):
+        pi = self.policy(x)
+        loc = pi.loc[0] if x.ndim == 1 else pi.loc
+        v = self.q_value(x, loc)
+        return pi, v
+
+
+def initialize_q_actor_critic(rng, obs_shape, env, env_params, config):
+    """Initializes Q-Actor-Critic for Discrete or Continuous Box action spaces (Q-PPO)."""
+    import numpy as np
+    with jax.ensure_compile_time_eval():
+        act_space = env.action_space(env_params)
+
     k = config["k"]
     layer_norm = config["LAYER_NORM"]
     norm_type = "layer_norm" if layer_norm else "none"
     use_mlp = len(obs_shape) < 3
 
-    if use_mlp:
-        model = MLP_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+    if isinstance(act_space, spaces.Discrete):
+        action_dim = act_space.n
+        if use_mlp:
+            model = MLP_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+        else:
+            model = PQN_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+    elif isinstance(act_space, spaces.Box):
+        if not use_mlp:
+            raise ValueError(f"Continuous Q-PPO supports vector observations only, got obs_shape={obs_shape}")
+        with jax.ensure_compile_time_eval():
+            action_dim = int(np.prod(act_space.shape)) if len(act_space.shape) > 0 else 1
+            action_low = tuple(float(v) for v in np.broadcast_to(np.asarray(act_space.low), (action_dim,)).reshape(-1))
+            action_high = tuple(float(v) for v in np.broadcast_to(np.asarray(act_space.high), (action_dim,)).reshape(-1))
+        model = ContinuousMLP_Q_AC(
+            action_dim=action_dim,
+            final_hidden_dim=k,
+            norm_type=norm_type,
+            action_low=action_low,
+            action_high=action_high,
+        )
     else:
-        model = PQN_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+        raise ValueError(f"Q-PPO requires Discrete or Box action space, got {type(act_space)}")
 
     rng, init_rng = jax.random.split(rng)
     params = model.init(init_rng, jnp.zeros(obs_shape))
