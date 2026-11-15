@@ -5,8 +5,13 @@ config = {
     "NUM_STEPS": 128,
     "GAMMA": 0.99,
     "GAE_LAMBDA": 0.8,
+    "RETURN_LAMBDA": 1.0,
+    "VALUE_LAMBDA": 0.8,
+    "K_ACTIONS": 2,
+    "GAE_CONTINUOUS_MODE": "loo",
     "CLIP_EPS": 0.2,
     "ENT_COEF": 0.001,
+    "VF_COEF": 0.5,
     "ENV_NAME": "hopper",
     "NETWORK_CONFIG": {
         "LR": 3e-4,

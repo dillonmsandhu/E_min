@@ -177,3 +177,71 @@ class BraxDDPGDualCritic(nn.Module):
         pi = distrax.MultivariateNormalDiag(loc=mu, scale_diag=jnp.full_like(mu, self.exploration_noise))
         v, _ = self.both_q(x, mu)
         return pi, v
+
+
+class BraxQPPOActorCritic(nn.Module):
+    """
+    Continuous Q-PPO Actor-Critic for Brax (256-256 MLPs matching brax_network.ActorCritic).
+
+    Top-level actor submodules ('actor_mean', 'log_std') match brax_network.initialize_split_train_state.
+    """
+    action_dim: int
+    activation: str = "tanh"
+    log_std_init: float = -0.5
+    layer_norm: bool = False
+
+    def setup(self):
+        act_fn = nn.relu if self.activation == "relu" else nn.tanh
+
+        actor_layers = [
+            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+        ]
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(act_fn)
+        actor_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            actor_layers.append(nn.LayerNorm())
+        actor_layers.append(act_fn)
+        actor_layers.append(nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)))
+        self.actor_mean = nn.Sequential(actor_layers)
+
+        self.actor_logstd = self.param(
+            "log_std",
+            lambda key, shape: jnp.full(shape, self.log_std_init),
+            (self.action_dim,),
+        )
+
+        critic_layers = [
+            nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+        ]
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(act_fn)
+        critic_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+        if self.layer_norm:
+            critic_layers.append(nn.LayerNorm())
+        critic_layers.append(act_fn)
+        self.critic_torso = nn.Sequential(critic_layers)
+        self.q_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+
+    def policy(self, x: jnp.ndarray) -> distrax.MultivariateNormalDiag:
+        actor_mean = self.actor_mean(x)
+        clamped_logstd = jnp.clip(self.actor_logstd, a_min=-5.0, a_max=2.0)
+        return distrax.MultivariateNormalDiag(actor_mean, jnp.exp(clamped_logstd))
+
+    def q_value(self, x: jnp.ndarray, a: jnp.ndarray) -> jnp.ndarray:
+        """Evaluates Q(s, a) with actions clipped to Brax's [-1, 1] physical action bounds."""
+        a_clipped = jnp.clip(a, -1.0, 1.0)
+        sa = jnp.concatenate([x, a_clipped], axis=-1)
+        phi_c = self.critic_torso(sa)
+        return self.q_head(phi_c).squeeze(-1)
+
+    def value(self, x: jnp.ndarray) -> jnp.ndarray:
+        pi = self.policy(x)
+        return self.q_value(x, pi.loc)
+
+    def __call__(self, x: jnp.ndarray):
+        pi = self.policy(x)
+        v = self.q_value(x, pi.loc)
+        return pi, v

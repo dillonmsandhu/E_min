@@ -16,6 +16,7 @@ from brax_rl.core.brax_critics import (
     get_critic_target_lambda,
     prepare_critic_transitions,
 )
+from gymnax_rl.algos.sac import sampled_soft_e_loss
 
 
 def compute_aux_head_loss(q_aux, aux_targets, aux_coef: float = 1.0):
@@ -341,3 +342,104 @@ def get_brax_ddpg_critic_loss_fn(critic_type: str):
             f"Unknown Brax DDPG critic_type '{critic_type}'. Available: {list(BRAX_DDPG_CRITIC_LOSS_FNS.keys())}"
         )
     return BRAX_DDPG_CRITIC_LOSS_FNS[key]
+
+
+# ==============================================================================
+# Brax Continuous Q-PPO Critic Losses (K-Action Sampling)
+# ==============================================================================
+
+def brax_q_ppo_sarsa_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """
+    Fitted on-policy SARSA(lambda) MSE loss on Q(s_t, a_t) for Brax Q-PPO.
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    q_taken = network.apply(full_params, traj_batch.obs, traj_batch.action, method=network.q_value)
+    targets_i = jax.lax.stop_gradient(targets if targets is not None else traj_batch.targets)
+
+    loss = 0.5 * jnp.mean(jnp.square(targets_i - q_taken))
+    delta_mag = jnp.mean(jnp.abs(targets_i - q_taken))
+    scaled_loss = config["VF_COEF"] * loss
+    return scaled_loss, {
+        "val_loss": loss,
+        "delta_mag": delta_mag,
+    }
+
+
+def brax_q_ppo_e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """
+    Bilinear E(0) Q-critic loss for continuous Brax Q-PPO.
+
+    Uses independent successor probe actions a'_{2..K} (detached) to estimate
+    V_theta(s') = mean_{k=2..K} Q_theta(s', a'_k) inside delta, while G_t is
+    constructed strictly from applied slot-0 actions. Reuses sac.sampled_soft_e_loss
+    with alpha=0.0 so both current-Q occurrences and probe-Q receive critic gradients.
+    """
+    if traj_batch.next_probe_actions is None:
+        raise ValueError("Brax continuous E(0) Q-critic loss requires traj_batch.next_probe_actions.")
+
+    full_params = {"params": {**actor_params, **critic_params}}
+    q_i = network.apply(full_params, traj_batch.obs, traj_batch.action, method=network.q_value)
+    targets_i = jax.lax.stop_gradient(targets if targets is not None else traj_batch.targets)
+
+    probe_actions = jax.lax.stop_gradient(traj_batch.next_probe_actions)
+    probe_q_all = jax.vmap(
+        lambda a: network.apply(full_params, traj_batch.next_obs, a, method=network.q_value),
+        in_axes=-2,
+        out_axes=-1,
+    )(probe_actions)
+    v_j = jnp.mean(probe_q_all, axis=-1)
+
+    done_bool = traj_batch.done > 0.5
+    timeout_bool = traj_batch.is_timeout > 0.5
+    true_terminal = done_bool & ~timeout_bool
+    gamma = config["GAMMA"]
+
+    value_loss = sampled_soft_e_loss(
+        q_taken=q_i,
+        probe_q=v_j,
+        probe_logp=jnp.zeros_like(v_j),
+        reward=traj_batch.reward,
+        done=done_bool,
+        is_timeout=timeout_bool,
+        returns=targets_i,
+        gamma=gamma,
+        alpha=0.0,
+    )
+
+    e_i = targets_i - q_i
+    delta = traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_j) - q_i
+    scaled_loss = config["VF_COEF"] * value_loss
+
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
+        "sampled_value_error_sq": jnp.mean(e_i ** 2),
+        "bellman_residual_sq": jnp.mean(delta ** 2),
+    }
+
+
+BRAX_Q_PPO_CRITIC_LOSS_FNS = {
+    "sarsa": brax_q_ppo_sarsa_critic_loss_fn,
+    "sarsa_lambda": brax_q_ppo_sarsa_critic_loss_fn,
+    "fitted": brax_q_ppo_sarsa_critic_loss_fn,
+    "ppo": brax_q_ppo_sarsa_critic_loss_fn,
+    "td_lambda": brax_q_ppo_sarsa_critic_loss_fn,
+    "mc": brax_q_ppo_sarsa_critic_loss_fn,
+    "sampled_mc": brax_q_ppo_sarsa_critic_loss_fn,
+    "e_0": brax_q_ppo_e_0_critic_loss_fn,
+    "e_0_q": brax_q_ppo_e_0_critic_loss_fn,
+    "e0": brax_q_ppo_e_0_critic_loss_fn,
+    "e": brax_q_ppo_e_0_critic_loss_fn,
+    "e_bilinear": brax_q_ppo_e_0_critic_loss_fn,
+    "sampled_e": brax_q_ppo_e_0_critic_loss_fn,
+}
+
+
+def get_brax_q_ppo_critic_loss_fn(critic_type: str):
+    key = critic_type.lower()
+    if key not in BRAX_Q_PPO_CRITIC_LOSS_FNS:
+        raise ValueError(
+            f"Unknown Brax Q-PPO critic_type '{critic_type}'. "
+            f"Available: {list(BRAX_Q_PPO_CRITIC_LOSS_FNS.keys())}"
+        )
+    return BRAX_Q_PPO_CRITIC_LOSS_FNS[key]
