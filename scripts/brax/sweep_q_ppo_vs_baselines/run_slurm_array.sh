@@ -18,7 +18,7 @@
 
 set -e
 
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
+if [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/brax_rl/core/q_ppo_config.py" ]; then
     cd "$SLURM_SUBMIT_DIR"
 fi
 [ -f "brax_rl/core/q_ppo_config.py" ] || cd "$(dirname "$0")/../../.."
