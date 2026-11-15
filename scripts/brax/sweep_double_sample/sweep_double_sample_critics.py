@@ -969,6 +969,34 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         f.write("\n")
     print(f"Generated Table 3 summary: {os.path.join(tables_dir, 'table3_master_championship.md')}")
 
+    # Write Base Config & Winning Hyperparameters per (Env, Algo)
+    cfg_win_path = os.path.join(tables_dir, "sweep_config_and_winners.md")
+    with open(cfg_win_path, "w") as f:
+        f.write("### Base Config & Sweep Grid\n\n")
+        f.write(f"- **Environments ({n_envs}):** {', '.join(ENV_TITLES.get(e, e) for e in envs)}\n")
+        f.write(f"- **Critic LRs:** {critic_lrs}\n")
+        f.write(f"- **Critic Epochs:** {critic_epochs}\n")
+        f.write(f"- **Actor LR (default):** {DEFAULT_ACTOR_LR}\n")
+        f.write(f"- **Actor GAE Lambda (default):** {DEFAULT_ACTOR_GAE_LAMBDA}\n")
+        f.write(f"- **Return Lambdas (E-Min):** {DEFAULT_RETURN_LAMBDAS}\n")
+        f.write(f"- **Batch Size (num_envs × num_steps):** {batch_size}\n")
+        if timesteps:
+            ts_str = ", ".join(f"{ENV_TITLES.get(e, e)}: {timesteps[e]:,}" for e in envs if e in timesteps)
+            f.write(f"- **Timesteps:** {ts_str}\n")
+        f.write("\n### Winning Settings per (Environment, Algorithm) [Selected by Mean AUC]\n\n")
+        win_rows = []
+        for idx, env in enumerate(envs):
+            row = {"Environment": ENV_TITLES.get(env, env)}
+            for c_idx, col in enumerate(var_labels):
+                lr_w, ep_w = best_cfgs[(idx, c_idx)]
+                ret_m = means_ret[idx][c_idx]
+                auc_m = auc_means[idx][c_idx]
+                row[col] = f"lr={lr_w}, ep={ep_w} (Fin: {ret_m:.1f}, AUC: {auc_m:.1f})"
+            win_rows.append(row)
+        f.write(pd.DataFrame(win_rows).to_markdown(index=False))
+        f.write("\n")
+    print(f"Generated Config & Winners summary: {cfg_win_path}")
+
     # -------------------------------------------------------------
     # 4. ANALYSIS 4: Two-Timescale Sensitivity (Critic Epochs in [4, 8, 16])
     # -------------------------------------------------------------
