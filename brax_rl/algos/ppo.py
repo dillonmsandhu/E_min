@@ -84,6 +84,7 @@ def make_train(config):
             c_type in [
                 "e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical",
                 "e_lambda", "elambda", "e_geometric",
+                "bsmc", "bsmc_v_aux",
             ]
             and e_variant in ["aux", "e_aux"]
         )

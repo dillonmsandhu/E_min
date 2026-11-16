@@ -44,5 +44,4 @@ config = {
     "TARGET_ENTROPY": None,
     "KL_COEFF": 0.5,
     "KL_TARGET": 0.03,
-    "RECOMPUTE_TARGETS_EACH_EPOCH": True,
 }

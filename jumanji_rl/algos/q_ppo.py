@@ -61,6 +61,9 @@ def make_train(base_config: dict):
             cfg_run = config
 
         c_type = cfg_run["CRITIC_TYPE"].lower()
+        if c_type in ("e_0", "e_0_q", "e0", "e"):
+            # Bilinear E(0) uses exact discrete action marginalization with no auxiliary branch.
+            cfg_run = {**cfg_run, "E_VARIANT": "naive"}
         critic_loss_fn = get_q_critic_loss_fn(c_type)
         actor_loss_fn = ppo_actor_loss_fn
 
@@ -99,6 +102,7 @@ def make_train(base_config: dict):
                 pi, value, q_all = network.apply(train_state.params, last_obs)
                 action = pi.sample(seed=_rng)
                 log_prob = pi.log_prob(action)
+                q_taken = extract_q_taken(q_all, action)
 
                 rng, _rng = jax.random.split(rng)
                 step_keys = jax.random.split(_rng, cfg_run["NUM_ENVS"])
@@ -115,6 +119,7 @@ def make_train(base_config: dict):
                     done=done,
                     action=action,
                     value=value,
+                    q_taken=q_taken,
                     reward=reward,
                     log_prob=log_prob,
                     obs=last_obs,
@@ -268,6 +273,7 @@ def make_train(base_config: dict):
                 config=cfg_run,
             )
             metric["advantage"] = advantages.mean()
+            metric["q_pred"] = traj_batch.q_taken.mean()
 
             runner_state = (train_state, env_state, last_obs, last_true_terminal, rng, idx + 1)
             return runner_state, metric

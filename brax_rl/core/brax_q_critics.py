@@ -365,15 +365,8 @@ def brax_q_ppo_sarsa_critic_loss_fn(critic_params, actor_params, network, traj_b
     }
 
 
-def brax_q_ppo_e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
-    """
-    Bilinear E(0) Q-critic loss for continuous Brax Q-PPO.
-
-    Uses independent successor probe actions a'_{2..K} (detached) to estimate
-    V_theta(s') = mean_{k=2..K} Q_theta(s', a'_k) inside delta, while G_t is
-    constructed strictly from applied slot-0 actions. Reuses sac.sampled_soft_e_loss
-    with alpha=0.0 so both current-Q occurrences and probe-Q receive critic gradients.
-    """
+def _brax_q_ppo_bilinear_e0_core(critic_params, actor_params, network, traj_batch, targets, config):
+    """Computes bilinear E(0) and MC losses for Brax continuous Q-PPO using probe actions."""
     if traj_batch.next_probe_actions is None:
         raise ValueError("Brax continuous E(0) Q-critic loss requires traj_batch.next_probe_actions.")
 
@@ -394,7 +387,7 @@ def brax_q_ppo_e_0_critic_loss_fn(critic_params, actor_params, network, traj_bat
     true_terminal = done_bool & ~timeout_bool
     gamma = config["GAMMA"]
 
-    value_loss = sampled_soft_e_loss(
+    e0_loss = sampled_soft_e_loss(
         q_taken=q_i,
         probe_q=v_j,
         probe_logp=jnp.zeros_like(v_j),
@@ -405,17 +398,178 @@ def brax_q_ppo_e_0_critic_loss_fn(critic_params, actor_params, network, traj_bat
         gamma=gamma,
         alpha=0.0,
     )
-
     e_i = targets_i - q_i
+    mc_loss = 0.5 * jnp.mean(e_i ** 2)
     delta = traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_j) - q_i
-    scaled_loss = config["VF_COEF"] * value_loss
+    return e0_loss, mc_loss, e_i, delta, gamma
 
+
+def brax_q_ppo_e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """Bilinear E(0) Q-critic loss using independent successor probe actions a'_{2..K}."""
+    e0_loss, _, e_i, delta, _ = _brax_q_ppo_bilinear_e0_core(
+        critic_params, actor_params, network, traj_batch, targets, config
+    )
+    scaled_loss = config["VF_COEF"] * e0_loss
     return scaled_loss, {
-        "val_loss": value_loss,
+        "val_loss": e0_loss,
         "delta_mag": jnp.mean(jnp.abs(e_i)),
         "sampled_value_error_sq": jnp.mean(e_i ** 2),
         "bellman_residual_sq": jnp.mean(delta ** 2),
     }
+
+
+def brax_q_ppo_bsmc_double_pi_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """Bilinear BSMC Q-critic loss using double-sampled probe actions (no v_aux)."""
+    e0_loss, mc_loss, e_i, delta, gamma = _brax_q_ppo_bilinear_e0_core(
+        critic_params, actor_params, network, traj_batch, targets, config
+    )
+    bsmc_lambda = config["BSMC_LAMBDA"]
+    w_extra = ((1.0 - gamma) * bsmc_lambda) / jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+    value_loss = (1.0 - w_extra) * e0_loss + w_extra * mc_loss
+    scaled_loss = config["VF_COEF"] * value_loss
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "e0_loss": e0_loss,
+        "mc_loss": mc_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
+        "bellman_residual_sq": jnp.mean(delta ** 2),
+    }
+
+
+def brax_q_ppo_bsmc_bilinear_v_aux_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """
+    1-step bilinear BSMC Q-critic loss debiased via state-only v_aux(s) without double-sampling pi.
+    Uses single-trajectory (s_{t+1}, a_{t+1}) and e_proxy = sg(r_t + gamma * v_aux(s_{t+1})) - Q_t.
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+
+    q_i = network.apply(full_params, traj_batch.obs, traj_batch.action, method=network.q_value)
+    q_j = network.apply(full_params, traj_batch.next_obs, traj_batch.next_action, method=network.q_value)
+    v_aux_i = network.apply(full_params, traj_batch.obs, method=network.v_aux)
+    v_aux_next = network.apply(full_params, traj_batch.next_obs, method=network.v_aux)
+
+    targets_i = sg(targets if targets is not None else traj_batch.targets)
+    aux_targets = sg(traj_batch.aux_targets)
+    true_terminal = (traj_batch.done > 0.5) & ~(traj_batch.is_timeout > 0.5)
+    gamma = config["GAMMA"]
+    aux_coef = config["AUX_VF_COEF"]
+    bsmc_lambda = config["BSMC_LAMBDA"]
+
+    e_i = targets_i - q_i
+    cont_v_aux = jnp.where(true_terminal, 0.0, v_aux_next)
+    e_proxy_i = sg(traj_batch.reward + gamma * cont_v_aux - q_i)
+    td_target_stop = sg(traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, q_j))
+
+    cur_branch = 0.5 * e_i * (td_target_stop - q_i)
+    next_branch = 0.5 * gamma * jnp.where(true_terminal, 0.0, e_proxy_i * q_j)
+    e0_bilin_vaux = jnp.mean(cur_branch + next_branch)
+
+    mc_loss = 0.5 * jnp.mean(e_i ** 2)
+    w_extra = ((1.0 - gamma) * bsmc_lambda) / jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+    aux_mc_loss = compute_aux_head_loss(v_aux_i, aux_targets, aux_coef=aux_coef)
+
+    value_loss = (1.0 - w_extra) * e0_bilin_vaux + w_extra * mc_loss + aux_mc_loss
+    scaled_loss = config["VF_COEF"] * value_loss
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "e0_bilin_vaux": e0_bilin_vaux,
+        "mc_loss": mc_loss,
+        "aux_mc_loss": aux_mc_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
+    }
+
+
+def _brax_q_ppo_dirichlet_v_aux_loss_fn(
+    critic_params, actor_params, network, traj_batch, targets, config, is_jump: bool
+):
+    """
+    Shared Dirichlet Q-critic loss debiased via state-only v_aux(s):
+      e_aux(s_t, a_t) = sg(r_t + gamma * (1 - term_t) * v_aux(s_{t+1})) - Q(s_t, a_t).
+    Supports both 1-step E(0) (is_jump=False) and geometric-jump E(lambda) (is_jump=True).
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+    aux_coef = config["AUX_VF_COEF"]
+
+    q_i = network.apply(full_params, traj_batch.obs, traj_batch.action, method=network.q_value)
+    v_aux_i = network.apply(full_params, traj_batch.obs, method=network.v_aux)
+    v_aux_next_i = network.apply(full_params, traj_batch.next_obs, method=network.v_aux)
+
+    targets_i = sg(targets if targets is not None else traj_batch.targets)
+    aux_targets = sg(traj_batch.aux_targets)
+    is_timeout = traj_batch.is_timeout > 0.5
+    true_terminal_i = (traj_batch.done > 0.5) & ~is_timeout
+
+    if is_jump:
+        j_obs = traj_batch.dest_obs
+        j_act = traj_batch.dest_action
+        j_targets = sg(traj_batch.dest_targets)
+        j_rew = traj_batch.dest_reward
+        j_next_obs = traj_batch.dest_next_obs
+        j_term = traj_batch.dest_true_terminal > 0.5
+        valid_pair = traj_batch.valid_jump > 0.5
+        lmbda = config["E_LAMBDA"]
+        denom = jnp.maximum(1.0 - gamma * lmbda, 1e-8)
+        weight_mc = 0.5 * (1.0 - gamma) / denom
+        weight_dir = 0.5 * (gamma * (1.0 - lmbda)) / denom
+        start_weight = 0.0
+    else:
+        j_obs = traj_batch.next_obs
+        j_act = traj_batch.next_action
+        j_targets = sg(traj_batch.next_targets)
+        j_rew = traj_batch.next_reward
+        j_next_obs = traj_batch.next_next_obs
+        j_term = traj_batch.next_true_terminal > 0.5
+        valid_pair = (~true_terminal_i) & (~is_timeout) & (~(traj_batch.is_horizon > 0.5))
+        weight_mc = 0.5 * (1.0 - gamma)
+        weight_dir = 0.5 * gamma
+        start_weight = 0.25 * gamma
+
+    q_j = network.apply(full_params, j_obs, j_act, method=network.q_value)
+    v_aux_next_j = network.apply(full_params, j_next_obs, method=network.v_aux)
+
+    e_i = targets_i - q_i
+    e_j = jnp.where(true_terminal_i, 0.0, j_targets - q_j)
+
+    q_proxy_i = sg(traj_batch.reward + gamma * jnp.where(true_terminal_i, 0.0, v_aux_next_i))
+    q_proxy_j = sg(j_rew + gamma * jnp.where(j_term, 0.0, v_aux_next_j))
+    e_aux_i = q_proxy_i - q_i
+    e_aux_j = jnp.where(true_terminal_i, 0.0, q_proxy_j - q_j)
+
+    branch_i = (e_i - sg(e_j)) ** 2
+    branch_j = jnp.where(true_terminal_i, 0.0, (sg(e_aux_i) - e_aux_j) ** 2)
+    diff_sq = jnp.where(valid_pair, branch_i + branch_j, e_i ** 2)
+
+    aux_mc_loss = compute_aux_head_loss(v_aux_i, aux_targets, aux_coef=aux_coef)
+    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
+    dirichlet_loss = weight_dir * jnp.mean(diff_sq)
+    start_anchor_loss = start_weight * jnp.mean(jnp.where(traj_batch.is_start, e_i ** 2, 0.0))
+
+    value_loss = magnitude_loss + dirichlet_loss + start_anchor_loss + aux_mc_loss
+    scaled_loss = config["VF_COEF"] * value_loss
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "aux_mc_loss": aux_mc_loss,
+        "delta_mag": jnp.mean(jnp.abs(e_i)),
+    }
+
+
+def brax_q_ppo_e_0_v_aux_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """1-step Dirichlet E(0) Q-critic loss debiased via state-only v_aux(s)."""
+    return _brax_q_ppo_dirichlet_v_aux_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config, is_jump=False
+    )
+
+
+def brax_q_ppo_e_lambda_v_aux_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """Geometric-jump Dirichlet E(lambda) Q-critic loss debiased via state-only v_aux(s)."""
+    return _brax_q_ppo_dirichlet_v_aux_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config, is_jump=True
+    )
 
 
 BRAX_Q_PPO_CRITIC_LOSS_FNS = {
@@ -428,10 +582,19 @@ BRAX_Q_PPO_CRITIC_LOSS_FNS = {
     "sampled_mc": brax_q_ppo_sarsa_critic_loss_fn,
     "e_0": brax_q_ppo_e_0_critic_loss_fn,
     "e_0_q": brax_q_ppo_e_0_critic_loss_fn,
+    "e_0_bilinear": brax_q_ppo_e_0_critic_loss_fn,
     "e0": brax_q_ppo_e_0_critic_loss_fn,
     "e": brax_q_ppo_e_0_critic_loss_fn,
     "e_bilinear": brax_q_ppo_e_0_critic_loss_fn,
     "sampled_e": brax_q_ppo_e_0_critic_loss_fn,
+    "e_0_v_aux": brax_q_ppo_e_0_v_aux_critic_loss_fn,
+    "e_lambda": brax_q_ppo_e_lambda_v_aux_critic_loss_fn,
+    "e_lambda_q": brax_q_ppo_e_lambda_v_aux_critic_loss_fn,
+    "e_lambda_v_aux": brax_q_ppo_e_lambda_v_aux_critic_loss_fn,
+    "elambda": brax_q_ppo_e_lambda_v_aux_critic_loss_fn,
+    "e_geometric": brax_q_ppo_e_lambda_v_aux_critic_loss_fn,
+    "bsmc_double_pi": brax_q_ppo_bsmc_double_pi_critic_loss_fn,
+    "bsmc_bilinear_v_aux": brax_q_ppo_bsmc_bilinear_v_aux_critic_loss_fn,
 }
 
 

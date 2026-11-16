@@ -916,6 +916,13 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         f.write("\n")
     print(f"Generated Table 3 summary: {os.path.join(tables_dir, 'table3_master_championship.md')}")
 
+    from scripts.sweep_summary_utils import write_sweep_config_and_winners
+    write_sweep_config_and_winners(
+        tables_dir, all_runs, envs,
+        {"Critic LRs": critic_lrs, "Critic Epochs": critic_epochs, "Actor LR (default)": DEFAULT_ACTOR_LR, "Batch Size": batch_size},
+        timesteps=timesteps,
+    )
+
     # -------------------------------------------------------------
     # 4. ANALYSIS 4: Two-Timescale Sensitivity (Critic Epochs in [4, 8])
     # -------------------------------------------------------------

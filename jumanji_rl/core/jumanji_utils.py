@@ -37,6 +37,7 @@ class QTransition(NamedTuple):
     info: Any
     is_start: jnp.ndarray
     is_timeout: jnp.ndarray
+    q_taken: Optional[jnp.ndarray] = None
     next_action: Optional[jnp.ndarray] = None
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
@@ -66,15 +67,21 @@ def prepare_q_jump_transitions(traj_batch: QTransition, targets: jnp.ndarray, la
     t_grid = jnp.broadcast_to(jnp.arange(num_steps)[:, None], (num_steps, num_envs))
     dest_t = t_grid + m
 
+    true_terminal = traj_batch.done & ~traj_batch.is_timeout
+    is_absorbing = true_terminal
+
     # Extended trajectory buffers with continuation state at horizon
+    next_target_T = jnp.where(true_terminal[-1], 0.0, traj_batch.next_value[-1])
     obs_ext = jnp.concatenate([traj_batch.obs, last_obs[None]], axis=0)
     act_ext = jnp.concatenate([traj_batch.action, last_action[None]], axis=0)
-    targets_ext = jnp.concatenate([targets, traj_batch.next_value[-1:][0][None]], axis=0)
-
-    true_terminal_ext = jnp.concatenate([traj_batch.done & ~traj_batch.is_timeout, jnp.zeros((1, num_envs), dtype=bool)], axis=0)
-    cum_terminals = jnp.cumsum(true_terminal_ext.astype(jnp.int32), axis=0)
+    targets_ext = jnp.concatenate([targets, next_target_T[None]], axis=0)
 
     t_clamped = jnp.clip(dest_t, 0, num_steps)
+    t_prev = jnp.minimum(t_grid + m - 1, num_steps - 1)
+    done_cumsum = jnp.cumsum(traj_batch.done.astype(jnp.int32), axis=0)
+    has_reset_between = (
+        jnp.take_along_axis(done_cumsum, t_prev, axis=0) - done_cumsum
+    ) > 0
 
     # Expand gather indices for multi-dimensional spatial observations (T, B, H, W, C)
     gather_idx_obs = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.obs.ndim - 2))
@@ -88,18 +95,17 @@ def prepare_q_jump_transitions(traj_batch: QTransition, targets: jnp.ndarray, la
     dest_act = jnp.where(traj_batch.is_timeout, traj_batch.next_action, dest_act_gathered)
     dest_targets = jnp.where(traj_batch.is_timeout, traj_batch.next_value, dest_targets_gathered)
 
-    terms_start = jnp.take_along_axis(cum_terminals, t_grid, axis=0)
-    terms_dest = jnp.take_along_axis(cum_terminals, t_clamped, axis=0)
-    hit_term = (terms_dest - terms_start) > 0
-    hit_true_terminal = jnp.where(traj_batch.is_timeout, False, hit_term)
-
-    valid_jump = (dest_t < num_steps) | traj_batch.is_timeout
+    valid_jump = jnp.where(
+        true_terminal,
+        False,
+        jnp.where(traj_batch.is_timeout, m == 1, (dest_t <= num_steps) & ~has_reset_between),
+    )
 
     return traj_batch._replace(
         dest_obs=dest_obs,
         dest_action=dest_act,
         dest_targets=dest_targets,
-        hit_true_terminal=hit_true_terminal,
+        hit_true_terminal=is_absorbing,
         valid_jump=valid_jump,
     )
 

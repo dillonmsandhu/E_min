@@ -727,7 +727,7 @@ def run_sweep(args):
 # Automated Cross-Algorithm Diagnostics and Publication Tables
 # ==============================================================================
 
-def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, metric_key, batch_size):
+def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, metric_key, batch_size, variants=None):
     plots_dir = os.path.join(out_dir, "plots")
     tables_dir = os.path.join(out_dir, "tables")
     os.makedirs(plots_dir, exist_ok=True)
@@ -737,8 +737,9 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     n_cols_plot = min(4, n_envs)
     n_rows_plot = int(np.ceil(n_envs / n_cols_plot))
 
-    var_keys = [k for k, _ in CRITIC_VARIANTS]
-    var_labels = [label for _, label in CRITIC_VARIANTS]
+    active_variants = variants if variants is not None else CRITIC_VARIANTS
+    var_keys = [k for k, _ in active_variants]
+    var_labels = [label for _, label in active_variants]
     colors = ["#f59e0b", "#64748b", "#dc2626", "#059669", "#10b981", "#7c3aed", "#2563eb"]
     linestyles = ["-", "--", "-.", ":", "-.", "-", "--"]
 

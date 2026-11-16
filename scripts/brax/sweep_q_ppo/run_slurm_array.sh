@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=qppo_cmp_brax
+#SBATCH --job-name=q_ppo_brax
 #SBATCH --output=slurm/%A_%a.out
 #SBATCH --error=slurm/%A_%a.err
 #SBATCH --time=12:00:00
@@ -9,16 +9,9 @@
 #SBATCH --mem=32G
 #SBATCH --array=0-10
 
-# ==============================================================================
-# Brax Comparison & Hyperparameter Tuning Array Task:
-#   1. TD(lambda) (PPO Fitted)
-#   2. Q-PPO E(0) (Bilinear + Hybrid GAE)
-#   3. E(lambda) (v_aux PPO)
-# ==============================================================================
-
 set -e
 
-if [ -n "$SLURM_SUBMIT_DIR" ] && [ -d "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/brax_rl/core/q_ppo_config.py" ]; then
+if [ -n "$SLURM_SUBMIT_DIR" ] && [ -f "$SLURM_SUBMIT_DIR/brax_rl/core/q_ppo_config.py" ]; then
     cd "$SLURM_SUBMIT_DIR"
 fi
 [ -f "brax_rl/core/q_ppo_config.py" ] || cd "$(dirname "$0")/../../.."
@@ -68,36 +61,34 @@ else
     ENV_NAME="hopper"
 fi
 
-if [ -z "$ENV_NAME" ]; then
-    echo "ERROR: ENV_NAME is empty. Task ID ($SLURM_ARRAY_TASK_ID) is out of bounds."
-    exit 1
-fi
-
-MODE=${MODE:-"tune_coordinate"}
-N_SEEDS=${N_SEEDS:-3}
-MASTER_SEED=${MASTER_SEED:-42}
-NUM_ENVS=${NUM_ENVS:-512}
-NUM_STEPS=${NUM_STEPS:-128}
-MINIBATCH_SIZE=${MINIBATCH_SIZE:-1024}
-OUT_DIR=${OUT_DIR:-"results/sweep_q_ppo_vs_baselines_brax"}
+OUT_DIR="${OUT_DIR:-results/brax/sweep_q_ppo}"
+N_SEEDS="${N_SEEDS:-3}"
+MASTER_SEED="${MASTER_SEED:-42}"
+CRITIC_LRS="${CRITIC_LRS:-0.0003 0.001 0.003}"
+CRITIC_EPOCHS="${CRITIC_EPOCHS:-4 8}"
+LAMBDAS="${LAMBDAS:-0.4 0.8 0.95}"
+ACTOR_LR="${ACTOR_LR:-0.0003}"
+GAE_LAMBDA="${GAE_LAMBDA:-0.8}"
+K_ACTIONS="${K_ACTIONS:-4}"
+GAE_MODE="${GAE_MODE:-hybrid}"
+NUM_ENVS="${NUM_ENVS:-512}"
+NUM_STEPS="${NUM_STEPS:-128}"
+MINIBATCH_SIZE="${MINIBATCH_SIZE:-1024}"
 
 TIMESTEP_FLAG=""
 if [ -n "$TOTAL_TIMESTEPS" ] && [ "$TOTAL_TIMESTEPS" != "auto" ]; then
     TIMESTEP_FLAG="--total_timesteps $TOTAL_TIMESTEPS"
 fi
 
-echo "================================================================"
-echo "Brax Q-PPO vs Baselines Tuning Task: $ENV_NAME"
-echo "  Mode:      $MODE"
-echo "  Seeds:     $N_SEEDS (Master: $MASTER_SEED)"
-echo "  Rollout:   $NUM_ENVS envs x $NUM_STEPS steps | MB: $MINIBATCH_SIZE"
-echo "  Output:    $OUT_DIR/$ENV_NAME"
-echo "  Python:    $PYTHON"
-echo "================================================================"
-
-$PYTHON -u scripts/brax/sweep_q_ppo_vs_baselines/run_single_env.py \
+$PYTHON -u scripts/brax/sweep_q_ppo/run_single_env.py \
     --env_name "$ENV_NAME" \
-    --mode "$MODE" \
+    --critic_lrs $CRITIC_LRS \
+    --critic_epochs $CRITIC_EPOCHS \
+    --lambdas $LAMBDAS \
+    --actor_lr "$ACTOR_LR" \
+    --gae_lambda "$GAE_LAMBDA" \
+    --k_actions "$K_ACTIONS" \
+    --gae_mode "$GAE_MODE" \
     $TIMESTEP_FLAG \
     --num_envs "$NUM_ENVS" \
     --num_steps "$NUM_STEPS" \

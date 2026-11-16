@@ -658,6 +658,12 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
         cell_annotations=champ_annots,
     )
 
+    from scripts.sweep_summary_utils import write_sweep_config_and_winners
+    write_sweep_config_and_winners(
+        tables_dir, all_runs, envs,
+        {"Critic LRs": critic_lrs, "TD Lambdas": td_lambdas, "Batch Size": batch_size},
+        timesteps=timesteps,
+    )
     print("\nAll 5 Cross-Algorithm Analyses, Plots, and Tables generated successfully!")
 
 

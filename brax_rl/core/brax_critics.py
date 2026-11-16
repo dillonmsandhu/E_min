@@ -91,8 +91,10 @@ def get_critic_target_lambda(config: dict) -> float:
     critic_type = config.get("CRITIC_TYPE", "fitted").lower()
     if critic_type in [
         "e_0", "e_0_q", "e_0_basic", "e_basic", "e_0_biased", "e_biased", "e0", "e",
+        "e_0_v_aux", "e_0_bilinear",
         "sampled_e", "surgical_v_aux", "surgical",
-        "e_lambda", "e_lambda_q", "elambda", "e_geometric",
+        "e_lambda", "e_lambda_q", "e_lambda_v_aux", "elambda", "e_geometric",
+        "bsmc", "bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux",
         "e_inner", "e_bilinear", "e_double", "e_min",
     ]:
         return config["RETURN_LAMBDA"]
@@ -744,13 +746,10 @@ def e_lambda_geometric_critic_loss_fn(
     }
 
 
-def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
-    """
-    1-sample E(0) critic loss without auxiliary critic v_aux for Brax state-value PPO.
-    Dispatches explicitly on config['E_VARIANT']:
-      - 'fwd': forward-only (e_i - stop_gradient(e_j))^2
-      - 'naive': symmetric (e_i - e_j)^2
-    """
+def _one_step_e_basic_critic_loss_fn(
+    critic_params, actor_params, network, traj_batch, targets, config, weight_mc: float, weight_dir: float
+):
+    """Shared 1-sample E(0) / BSMC critic loss without auxiliary critic v_aux."""
     full_params = {"params": {**actor_params, **critic_params}}
     sg = jax.lax.stop_gradient
     v_i = network.apply(full_params, traj_batch.obs, method=network.value)
@@ -777,8 +776,6 @@ def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, t
             f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of ('aux', 'e_aux', 'fwd', 'naive')."
         )
 
-    weight_mc = 0.5 * (1.0 - gamma)
-    weight_dir = 0.5 * gamma
     start_weight = 0.25 * gamma
 
     magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
@@ -799,17 +796,15 @@ def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, t
     }
 
 
-def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
-    """
-    Surgical auxiliary E(0) critic loss matching E(lambda=0) for Brax state-value PPO.
-    Dispatches explicitly on config['E_VARIANT']:
-      - 'aux': surgical v_aux on backward branch + self-bootstrapped v_aux MSE loss
-      - 'e_aux': direct error head e_phi(s) ~ V(s) - v_theta(s) on backward branch
-      - 'fwd' or 'naive': delegates to e_0_basic_critic_loss_fn
-    """
+def _one_step_e_critic_loss_fn(
+    critic_params, actor_params, network, traj_batch, targets, config, weight_mc: float, weight_dir: float
+):
+    """Shared 1-step E(0) / BSMC critic loss with surgical v_aux or basic fallback."""
     variant = config["E_VARIANT"].lower()
     if variant in ("naive", "fwd"):
-        return e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config)
+        return _one_step_e_basic_critic_loss_fn(
+            critic_params, actor_params, network, traj_batch, targets, config, weight_mc, weight_dir
+        )
     elif variant not in ("aux", "e_aux"):
         raise ValueError(
             f"Unrecognized E_VARIANT '{config['E_VARIANT']}'. Expected one of ('aux', 'e_aux', 'fwd', 'naive')."
@@ -845,8 +840,6 @@ def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
         e_phi_j = jnp.where(true_terminal, 0.0, aux_head_j)
         backward_sq = e_aux_backward_surrogate(aux_head_i, e_phi_j, v_j)
 
-    weight_mc = 0.5 * (1.0 - gamma)
-    weight_dir = 0.5 * gamma
     start_weight = 0.25 * gamma
 
     magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
@@ -872,6 +865,37 @@ def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets
         "aux_mc_loss": aux_mc_loss,
         "delta_mag": delta_mag,
     }
+
+
+def e_0_basic_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """1-sample E(0) critic loss without auxiliary critic v_aux for Brax state-value PPO."""
+    gamma = config["GAMMA"]
+    return _one_step_e_basic_critic_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config,
+        weight_mc=0.5 * (1.0 - gamma), weight_dir=0.5 * gamma,
+    )
+
+
+def e_0_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """Surgical auxiliary E(0) critic loss matching E(lambda=0) for Brax state-value PPO."""
+    gamma = config["GAMMA"]
+    return _one_step_e_critic_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config,
+        weight_mc=0.5 * (1.0 - gamma), weight_dir=0.5 * gamma,
+    )
+
+
+def bsmc_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config):
+    """1-step Bellman-Smoothed Monte Carlo (BSMC) critic loss with surgical v_aux."""
+    gamma = config["GAMMA"]
+    bsmc_lambda = config["BSMC_LAMBDA"]
+    denom = jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+    weight_mc = 0.5 * (1.0 - gamma) / denom
+    weight_dir = 0.5 * (gamma * (1.0 - bsmc_lambda)) / denom
+    return _one_step_e_critic_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config,
+        weight_mc=weight_mc, weight_dir=weight_dir,
+    )
 
 
 mc_critic_loss_fn = ppo_critic_loss_fn
@@ -1122,6 +1146,8 @@ SPLIT_CRITIC_LOSS_FNS = {
     "e_lambda": e_lambda_geometric_critic_loss_fn,
     "e_geometric": e_lambda_geometric_critic_loss_fn,
     "elambda": e_lambda_geometric_critic_loss_fn,
+    "bsmc": bsmc_critic_loss_fn,
+    "bsmc_v_aux": bsmc_critic_loss_fn,
     "mc": mc_critic_loss_fn,
     "sampled_mc": mc_critic_loss_fn,
     "msbe": double_sample_msbe_critic_loss_fn,

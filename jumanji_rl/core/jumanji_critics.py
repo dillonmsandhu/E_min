@@ -113,44 +113,36 @@ def sarsa_critic_loss_fn(critic_params, actor_params, network, traj_batch, targe
 
 
 def e_0_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
-    """
-    Sampled E(0) Dirichlet error loss on discrete state-action pairs:
-        e_i = G_t - Q(s_t, a_t)
-        e_j = G_{t+1} - Q(s_{t+1}, a_{t+1})  (0.0 on terminals/timeouts)
-        L = (1 - gamma) * E[e_i^2] + 0.5 * gamma * E[(e_i - e_j)^2]
+    """Half the bilinear E(0) estimate with exact discrete policy marginalization.
+
+    V_theta(s') = sum_{a'} sg(pi(a'|s')) Q_theta(s', a').
+    L = 0.5 * mean((sg(G) - Q(s, a)) * (r + gamma * V_theta(s') - Q(s, a)))
+
+    Both current-Q and successor-Q receive critic gradients. The actor is fixed
+    during critic fitting; probabilities and returns are detached.
     """
     full_params = {"params": {**actor_params, **critic_params}}
     q_all_i = network.apply(full_params, traj_batch.obs, method=network.q_values)
     q_i = extract_q_taken(q_all_i, traj_batch.action)
-
-    q_all_j = network.apply(full_params, traj_batch.next_obs, method=network.q_values)
-    q_j = extract_q_taken(q_all_j, traj_batch.next_action)
-
-    targets_i = targets if targets is not None else traj_batch.targets
-    targets_j = traj_batch.next_targets
-    is_timeout = traj_batch.is_timeout
-    true_terminal = traj_batch.done & ~is_timeout
-
+    targets_i = jax.lax.stop_gradient(targets if targets is not None else traj_batch.targets)
+    true_terminal = traj_batch.done & ~traj_batch.is_timeout
     gamma = config["GAMMA"]
 
+    q_all_j = network.apply(full_params, traj_batch.next_obs, method=network.q_values)
+    pi_j = network.apply(full_params, traj_batch.next_obs, method=network.policy)
+    probs_j = jax.lax.stop_gradient(pi_j.probs)
+    v_j = jnp.sum(probs_j * q_all_j, axis=-1)
+
     e_i = targets_i - q_i
-    e_j = jnp.where(true_terminal | is_timeout, 0.0, targets_j - q_j)
-
-    weight_mc = 1.0 - gamma
-    weight_dir = 0.5 * gamma
-
-    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
-    laplacian_loss = weight_dir * jnp.mean((e_i - e_j) ** 2)
-
-    value_loss = magnitude_loss + laplacian_loss
+    delta = traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_j) - q_i
+    value_loss = 0.5 * jnp.mean(e_i * delta)
     scaled_loss = config["VF_COEF"] * value_loss
 
-    delta_mag = jnp.abs(targets_i - q_i).mean()
     aux_info = {
         "val_loss": value_loss,
-        "magnitude_loss": magnitude_loss,
-        "dirichlet_loss": laplacian_loss,
-        "delta_mag": delta_mag,
+        "delta_mag": jnp.abs(e_i).mean(),
+        "sampled_value_error_sq": jnp.mean(e_i ** 2),
+        "bellman_residual_sq": jnp.mean(delta ** 2),
     }
     return scaled_loss, aux_info
 
@@ -185,7 +177,8 @@ def e_lambda_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, 
         e_aux_jump = jnp.where(is_absorbing, 0.0, sg(v_aux_jump) - v_jump)
 
         inner_diff_sq = (e_start - sg(e_jump)) ** 2 + (sg(e_aux_start) - e_aux_jump) ** 2
-        aux_mc_loss = compute_aux_head_loss(q_aux_i, targets_i, aux_coef=config.get("AUX_VF_COEF", 1.0))
+        aux_targets = traj_batch.aux_targets if traj_batch.aux_targets is not None else targets_i
+        aux_mc_loss = compute_aux_head_loss(q_aux_i, aux_targets, aux_coef=config.get("AUX_VF_COEF", 1.0))
         e_for_mag = e_start
     elif variant == "fwd":
         q_all_i = network.apply(full_params, traj_batch.obs, method=network.q_values)
@@ -226,7 +219,7 @@ def e_lambda_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, 
     value_loss = magnitude_loss + dirichlet_loss + aux_mc_loss
     scaled_loss = config["VF_COEF"] * value_loss
 
-    delta_mag = jnp.abs(targets_i - e_for_mag).mean()
+    delta_mag = jnp.abs(e_for_mag).mean()
     aux_info = {
         "val_loss": value_loss,
         "magnitude_loss": magnitude_loss,

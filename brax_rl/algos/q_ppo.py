@@ -56,9 +56,68 @@ class BraxQTransition(NamedTuple):
     actions_k: jnp.ndarray
     q_all_k: jnp.ndarray
     next_probe_actions: Optional[jnp.ndarray] = None
+    next_action: Optional[jnp.ndarray] = None
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
     next_targets: Optional[jnp.ndarray] = None
+    next_reward: Optional[jnp.ndarray] = None
+    next_next_obs: Optional[jnp.ndarray] = None
+    next_true_terminal: Optional[jnp.ndarray] = None
+    is_horizon: Optional[jnp.ndarray] = None
+    aux_targets: Optional[jnp.ndarray] = None
+    dest_obs: Optional[jnp.ndarray] = None
+    dest_action: Optional[jnp.ndarray] = None
+    dest_targets: Optional[jnp.ndarray] = None
+    dest_reward: Optional[jnp.ndarray] = None
+    dest_next_obs: Optional[jnp.ndarray] = None
+    dest_true_terminal: Optional[jnp.ndarray] = None
+    hit_true_terminal: Optional[jnp.ndarray] = None
+    valid_jump: Optional[jnp.ndarray] = None
+
+
+def prepare_brax_q_jump_transitions(traj_batch, targets, gamma: float, lmbda: float, rng: jax.Array):
+    """Samples geometric lookahead jump state-action pairs within the rollout for E(lambda) Q-critic."""
+    T, B = targets.shape[:2]
+    gl = gamma * lmbda
+
+    u = jax.random.uniform(rng, shape=(T, B))
+    safe_gl = jnp.clip(gl, 1e-8, 1.0 - 1e-8)
+    jumps = jnp.where(
+        gl < 1e-6,
+        jnp.zeros((T, B), dtype=jnp.int32),
+        jnp.floor(jnp.log(jnp.clip(1.0 - u, 1e-8, 1.0)) / jnp.log(safe_gl)).astype(jnp.int32),
+    )
+    jumps = jnp.maximum(jumps, 0)
+
+    t_arr = jnp.arange(T)[:, None]
+    target_idx = t_arr + jumps + 1
+    in_bounds = target_idx < T
+    t_clamped = jnp.minimum(target_idx, T - 1)
+
+    t_prev = jnp.minimum(t_arr + jumps, T - 1)
+    done_bool = traj_batch.done > 0.5
+    timeout_bool = traj_batch.is_timeout > 0.5
+    true_terminal = done_bool & ~timeout_bool
+
+    done_cumsum = jnp.cumsum(done_bool.astype(jnp.int32), axis=0)
+    has_reset_between = (jnp.take_along_axis(done_cumsum, t_prev, axis=0) - done_cumsum) > 0
+
+    def _gather(arr):
+        idx = t_clamped.reshape(t_clamped.shape + (1,) * (arr.ndim - 2))
+        return jnp.take_along_axis(arr, jnp.broadcast_to(idx, (T, B) + arr.shape[2:]), axis=0)
+
+    valid_jump = (~true_terminal) & (~timeout_bool) & in_bounds & (~has_reset_between)
+
+    return traj_batch._replace(
+        dest_obs=_gather(traj_batch.obs),
+        dest_action=_gather(traj_batch.action),
+        dest_targets=jnp.take_along_axis(targets, t_clamped, axis=0),
+        dest_reward=jnp.take_along_axis(traj_batch.reward, t_clamped, axis=0),
+        dest_next_obs=_gather(traj_batch.next_obs),
+        dest_true_terminal=jnp.take_along_axis(true_terminal, t_clamped, axis=0),
+        hit_true_terminal=true_terminal,
+        valid_jump=valid_jump,
+    )
 
 
 def make_train(config):
@@ -115,6 +174,14 @@ def make_train(config):
 
     gae_lambda = config.get("ACTOR_GAE_LAMBDA", config["GAE_LAMBDA"])
     target_lambda = get_critic_target_lambda(config)
+    e_variant = config.get("E_VARIANT", "aux").lower()
+    uses_aux = (
+        c_type in (
+            "e_0_v_aux", "e_lambda_v_aux", "e_lambda", "e_lambda_q",
+            "elambda", "e_geometric", "bsmc_bilinear_v_aux",
+        )
+        and e_variant == "aux"
+    )
 
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
     env = LogWrapper(env)
@@ -129,6 +196,7 @@ def make_train(config):
             action_dim=env.action_space(env_params).shape[0],
             activation=net_cfg.get("ACTIVATION", "tanh"),
             layer_norm=config.get("LAYER_NORM", False),
+            has_v_aux=uses_aux,
         )
 
         rng, _rng = jax.random.split(rng)
@@ -215,6 +283,7 @@ def make_train(config):
                 (traj_batch.is_timeout > 0.5)[..., None], timeout_q_k, regular_next_q_k
             )
             next_probe_actions = next_actions_k[..., 1:, :]
+            next_action = next_actions_k[..., 0, :]
 
             # Critic return targets strictly use applied slot-0 actions so G_t
             # stays independent of probe actions a'_{2..K} at all steps.
@@ -233,6 +302,34 @@ def make_train(config):
             next_targets = next_targets.at[-1].set(last_ret_val)
             next_targets = jnp.where(traj_batch.is_timeout > 0.5, next_v_ret, next_targets)
             next_targets = jnp.where(true_terminal, 0.0, next_targets)
+
+            # 1-step lookahead fields for v_aux(next_obs_{t+1}) and horizon mask
+            T_steps = config["NUM_STEPS"]
+            is_horizon = (jnp.arange(T_steps) == (T_steps - 1))[:, None]
+            is_horizon = jnp.broadcast_to(is_horizon, true_terminal.shape)
+            next_reward = jnp.roll(traj_batch.reward, shift=-1, axis=0)
+            next_next_obs = jnp.roll(traj_batch.next_obs, shift=-1, axis=0)
+            next_true_terminal = jnp.roll(true_terminal, shift=-1, axis=0)
+
+            if uses_aux:
+                v_aux_vals = network.apply(train_state.params, traj_batch.obs, method=network.v_aux)
+                final_next_aux_val = network.apply(
+                    train_state.params, traj_batch.next_obs[-1], method=network.v_aux
+                )
+                regular_aux_next = jnp.concatenate([v_aux_vals[1:], final_next_aux_val[None]], axis=0)
+                timeout_aux_next = network.apply(
+                    train_state.params, traj_batch.next_obs, method=network.v_aux
+                )
+                aux_next_value = jnp.where(traj_batch.is_timeout > 0.5, timeout_aux_next, regular_aux_next)
+                aux_lambda = config["AUX_LAMBDA"]
+                _, aux_targets = calculate_gae(
+                    traj_batch._replace(value=v_aux_vals),
+                    aux_next_value,
+                    gamma=config["GAMMA"],
+                    gae_lambda=aux_lambda,
+                )
+            else:
+                aux_targets = targets
 
             # Actor GAE: 'loo' uses slots 1..K-1 everywhere; 'hybrid' computes
             # lambda-returns with the K-action average V_bar and subtracts V_LOO.
@@ -261,10 +358,26 @@ def make_train(config):
 
             traj_batch = traj_batch._replace(
                 next_probe_actions=next_probe_actions,
+                next_action=next_action,
                 next_value=next_value,
                 targets=targets,
                 next_targets=next_targets,
+                next_reward=next_reward,
+                next_next_obs=next_next_obs,
+                next_true_terminal=next_true_terminal,
+                is_horizon=is_horizon,
+                aux_targets=aux_targets,
             )
+
+            if c_type in ("e_lambda_v_aux", "e_lambda", "e_lambda_q", "elambda", "e_geometric"):
+                rng, _jump_rng = jax.random.split(rng)
+                traj_batch = prepare_brax_q_jump_transitions(
+                    traj_batch,
+                    targets,
+                    gamma=config["GAMMA"],
+                    lmbda=config["E_LAMBDA"],
+                    rng=_jump_rng,
+                )
 
             # 3. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
             def _critic_epoch(critic_state, unused):

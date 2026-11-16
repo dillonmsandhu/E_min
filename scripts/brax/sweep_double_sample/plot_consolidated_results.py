@@ -52,6 +52,8 @@ def main():
     parser.add_argument("--num_envs", type=int, default=256, help="Parallel environments")
     parser.add_argument("--num_steps", type=int, default=256, help="Rollout length")
     parser.add_argument("--metric_key", type=str, default="returned_episode_returns", help="Metric key to evaluate")
+    parser.add_argument("--variants", nargs="+", default=None, help="Optional subset of critic variant keys to plot")
+    parser.add_argument("--save_dir", type=str, default=None, help="Optional separate output directory for plots/tables")
 
     args = parser.parse_args()
     out_dir = args.out_dir
@@ -120,8 +122,16 @@ def main():
     print(f"\nSaved consolidated metrics to {cons_pkl}")
 
     # Generate Publication Analyses
+    target_out_dir = args.save_dir if args.save_dir else out_dir
+    selected_variants = None
+    if args.variants:
+        var_map = dict(CRITIC_VARIANTS)
+        selected_variants = [(k, var_map[k]) for k in args.variants if k in var_map]
+        if not selected_variants:
+            raise ValueError(f"No matching variants found in {args.variants}; available: {list(var_map.keys())}")
     generate_diagnostics_and_plots(
-        consolidated_runs, timesteps, out_dir, envs, critic_lrs, critic_epochs, args.metric_key, batch_size
+        consolidated_runs, timesteps, target_out_dir, envs, critic_lrs, critic_epochs, args.metric_key, batch_size,
+        variants=selected_variants,
     )
 
 

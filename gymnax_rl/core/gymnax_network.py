@@ -12,6 +12,7 @@ from typing import NamedTuple
 AUX_ELIGIBLE_CRITICS = (
     "e_0",
     "e_0_q",
+    "e_0_v_aux",
     "e0",
     "e",
     "sampled_e",
@@ -19,8 +20,12 @@ AUX_ELIGIBLE_CRITICS = (
     "surgical",
     "e_lambda",
     "e_lambda_q",
+    "e_lambda_v_aux",
     "elambda",
     "e_geometric",
+    "bsmc",
+    "bsmc_v_aux",
+    "bsmc_bilinear_v_aux",
 )
 
 NON_AUX_CRITICS = (
@@ -28,6 +33,7 @@ NON_AUX_CRITICS = (
     "e_basic",
     "e_0_biased",
     "e_biased",
+    "e_0_bilinear",
     "fitted",
     "ppo",
     "sarsa",
@@ -49,6 +55,7 @@ NON_AUX_CRITICS = (
     "e_bilinear",
     "e_double",
     "e_min",
+    "bsmc_double_pi",
     "online_td0",
     "semi_gradient_td0",
     "fitted_td0",

@@ -43,18 +43,24 @@ class MLP_Q_AC(nn.Module):
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
+    has_v_aux: bool = False
 
     def setup(self):
         self.actor_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
         self.critic_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
         self.actor_head = DiscretePolicyHead(self.action_dim)
         self.q_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+        if self.has_v_aux:
+            self.v_aux_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
     def __call__(self, x: jnp.ndarray):
         """Returns (pi, V(s), Q(s, ·)) where V(s) is marginalized value."""
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
+        if self.has_v_aux:
+            _ = self.v_aux(x)
         return pi, v, q
 
     def policy(self, x: jnp.ndarray):
@@ -64,6 +70,14 @@ class MLP_Q_AC(nn.Module):
     def q_values(self, x: jnp.ndarray):
         phi_c = self.critic_mlp(x)
         return self.q_head(phi_c)
+
+    def v_aux(self, x: jnp.ndarray):
+        if not self.has_v_aux:
+            raise ValueError("v_aux called on MLP_Q_AC with has_v_aux=False.")
+        phi_aux = self.v_aux_mlp(x)
+        v = nn.relu(phi_aux)
+        v = self.v_aux_head(v)
+        return jnp.squeeze(v, axis=-1)
 
     def value(self, x: jnp.ndarray):
         """Analytical marginalization: V(s) = E_{a ~ pi}[Q(s, a)] = sum_a pi(a|s) Q(s, a)."""
@@ -77,6 +91,7 @@ class PQN_Q_AC(nn.Module):
     action_dim: int
     final_hidden_dim: int
     norm_type: str = "none"
+    has_v_aux: bool = False
 
     def setup(self):
         from gymnax_rl.core.gymnax_network import PQN_CNN
@@ -84,11 +99,16 @@ class PQN_Q_AC(nn.Module):
         self.critic_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
         self.actor_head = DiscretePolicyHead(self.action_dim)
         self.q_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+        if self.has_v_aux:
+            self.v_aux_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
     def __call__(self, x: jnp.ndarray):
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
+        if self.has_v_aux:
+            _ = self.v_aux(x)
         return pi, v, q
 
     def policy(self, x: jnp.ndarray):
@@ -98,6 +118,14 @@ class PQN_Q_AC(nn.Module):
     def q_values(self, x: jnp.ndarray):
         phi_c = self.critic_cnn(x)
         return self.q_head(phi_c)
+
+    def v_aux(self, x: jnp.ndarray):
+        if not self.has_v_aux:
+            raise ValueError("v_aux called on PQN_Q_AC with has_v_aux=False.")
+        phi_aux = self.v_aux_cnn(x)
+        v = nn.relu(phi_aux)
+        v = self.v_aux_head(v)
+        return jnp.squeeze(v, axis=-1)
 
     def value(self, x: jnp.ndarray):
         pi = self.policy(x)
@@ -263,6 +291,7 @@ class ContinuousMLP_Q_AC(nn.Module):
     norm_type: str = "none"
     action_low: Any = -1.0
     action_high: Any = 1.0
+    has_v_aux: bool = False
 
     def setup(self):
         self.actor_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
@@ -272,6 +301,9 @@ class ContinuousMLP_Q_AC(nn.Module):
         else:
             self.critic_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
             self.q_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+        if self.has_v_aux:
+            self.v_aux_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
     def policy(self, x: jnp.ndarray):
         phi_a = self.actor_mlp(x)
@@ -291,6 +323,16 @@ class ContinuousMLP_Q_AC(nn.Module):
             q = q.squeeze(0)
         return q
 
+    def v_aux(self, x: jnp.ndarray) -> jnp.ndarray:
+        if not self.has_v_aux:
+            raise ValueError("v_aux called on ContinuousMLP_Q_AC with has_v_aux=False.")
+        phi_aux = self.v_aux_mlp(x)
+        v = nn.relu(phi_aux)
+        v = self.v_aux_head(v).squeeze(-1)
+        if x.ndim == 1:
+            v = v.squeeze(0)
+        return v
+
     def value(self, x: jnp.ndarray) -> jnp.ndarray:
         """Deterministic-mean Q(s, mu(s)) for start-state / runtime metric logging."""
         pi = self.policy(x)
@@ -301,6 +343,8 @@ class ContinuousMLP_Q_AC(nn.Module):
         pi = self.policy(x)
         loc = pi.loc[0] if x.ndim == 1 else pi.loc
         v = self.q_value(x, loc)
+        if self.has_v_aux:
+            _ = self.v_aux(x)
         return pi, v
 
 
@@ -314,13 +358,14 @@ def initialize_q_actor_critic(rng, obs_shape, env, env_params, config):
     layer_norm = config["LAYER_NORM"]
     norm_type = "layer_norm" if layer_norm else "none"
     use_mlp = len(obs_shape) < 3
+    has_v_aux = uses_aux_network(config)
 
     if isinstance(act_space, spaces.Discrete):
         action_dim = act_space.n
         if use_mlp:
-            model = MLP_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+            model = MLP_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type, has_v_aux=has_v_aux)
         else:
-            model = PQN_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type)
+            model = PQN_Q_AC(action_dim=action_dim, final_hidden_dim=k, norm_type=norm_type, has_v_aux=has_v_aux)
     elif isinstance(act_space, spaces.Box):
         if not use_mlp:
             raise ValueError(f"Continuous Q-PPO supports vector observations only, got obs_shape={obs_shape}")
@@ -334,6 +379,7 @@ def initialize_q_actor_critic(rng, obs_shape, env, env_params, config):
             norm_type=norm_type,
             action_low=action_low,
             action_high=action_high,
+            has_v_aux=has_v_aux,
         )
     else:
         raise ValueError(f"Q-PPO requires Discrete or Box action space, got {type(act_space)}")

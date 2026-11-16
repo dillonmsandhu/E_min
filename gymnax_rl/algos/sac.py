@@ -3,11 +3,9 @@
 One actor, one Q critic, Adam, and fixed or optionally learned temperature.
 No replay, target network, twin critic, reward/observation normalization, gradient
 clipping, or learning-rate schedule. The actor is frozen during critic fitting;
-rollout-snapshot lambda returns supply the target-policy value estimates. Optional
-RECOMPUTE_TARGETS_EACH_EPOCH refreshes their critic bootstrap, reusing the same
-rollout and bootstrap-action draws. DIAGNOSTICS observes fitting and policy
-changes without changing training randomness. This is an
-experimental soft policy iteration baseline, not the full standard SAC algorithm.
+rollout-snapshot lambda returns supply the target-policy value estimates.
+DIAGNOSTICS observes fitting and policy changes without changing training randomness.
+This is an experimental soft policy iteration baseline, not the full standard SAC algorithm.
 
 Discrete actions use a categorical policy and vector Q(s,.). Bounded continuous
 actions use an affine-tanh Gaussian and scalar Q(s,a), with reparameterized actor
@@ -61,7 +59,6 @@ DEFAULT_CONFIG = {
     "ACTOR_MINIBATCH_SIZE": 256, "CRITIC_MINIBATCH_SIZE": 256,
     "KL_COEFF": 0.5, "KL_TARGET": 0.03,
     "DIAGNOSTICS": False,
-    "RECOMPUTE_TARGETS_EACH_EPOCH": True,
 }
 
 
@@ -514,18 +511,14 @@ def make_train(overrides=None):
             def critic_epoch(carry, _):
                 state, aux_state, rng = carry
                 rng, key = jax.random.split(rng)
-                if config["RECOMPUTE_TARGETS_EACH_EPOCH"]:
-                    epoch_targets, epoch_last_val = recompute_targets(state.params)
-                else:
-                    epoch_targets, epoch_last_val = targets, last_val
                 if critic_type == "e_lambda":
                     state_targets = jnp.concatenate(
-                        [epoch_targets - alpha * batch.log_prob, epoch_last_val[None]], axis=0)
+                        [targets - alpha * batch.log_prob, last_val[None]], axis=0)
                     dest_targets = jnp.take_along_axis(state_targets, j_idx, axis=0)
-                    mb_input = (batch, epoch_targets, next_logits, dest_obs, dest_targets,
+                    mb_input = (batch, targets, next_logits, dest_obs, dest_targets,
                                 hit_true_terminal, hit_timeout, hit_horizon, start_weight)
                 else:
-                    mb_input = (batch, epoch_targets, next_logits)
+                    mb_input = (batch, targets, next_logits)
                 minibatches = _minibatches(key, mb_input, batch_size, config["CRITIC_MINIBATCH_SIZE"])
 
                 def fit(carry, mb):
@@ -603,7 +596,7 @@ def make_train(overrides=None):
             if config["DIAGNOSTICS"]:
                 q_after_fit = q_for_action(critic, critic_state.params, batch.obs, batch.action, action_space)
                 fit_targets = (recompute_targets(critic_state.params)[0]
-                               if config["RECOMPUTE_TARGETS_EACH_EPOCH"] or critic_type == "td_0" else targets)
+                               if critic_type == "td_0" else targets)
                 fit_mse_after = jnp.mean((q_after_fit - fit_targets)**2)
             if discrete:
                 old_ref = jax.lax.stop_gradient(actor.apply(actor_state.params, batch.obs))

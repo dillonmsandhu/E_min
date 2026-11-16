@@ -27,7 +27,7 @@ from gymnax_rl.core.gymnax_utils import (
     post_process_advantage,
 )
 from gymnax_rl.core.gymnax_wrappers import make_env
-from gymnax_rl.core.gymnax_network import initialize_split_flax_train_state
+from gymnax_rl.core.gymnax_network import initialize_split_flax_train_state, uses_aux_network
 from gymnax_rl.core.gymnax_q_network import initialize_q_actor_critic
 from gymnax_rl.core.gymnax_q_critics import get_q_critic_loss_fn, extract_q_taken
 from gymnax_rl.core.gymnax_critics import calculate_gae, calculate_targets, get_critic_target_lambda, ppo_actor_loss_fn
@@ -55,15 +55,23 @@ class QTransition(NamedTuple):
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
     next_targets: Optional[jnp.ndarray] = None
+    next_reward: Optional[jnp.ndarray] = None
+    next_next_obs: Optional[jnp.ndarray] = None
+    next_true_terminal: Optional[jnp.ndarray] = None
+    is_horizon: Optional[jnp.ndarray] = None
+    aux_targets: Optional[jnp.ndarray] = None
     dest_obs: Optional[jnp.ndarray] = None
     dest_action: Optional[jnp.ndarray] = None
     dest_targets: Optional[jnp.ndarray] = None
+    dest_reward: Optional[jnp.ndarray] = None
+    dest_next_obs: Optional[jnp.ndarray] = None
+    dest_true_terminal: Optional[jnp.ndarray] = None
     hit_true_terminal: Optional[jnp.ndarray] = None
     valid_jump: Optional[jnp.ndarray] = None
 
 
 def prepare_q_jump_transitions(traj_batch, targets, last_obs, last_action, gamma, lmbda, rng):
-    """Samples geometric lookahead jump state-action pairs for E(lambda) Q-critic."""
+    """Samples geometric lookahead jump state-action pairs within the rollout for E(lambda) Q-critic."""
     T, B = targets.shape[:2]
     gl = gamma * lmbda
 
@@ -78,50 +86,33 @@ def prepare_q_jump_transitions(traj_batch, targets, last_obs, last_action, gamma
 
     t_arr = jnp.arange(T)[:, None]
     target_idx = t_arr + jumps + 1
-    t_clamped = jnp.minimum(target_idx, T)
+    in_bounds = target_idx < T
+    t_clamped = jnp.minimum(target_idx, T - 1)
 
     t_prev = jnp.minimum(t_arr + jumps, T - 1)
-    done_cumsum = jnp.cumsum(traj_batch.done.astype(jnp.int32), axis=0)
+    done_bool = traj_batch.done > 0.5
+    timeout_bool = traj_batch.is_timeout > 0.5
+    true_terminal = done_bool & ~timeout_bool
+
+    done_cumsum = jnp.cumsum(done_bool.astype(jnp.int32), axis=0)
     has_reset_between = (
         jnp.take_along_axis(done_cumsum, t_prev, axis=0) - done_cumsum
     ) > 0
 
-    true_terminal = traj_batch.done & ~traj_batch.is_timeout
-    is_absorbing = true_terminal
+    def _gather(arr):
+        idx = t_clamped.reshape(t_clamped.shape + (1,) * (arr.ndim - 2))
+        return jnp.take_along_axis(arr, jnp.broadcast_to(idx, (T, B) + arr.shape[2:]), axis=0)
 
-    next_target_T = jnp.where(true_terminal[-1], 0.0, traj_batch.next_value[-1])
-    obs_ext = jnp.concatenate([traj_batch.obs, last_obs[None]], axis=0)
-    act_ext = jnp.concatenate([traj_batch.action, last_action[None]], axis=0)
-    targets_ext = jnp.concatenate([targets, next_target_T[None]], axis=0)
-
-    idx_expanded = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.obs.ndim - 2))
-    idx_broadcast = jnp.broadcast_to(idx_expanded, (T, B) + traj_batch.obs.shape[2:])
-    dest_obs_gathered = jnp.take_along_axis(obs_ext, idx_broadcast, axis=0)
-
-    act_idx_expanded = t_clamped.reshape(t_clamped.shape + (1,) * (traj_batch.action.ndim - 2))
-    act_idx_broadcast = jnp.broadcast_to(act_idx_expanded, (T, B) + traj_batch.action.shape[2:])
-    dest_act_gathered = jnp.take_along_axis(act_ext, act_idx_broadcast, axis=0)
-
-    dest_targets_gathered = jnp.take_along_axis(targets_ext, t_clamped, axis=0)
-
-    dest_obs = jnp.where(traj_batch.is_timeout[..., None], traj_batch.next_obs, dest_obs_gathered)
-    timeout_act_mask = traj_batch.is_timeout.reshape(
-        traj_batch.is_timeout.shape + (1,) * (traj_batch.action.ndim - 2)
-    )
-    dest_act = jnp.where(timeout_act_mask, traj_batch.next_action, dest_act_gathered)
-    dest_targets = jnp.where(traj_batch.is_timeout, traj_batch.next_value, dest_targets_gathered)
-
-    valid_jump = jnp.where(
-        true_terminal,
-        False,
-        jnp.where(traj_batch.is_timeout, jumps == 0, ~has_reset_between),
-    )
+    valid_jump = (~true_terminal) & (~timeout_bool) & in_bounds & (~has_reset_between)
 
     return traj_batch._replace(
-        dest_obs=dest_obs,
-        dest_action=dest_act,
-        dest_targets=dest_targets,
-        hit_true_terminal=is_absorbing,
+        dest_obs=_gather(traj_batch.obs),
+        dest_action=_gather(traj_batch.action),
+        dest_targets=jnp.take_along_axis(targets, t_clamped, axis=0),
+        dest_reward=jnp.take_along_axis(traj_batch.reward, t_clamped, axis=0),
+        dest_next_obs=_gather(traj_batch.next_obs),
+        dest_true_terminal=jnp.take_along_axis(true_terminal, t_clamped, axis=0),
+        hit_true_terminal=true_terminal,
         valid_jump=valid_jump,
     )
 
@@ -146,12 +137,11 @@ def make_train(base_config):
 
     def train(rng, hparams=None):
         config = merge_hparams(config_copy, hparams)
-        c_type = config.get("CRITIC_TYPE", "sarsa").lower()
-        if c_type in ("e_0", "e_0_q", "e0", "e"):
-            # E(0) uses action marginalization (discrete) or probe sampling (continuous),
-            # with no auxiliary branch. The shared scalar-PPO default E_VARIANT='aux'
-            # must not request an auxiliary optimizer for this Q network.
+        c_type = config["CRITIC_TYPE"].lower()
+        if c_type in ("e_0", "e_0_q", "e_0_bilinear", "e0", "e", "bsmc_double_pi"):
+            # Non-aux bilinear/marginalized Q critics have no auxiliary branch.
             config = {**config, "E_VARIANT": "naive"}
+        uses_aux = uses_aux_network(config)
         critic_loss_fn = get_q_critic_loss_fn(c_type)
         actor_loss_fn = ppo_actor_loss_fn
 
@@ -370,16 +360,48 @@ def make_train(base_config):
             next_targets = jnp.where(traj_batch.is_timeout, timeout_target_val, next_targets)
             next_targets = jnp.where(true_terminal, 0.0, next_targets)
 
+            T_steps = config["NUM_STEPS"]
+            is_horizon = (jnp.arange(T_steps) == (T_steps - 1))[:, None]
+            is_horizon = jnp.broadcast_to(is_horizon, true_terminal.shape)
+            next_reward = jnp.roll(traj_batch.reward, shift=-1, axis=0)
+            next_next_obs = jnp.roll(traj_batch.next_obs, shift=-1, axis=0)
+            next_true_terminal = jnp.roll(true_terminal, shift=-1, axis=0)
+
+            if uses_aux:
+                v_aux_vals = network.apply(train_state.params, traj_batch.obs, method=network.v_aux)
+                final_next_aux_val = network.apply(
+                    train_state.params, traj_batch.next_obs[-1], method=network.v_aux
+                )
+                regular_aux_next = jnp.concatenate([v_aux_vals[1:], final_next_aux_val[None]], axis=0)
+                timeout_aux_next = network.apply(
+                    train_state.params, traj_batch.next_obs, method=network.v_aux
+                )
+                aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
+                aux_lambda = config["AUX_LAMBDA"]
+                _, aux_targets = calculate_gae(
+                    traj_batch._replace(value=v_aux_vals),
+                    aux_next_value,
+                    gamma=config["GAMMA"],
+                    gae_lambda=aux_lambda,
+                )
+            else:
+                aux_targets = targets
+
             traj_batch = traj_batch._replace(
                 next_probe_actions=next_probe_actions,
                 next_action=next_action,
                 next_value=next_value,
                 targets=targets,
                 next_targets=next_targets,
+                next_reward=next_reward,
+                next_next_obs=next_next_obs,
+                next_true_terminal=next_true_terminal,
+                is_horizon=is_horizon,
+                aux_targets=aux_targets,
             )
 
-            # Prepare geometric jumps if E(lambda)
-            if "lambda" in c_type or "geometric" in c_type:
+            # Prepare geometric jumps only for E(lambda)
+            if c_type in ("e_lambda", "e_lambda_q", "e_lambda_v_aux", "elambda", "e_geometric"):
                 rng, _rng = jax.random.split(rng)
                 traj_batch = prepare_q_jump_transitions(
                     traj_batch,
@@ -387,7 +409,7 @@ def make_train(base_config):
                     last_obs,
                     last_action,
                     gamma=config["GAMMA"],
-                    lmbda=config.get("E_LAMBDA", config.get("VALUE_LAMBDA", 0.8)),
+                    lmbda=config["E_LAMBDA"],
                     rng=_rng,
                 )
 

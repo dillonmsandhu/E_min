@@ -189,6 +189,7 @@ class BraxQPPOActorCritic(nn.Module):
     activation: str = "tanh"
     log_std_init: float = -0.5
     layer_norm: bool = False
+    has_v_aux: bool = False
 
     def setup(self):
         act_fn = nn.relu if self.activation == "relu" else nn.tanh
@@ -225,6 +226,20 @@ class BraxQPPOActorCritic(nn.Module):
         self.critic_torso = nn.Sequential(critic_layers)
         self.q_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
+        if self.has_v_aux:
+            v_aux_layers = [
+                nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)),
+            ]
+            if self.layer_norm:
+                v_aux_layers.append(nn.LayerNorm())
+            v_aux_layers.append(act_fn)
+            v_aux_layers.append(nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)))
+            if self.layer_norm:
+                v_aux_layers.append(nn.LayerNorm())
+            v_aux_layers.append(act_fn)
+            self.v_aux_torso = nn.Sequential(v_aux_layers)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+
     def policy(self, x: jnp.ndarray) -> distrax.MultivariateNormalDiag:
         actor_mean = self.actor_mean(x)
         clamped_logstd = jnp.clip(self.actor_logstd, a_min=-5.0, a_max=2.0)
@@ -237,6 +252,12 @@ class BraxQPPOActorCritic(nn.Module):
         phi_c = self.critic_torso(sa)
         return self.q_head(phi_c).squeeze(-1)
 
+    def v_aux(self, x: jnp.ndarray) -> jnp.ndarray:
+        """State-only auxiliary value head V_aux(s) trained to marginalize over actions."""
+        if not self.has_v_aux:
+            raise ValueError("v_aux called on BraxQPPOActorCritic with has_v_aux=False.")
+        return self.v_aux_head(self.v_aux_torso(x)).squeeze(-1)
+
     def value(self, x: jnp.ndarray) -> jnp.ndarray:
         pi = self.policy(x)
         return self.q_value(x, pi.loc)
@@ -244,4 +265,6 @@ class BraxQPPOActorCritic(nn.Module):
     def __call__(self, x: jnp.ndarray):
         pi = self.policy(x)
         v = self.q_value(x, pi.loc)
+        if self.has_v_aux:
+            _ = self.v_aux(x)
         return pi, v

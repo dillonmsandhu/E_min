@@ -283,21 +283,17 @@ def make_train(config):
             def _critic_epoch(carry, unused):
                 train_state, rng = carry
                 rng, key = jax.random.split(rng)
-                if config["RECOMPUTE_TARGETS_EACH_EPOCH"]:
-                    epoch_targets, epoch_last_val = _compute_targets(train_state.critic.params)
-                else:
-                    epoch_targets, epoch_last_val = targets, last_val
 
                 if c_type == "e_lambda":
                     state_targets = jnp.concatenate(
-                        [epoch_targets - alpha * traj_batch.log_prob, epoch_last_val[None]], axis=0)
+                        [targets - alpha * traj_batch.log_prob, last_val[None]], axis=0)
                     dest_targets = jnp.take_along_axis(state_targets, j_idx, axis=0)
                     mb_data = (
-                        traj_batch, epoch_targets, dest_obs, dest_targets,
+                        traj_batch, targets, dest_obs, dest_targets,
                         hit_true_terminal, hit_timeout, hit_horizon, start_weight,
                     )
                 else:
-                    mb_data = (traj_batch, epoch_targets)
+                    mb_data = (traj_batch, targets)
 
                 minibatches = shuffle_and_batch(key, mb_data, config["CRITIC_NUM_MINIBATCHES"])
 
