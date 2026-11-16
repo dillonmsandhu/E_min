@@ -42,9 +42,16 @@ class QTransition(NamedTuple):
     next_value: Optional[jnp.ndarray] = None
     targets: Optional[jnp.ndarray] = None
     next_targets: Optional[jnp.ndarray] = None
+    next_reward: Optional[jnp.ndarray] = None
+    next_next_obs: Optional[jnp.ndarray] = None
+    next_true_terminal: Optional[jnp.ndarray] = None
+    is_horizon: Optional[jnp.ndarray] = None
     dest_obs: Optional[jnp.ndarray] = None
     dest_action: Optional[jnp.ndarray] = None
     dest_targets: Optional[jnp.ndarray] = None
+    dest_reward: Optional[jnp.ndarray] = None
+    dest_next_obs: Optional[jnp.ndarray] = None
+    dest_true_terminal: Optional[jnp.ndarray] = None
     hit_true_terminal: Optional[jnp.ndarray] = None
     valid_jump: Optional[jnp.ndarray] = None
     aux_targets: Optional[jnp.ndarray] = None
@@ -89,6 +96,14 @@ def prepare_q_jump_transitions(traj_batch: QTransition, targets: jnp.ndarray, la
     dest_act_gathered = jnp.take_along_axis(act_ext, t_clamped, axis=0)
     dest_targets_gathered = jnp.take_along_axis(targets_ext, t_clamped, axis=0)
 
+    # Gather successor reward / next_obs / true_terminal for v_aux jump proxy
+    rew_ext = jnp.concatenate([traj_batch.reward, jnp.zeros((1, num_envs), dtype=traj_batch.reward.dtype)], axis=0)
+    next_obs_ext = jnp.concatenate([traj_batch.next_obs, last_obs[None]], axis=0)
+    term_ext = jnp.concatenate([true_terminal, jnp.zeros((1, num_envs), dtype=bool)], axis=0)
+    dest_rew_gathered = jnp.take_along_axis(rew_ext, t_clamped, axis=0)
+    dest_next_obs_gathered = jnp.take_along_axis(next_obs_ext, gather_idx_obs, axis=0)
+    dest_term_gathered = jnp.take_along_axis(term_ext, t_clamped, axis=0)
+
     # Broadcast timeout mask for spatial observations
     timeout_mask_obs = traj_batch.is_timeout.reshape(traj_batch.is_timeout.shape + (1,) * (traj_batch.obs.ndim - 2))
     dest_obs = jnp.where(timeout_mask_obs, traj_batch.next_obs, dest_obs_gathered)
@@ -98,13 +113,16 @@ def prepare_q_jump_transitions(traj_batch: QTransition, targets: jnp.ndarray, la
     valid_jump = jnp.where(
         true_terminal,
         False,
-        jnp.where(traj_batch.is_timeout, m == 1, (dest_t <= num_steps) & ~has_reset_between),
+        jnp.where(traj_batch.is_timeout, m == 1, (dest_t < num_steps) & ~has_reset_between),
     )
 
     return traj_batch._replace(
         dest_obs=dest_obs,
         dest_action=dest_act,
         dest_targets=dest_targets,
+        dest_reward=dest_rew_gathered,
+        dest_next_obs=dest_next_obs_gathered,
+        dest_true_terminal=dest_term_gathered,
         hit_true_terminal=is_absorbing,
         valid_jump=valid_jump,
     )

@@ -1,0 +1,60 @@
+#!/bin/bash
+set -e
+
+[ -f "jumanji_rl/core/jumanji_config.py" ] || cd "$(dirname "$0")/../../.."
+REPO_ROOT="$(pwd)"
+DATE=${DATE:-$(date +%Y-%m-%d)}
+SWEEP_NAME="sweep_q_ppo"
+LOG_DIR="slurm/${DATE}/jumanji_${SWEEP_NAME}"
+mkdir -p "$LOG_DIR"
+export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
+
+TOTAL_TIMESTEPS=${1:-auto}
+N_SEEDS=${2:-3}
+OUT_DIR=${3:-"results/jumanji/sweep_q_ppo"}
+MASTER_SEED=${MASTER_SEED:-42}
+CRITIC_LRS=${CRITIC_LRS:-"0.0001 0.0003 0.001"}
+CRITIC_EPOCHS=${CRITIC_EPOCHS:-"4 8"}
+LAMBDAS=${LAMBDAS:-"0.4 0.8 0.95"}
+ACTOR_LR=${ACTOR_LR:-0.0003}
+GAE_LAMBDA=${GAE_LAMBDA:-0.8}
+NUM_ENVS=${NUM_ENVS:-256}
+NUM_STEPS=${NUM_STEPS:-128}
+MINIBATCH_SIZE=${MINIBATCH_SIZE:-512}
+
+export TOTAL_TIMESTEPS N_SEEDS MASTER_SEED CRITIC_LRS CRITIC_EPOCHS LAMBDAS ACTOR_LR GAE_LAMBDA NUM_ENVS NUM_STEPS MINIBATCH_SIZE OUT_DIR REPO_ROOT
+
+if [ -f "/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python" ]; then
+    PYTHON="/home/users/ds541/.pyenv/versions/3.10.15/envs/gymnax/bin/python"
+elif [ -f "/Users/dillonsandhu/.pyenv/versions/gymnax/bin/python" ]; then
+    PYTHON="/Users/dillonsandhu/.pyenv/versions/gymnax/bin/python"
+elif [ -f "/Users/dillonsandhu/.pyenv/versions/purejaxrl/bin/python" ]; then
+    PYTHON="/Users/dillonsandhu/.pyenv/versions/purejaxrl/bin/python"
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
+else
+    PYTHON="python"
+fi
+
+ARRAY_JOB_ID=$(sbatch --parsable \
+    --chdir="$REPO_ROOT" \
+    --output="${LOG_DIR}/%A_%a.out" \
+    --error="${LOG_DIR}/%A_%a.err" \
+    --export=ALL \
+    scripts/jumanji/sweep_q_ppo/run_slurm_array.sh)
+
+POST_JOB_ID=$(sbatch --parsable \
+    --job-name=plot_q_ppo_jumanji \
+    --output="${LOG_DIR}/%A_consolidated_plot.out" \
+    --error="${LOG_DIR}/%A_consolidated_plot.err" \
+    --time=01:00:00 \
+    --partition=compsci \
+    --cpus-per-task=4 \
+    --mem=16G \
+    --dependency=afterany:$ARRAY_JOB_ID \
+    --chdir="$REPO_ROOT" \
+    --wrap="$PYTHON scripts/jumanji/sweep_q_ppo/plot_consolidated_results.py --out_dir '$OUT_DIR'")
+
+echo "Submitted Jumanji Q-PPO Array Job $ARRAY_JOB_ID and Post Job $POST_JOB_ID -> $OUT_DIR"

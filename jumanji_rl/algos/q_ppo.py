@@ -61,9 +61,10 @@ def make_train(base_config: dict):
             cfg_run = config
 
         c_type = cfg_run["CRITIC_TYPE"].lower()
-        if c_type in ("e_0", "e_0_q", "e0", "e"):
-            # Bilinear E(0) uses exact discrete action marginalization with no auxiliary branch.
+        if c_type in ("e_0", "e_0_q", "e_0_bilinear", "e0", "e", "bsmc_double_pi"):
+            # Non-aux bilinear/marginalized Q critics have no auxiliary branch.
             cfg_run = {**cfg_run, "E_VARIANT": "naive"}
+        uses_aux = uses_aux_network(cfg_run)
         critic_loss_fn = get_q_critic_loss_fn(c_type)
         actor_loss_fn = ppo_actor_loss_fn
 
@@ -170,27 +171,47 @@ def make_train(base_config: dict):
             next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
             next_targets = jnp.where(true_terminal, 0.0, next_targets)
 
-            aux_lambda = cfg_run.get("AUX_LAMBDA", 1.0)
-            if aux_lambda == target_lambda:
-                aux_targets = targets
-            else:
-                aux_targets = calculate_targets(
-                    traj_batch,
-                    next_value,
-                    gamma=cfg_run["GAMMA"],
-                    target_lambda=aux_lambda,
+            T_steps = cfg_run["NUM_STEPS"]
+            is_horizon = (jnp.arange(T_steps) == (T_steps - 1))[:, None]
+            is_horizon = jnp.broadcast_to(is_horizon, true_terminal.shape)
+            next_reward = jnp.roll(traj_batch.reward, shift=-1, axis=0)
+            next_next_obs = jnp.roll(traj_batch.next_obs, shift=-1, axis=0)
+            next_true_terminal = jnp.roll(true_terminal, shift=-1, axis=0)
+
+            if uses_aux:
+                v_aux_vals = network.apply(train_state.params, traj_batch.obs, method=network.v_aux)
+                final_next_aux_val = network.apply(
+                    train_state.params, traj_batch.next_obs[-1], method=network.v_aux
                 )
+                regular_aux_next = jnp.concatenate([v_aux_vals[1:], final_next_aux_val[None]], axis=0)
+                timeout_aux_next = network.apply(
+                    train_state.params, traj_batch.next_obs, method=network.v_aux
+                )
+                aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
+                aux_lambda = cfg_run["AUX_LAMBDA"]
+                _, aux_targets = calculate_gae(
+                    traj_batch._replace(value=v_aux_vals),
+                    aux_next_value,
+                    gamma=cfg_run["GAMMA"],
+                    gae_lambda=aux_lambda,
+                )
+            else:
+                aux_targets = targets
 
             traj_batch = traj_batch._replace(
                 next_action=next_action,
                 next_value=next_value,
                 targets=targets,
                 next_targets=next_targets,
+                next_reward=next_reward,
+                next_next_obs=next_next_obs,
+                next_true_terminal=next_true_terminal,
+                is_horizon=is_horizon,
                 aux_targets=aux_targets,
             )
 
-            # Prepare geometric jumps if E(lambda)
-            if "lambda" in c_type or "geometric" in c_type:
+            # Prepare geometric jumps only for E(lambda)
+            if c_type in ("e_lambda", "e_lambda_q", "e_lambda_v_aux", "elambda", "e_geometric"):
                 rng, _rng = jax.random.split(rng)
                 traj_batch = prepare_q_jump_transitions(
                     traj_batch,
@@ -198,7 +219,7 @@ def make_train(base_config: dict):
                     last_obs,
                     last_action,
                     gamma=cfg_run["GAMMA"],
-                    lmbda=cfg_run.get("E_LAMBDA", cfg_run["RETURN_LAMBDA"]),
+                    lmbda=cfg_run["E_LAMBDA"],
                     rng=_rng,
                 )
 

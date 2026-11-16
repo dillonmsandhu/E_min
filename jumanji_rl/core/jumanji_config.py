@@ -21,6 +21,7 @@ config = {
     "ACTOR_LR_END": None,
     "CRITIC_LR": 0.0003,
     "CRITIC_LR_END": None,
+    "WARMUP_RATIO": 0.0,
     "MAX_GRAD_NORM": 1.0,
     "WEIGHT_DECAY": 0.0,
     "ADAM_EPS": 1e-5,
@@ -30,6 +31,8 @@ config = {
     "NUM_STEPS": 128,              # Rollout horizon (128 >= 120 Sokoban limit -> full episode MC)
     "TOTAL_TIMESTEPS": 2_000_000,
     "NUM_EPOCHS": 4,
+    "ACTOR_EPOCHS": None,
+    "CRITIC_EPOCHS": None,
     "MINIBATCH_SIZE": 512,
     "ACTOR_MINIBATCH_SIZE": 512,
     "CRITIC_MINIBATCH_SIZE": 512,
@@ -41,6 +44,7 @@ config = {
     "VALUE_LAMBDA": 0.8,           # TD(lambda) target parameter
     "RETURN_LAMBDA": 0.8,          # E-min return lambda parameter
     "E_LAMBDA": 0.8,
+    "BSMC_LAMBDA": 0.8,
     "AUX_LAMBDA": 1.0,             # Auxiliary head target (Monte Carlo by default)
     "AUX_VF_COEF": 1.0,
     "CLIP_EPS": 0.1,

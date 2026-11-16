@@ -16,19 +16,28 @@ from gymnax.environments import spaces
 AUX_ELIGIBLE_CRITICS = (
     "e_0",
     "e_0_q",
+    "e_0_v_aux",
     "e0",
     "e",
     "e_lambda",
     "e_lambda_q",
+    "e_lambda_v_aux",
     "elambda",
+    "e_geometric",
+    "bsmc",
+    "bsmc_v_aux",
+    "bsmc_bilinear_v_aux",
 )
 NON_AUX_CRITICS = (
     "sarsa",
+    "sarsa_lambda",
     "td",
     "td_0",
     "td_lambda",
     "fitted",
     "mc",
+    "e_0_bilinear",
+    "bsmc_double_pi",
 )
 
 VALID_E_VARIANTS = ("aux", "fwd", "naive")
@@ -146,14 +155,15 @@ class MLP_Q_AC(nn.Module):
         self.actor_head = DiscretePolicyHead(self.action_dim)
         self.q_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
         if self.use_aux:
-            self.q_aux_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+            self.v_aux_mlp = MLP(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
     def __call__(self, x: jnp.ndarray):
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
         if self.use_aux:
-            _ = self.q_aux_values(x)
+            _ = self.v_aux(x)
         return pi, v, q
 
     def policy(self, x: jnp.ndarray):
@@ -164,27 +174,20 @@ class MLP_Q_AC(nn.Module):
         phi_c = self.critic_mlp(x)
         return self.q_head(phi_c)
 
-    def q_aux_values(self, x: jnp.ndarray):
-        phi_c = self.critic_mlp(x)
-        return self.q_aux_head(phi_c)
-
-    def both_q(self, x: jnp.ndarray, a: jnp.ndarray):
-        q = self.q_values(x)
-        q_taken = jnp.take_along_axis(q, a[..., None], axis=-1).squeeze(-1)
-        if self.use_aux:
-            q_aux = self.q_aux_values(x)
-            q_aux_taken = jnp.take_along_axis(q_aux, a[..., None], axis=-1).squeeze(-1)
-            return q_taken, q_aux_taken
-        return q_taken, q_taken
+    def v_aux(self, x: jnp.ndarray):
+        if not self.use_aux:
+            raise ValueError("v_aux called on MLP_Q_AC with use_aux=False.")
+        phi_aux = self.v_aux_mlp(x)
+        v = nn.relu(phi_aux)
+        v = self.v_aux_head(v)
+        return jnp.squeeze(v, axis=-1)
 
     def both(self, x: jnp.ndarray):
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
         if self.use_aux:
-            q_aux = self.q_aux_values(x)
-            v_aux = jnp.sum(pi.probs * q_aux, axis=-1)
-            return v, v_aux
+            return v, self.v_aux(x)
         return v, v
 
     def value(self, x: jnp.ndarray):
@@ -206,14 +209,15 @@ class PQN_Q_AC(nn.Module):
         self.actor_head = DiscretePolicyHead(self.action_dim)
         self.q_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
         if self.use_aux:
-            self.q_aux_head = nn.Dense(self.action_dim, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
+            self.v_aux_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.v_aux_head = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
 
     def __call__(self, x: jnp.ndarray):
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
         if self.use_aux:
-            _ = self.q_aux_values(x)
+            _ = self.v_aux(x)
         return pi, v, q
 
     def policy(self, x: jnp.ndarray):
@@ -224,27 +228,20 @@ class PQN_Q_AC(nn.Module):
         phi_c = self.critic_cnn(x)
         return self.q_head(phi_c)
 
-    def q_aux_values(self, x: jnp.ndarray):
-        phi_c = self.critic_cnn(x)
-        return self.q_aux_head(phi_c)
-
-    def both_q(self, x: jnp.ndarray, a: jnp.ndarray):
-        q = self.q_values(x)
-        q_taken = jnp.take_along_axis(q, a[..., None], axis=-1).squeeze(-1)
-        if self.use_aux:
-            q_aux = self.q_aux_values(x)
-            q_aux_taken = jnp.take_along_axis(q_aux, a[..., None], axis=-1).squeeze(-1)
-            return q_taken, q_aux_taken
-        return q_taken, q_taken
+    def v_aux(self, x: jnp.ndarray):
+        if not self.use_aux:
+            raise ValueError("v_aux called on PQN_Q_AC with use_aux=False.")
+        phi_aux = self.v_aux_cnn(x)
+        v = nn.relu(phi_aux)
+        v = self.v_aux_head(v)
+        return jnp.squeeze(v, axis=-1)
 
     def both(self, x: jnp.ndarray):
         pi = self.policy(x)
         q = self.q_values(x)
         v = jnp.sum(pi.probs * q, axis=-1)
         if self.use_aux:
-            q_aux = self.q_aux_values(x)
-            v_aux = jnp.sum(pi.probs * q_aux, axis=-1)
-            return v, v_aux
+            return v, self.v_aux(x)
         return v, v
 
     def value(self, x: jnp.ndarray):
