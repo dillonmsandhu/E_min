@@ -50,17 +50,17 @@ DEFAULT_ENVS = [
 ]
 
 ENV_DEFAULT_TIMESTEPS = {
-    "Sokoban-v0": 2_000_000,
-    "Maze-v0": 2_000_000,
-    "SlidingTilePuzzle-v0": 2_000_000,
-    "RubiksCube-partly-scrambled-v0": 2_000_000,
+    "Sokoban-v0": 10_000_000,
+    "Maze-v0": 10_000_000,
+    "SlidingTilePuzzle-v0": 10_000_000,
+    "RubiksCube-partly-scrambled-v0": 10_000_000,
 }
 
 
 def get_env_default_timesteps(env_name: str, override: int | None = None) -> int:
     if override is not None:
         return int(override)
-    return int(ENV_DEFAULT_TIMESTEPS.get(env_name, 2_000_000))
+    return int(ENV_DEFAULT_TIMESTEPS.get(env_name, 10_000_000))
 
 
 def build_base_config(
@@ -95,14 +95,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--critic_lrs", nargs="+", type=float, default=[1e-4, 3e-4, 1e-3])
     p.add_argument("--critic_epochs", nargs="+", type=int, default=[4, 8])
     p.add_argument("--lambdas", nargs="+", type=float, default=[0.4, 0.8, 0.95])
-    p.add_argument("--actor_lr", type=float, default=3e-4)
+    p.add_argument("--actor_lr", type=float, default=1e-3)
     p.add_argument("--gae_lambda", type=float, default=0.8)
     p.add_argument("--default_critic_lr", type=float, default=3e-4)
     p.add_argument("--default_critic_epochs", type=int, default=4)
     p.add_argument("--default_lambda", type=float, default=0.8)
     p.add_argument("--aux_vf_coef", type=float, default=1.0)
     p.add_argument("--total_timesteps", type=int, default=None)
-    p.add_argument("--num_envs", type=int, default=256)
+    p.add_argument("--num_envs", type=int, default=128)
     p.add_argument("--num_steps", type=int, default=128)
     p.add_argument("--minibatch_size", type=int, default=512)
     p.add_argument("--n_seeds", type=int, default=3)

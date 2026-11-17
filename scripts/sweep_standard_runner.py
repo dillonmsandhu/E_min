@@ -35,10 +35,12 @@ def _method_critic_type(method_key: str) -> str:
         "sarsa_lambda": "sarsa_lambda",
         "e_0_v_aux": "e_0_v_aux",
         "e_0_bilinear": "e_0_bilinear",
+        "e_0_dir_marg": "e_0_dir_marg",
         "e_lambda_v_aux": "e_lambda_v_aux",
         "bsmc_v_aux": "bsmc_v_aux",
         "bsmc_double_pi": "bsmc_double_pi",
         "bsmc_bilinear_v_aux": "bsmc_bilinear_v_aux",
+        "bsmc_dir_marg": "bsmc_dir_marg",
     }
     if method_key not in mapping:
         raise ValueError(f"Unknown canonical method_key '{method_key}'.")
@@ -50,9 +52,9 @@ def _method_lambda_key(method_key: str) -> str | None:
         return "VALUE_LAMBDA"
     if method_key == "e_lambda_v_aux":
         return "E_LAMBDA"
-    if method_key in ("bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux"):
+    if method_key in ("bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux", "bsmc_dir_marg"):
         return "BSMC_LAMBDA"
-    if method_key in ("e_0_v_aux", "e_0_bilinear"):
+    if method_key in ("e_0_v_aux", "e_0_bilinear", "e_0_dir_marg"):
         return None
     raise ValueError(f"Unknown canonical method_key '{method_key}'.")
 
@@ -122,7 +124,7 @@ def _apply_params(
     else:
         cfg["CRITIC_TYPE"] = _method_critic_type(method_key)
 
-    if method_key in ("e_0_bilinear", "bsmc_double_pi"):
+    if method_key in ("e_0_bilinear", "e_0_dir_marg", "bsmc_double_pi", "bsmc_dir_marg"):
         cfg["E_VARIANT"] = "naive"
     else:
         cfg["E_VARIANT"] = "aux"

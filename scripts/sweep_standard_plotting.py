@@ -47,8 +47,13 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
     },
     "e_0_bilinear": {
         "label": "E(0) (Bilinear, 2π)",
-        "color": "#0d9488",
+        "color": "#db2777",
         "ls": "-.",
+    },
+    "e_0_dir_marg": {
+        "label": "E(0) (Dir-Marg)",
+        "color": "#0891b2",
+        "ls": "--",
     },
     "e_lambda_v_aux": {
         "label": "E(λ) (v_aux)",
@@ -69,6 +74,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "label": "BSMC (2π)",
         "color": "#d97706",
         "ls": "-.",
+    },
+    "bsmc_dir_marg": {
+        "label": "BSMC (Dir-Marg)",
+        "color": "#16a34a",
+        "ls": "--",
     },
 }
 
@@ -829,7 +839,7 @@ def generate_standardized_suite(
             include_default=True,
         )
 
-    # Q1 & Q2: Focused sampling comparison tables (Q-PPO)
+    # Q1 & Q2: Focused sampling comparison tables & chart (Q-PPO)
     if "e_0_v_aux" in method_keys and "e_0_bilinear" in method_keys:
         _save_pairwise_comparison_table(
             all_runs, envs, ["e_0_v_aux", "e_0_bilinear"], per_env_best_tags,
@@ -842,6 +852,21 @@ def generate_standardized_suite(
             f"{suite_title}: Q2 — BSMC Sampling (Bilinear v_aux vs. Double-Sample 2π, Tuned AUC)",
             os.path.join(tables_dir, "q2_bsmc_sampling"),
         )
+    if "e_lambda_v_aux" in method_keys and "bsmc_double_pi" in method_keys:
+        _save_pairwise_comparison_table(
+            all_runs, envs, ["e_lambda_v_aux", "bsmc_double_pi"], per_env_best_tags,
+            f"{suite_title}: Q1b — E(λ) (v_aux) vs. BSMC (2π) (Tuned AUC)",
+            os.path.join(tables_dir, "q1b_elambda_vaux_vs_bsmc_2pi"),
+        )
+    _generate_sampling_comparison_suite(
+        all_runs=all_runs,
+        envs=envs,
+        method_keys=method_keys,
+        reference_method=reference_method,
+        per_env_best_tags=per_env_best_tags,
+        suite_title=suite_title,
+        plots_dir=plots_dir,
+    )
 
     # Q3: E(lambda) vs BSMC (v_aux) at matched MC weight (same lambda)
     bsmc_v_key = "bsmc_v_aux" if "bsmc_v_aux" in method_keys else (
@@ -857,6 +882,39 @@ def generate_standardized_suite(
             plots_dir=plots_dir,
             tables_dir=tables_dir,
         )
+
+    # Q3 (Fixed E vs Baseline): Is there a fixed E algo that always or often beats TD/SARSA?
+    if reference_method in method_keys:
+        _generate_head_to_head_vs_baseline_suite(
+            all_runs=all_runs,
+            envs=envs,
+            method_keys=method_keys,
+            ref_key=reference_method,
+            per_env_best_tags=per_env_best_tags,
+            suite_title=suite_title,
+            plots_dir=plots_dir,
+            tables_dir=tables_dir,
+        )
+        # Q4 & Q5: Per-lambda head-to-head vs Baseline (TD(lambda) / SARSA(lambda))
+        _generate_per_lambda_head_to_head_suite(
+            all_runs=all_runs,
+            envs=envs,
+            method_keys=method_keys,
+            ref_key=reference_method,
+            suite_title=suite_title,
+            plots_dir=plots_dir,
+            tables_dir=tables_dir,
+        )
+
+    # Q6: BSMC regime comparison relative to E(0) and E(lambda)
+    _generate_bsmc_regime_comparison(
+        all_runs=all_runs,
+        envs=envs,
+        method_keys=method_keys,
+        per_env_best_tags=per_env_best_tags,
+        suite_title=suite_title,
+        tables_dir=tables_dir,
+    )
 
     # Q5: Best E variant (including BSMC) vs TD(lambda) / SARSA(lambda)
     e_family = [m for m in method_keys if m != reference_method]
@@ -1082,4 +1140,494 @@ def _generate_q5_best_e_vs_td(
         f"{suite_title}: Q5 — Best E Variant (incl. BSMC) vs. Best {ref_lbl} (AUC Return)",
         os.path.join(tables_dir, "q5_best_e_vs_td"),
         cell_annotations=ann,
+    )
+
+
+def _extract_run_lambda(params: dict[str, Any]) -> float | None:
+    for lk in ("VALUE_LAMBDA", "E_LAMBDA", "BSMC_LAMBDA", "GAE_LAMBDA"):
+        if lk in params:
+            return float(params[lk])
+    return None
+
+
+def _normalized_pct_scores(cand_vals: np.ndarray, ref_vals: np.ndarray) -> tuple[float, float, float]:
+    """Compute Mean %, IQM %, and Median % normalized relative to ref_vals."""
+    norm = np.where(
+        np.abs(ref_vals) > 1e-4,
+        100.0 + ((cand_vals - ref_vals) / np.maximum(np.abs(ref_vals), 1e-4)) * 100.0,
+        100.0,
+    )
+    valid = norm[~np.isnan(norm)]
+    if len(valid) == 0:
+        return np.nan, np.nan, np.nan
+    q25, q75 = np.percentile(valid, [25, 75])
+    iqm_mask = (valid >= q25) & (valid <= q75)
+    iqm = float(np.mean(valid[iqm_mask])) if np.any(iqm_mask) else float(np.mean(valid))
+    return float(np.mean(valid)), iqm, float(np.median(valid))
+
+
+def _save_text_table_bundle(
+    df: pd.DataFrame,
+    title: str,
+    base_path: str,
+) -> None:
+    """Writes .md and .tex for a general summary DataFrame (non-mean±std layout)."""
+    with open(base_path + ".md", "w") as f:
+        f.write(f"### {title}\n\n")
+        f.write(df.to_markdown(index=False) + "\n")
+
+    col_spec = "l" + "c" * (len(df.columns) - 1)
+    header_tex = " & ".join(
+        str(c).replace("%", r"\%").replace("_", r"\_").replace("λ", r"$\lambda$").replace("π", r"$\pi$")
+        for c in df.columns
+    )
+    cap_tex = title.replace("%", r"\%").replace("λ", r"$\lambda$").replace("π", r"$\pi$")
+    tex_lines = [
+        r"\begin{table*}[t]",
+        r"\centering",
+        f"\\caption{{{cap_tex}}}",
+        f"\\label{{{os.path.basename(base_path)}}}",
+        r"\small",
+        f"\\begin{{tabular}}{{{col_spec}}}",
+        r"\toprule",
+        header_tex + r" \\",
+        r"\midrule",
+    ]
+    for _, row in df.iterrows():
+        cells = []
+        for val in row.values:
+            s = str(val).replace("%", r"\%").replace("_", r"\_").replace("λ", r"$\lambda$").replace("π", r"$\pi$")
+            cells.append(s)
+        tex_lines.append(" & ".join(cells) + r" \\")
+    tex_lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table*}"])
+    with open(base_path + ".tex", "w") as f:
+        f.write("\n".join(tex_lines) + "\n")
+
+
+def _generate_sampling_comparison_suite(
+    all_runs: dict,
+    envs: list[str],
+    method_keys: list[str],
+    reference_method: str,
+    per_env_best_tags: dict[tuple[str, str], str],
+    suite_title: str,
+    plots_dir: str,
+) -> None:
+    """Q1 visual summary: v_aux vs double policy sampling (2pi) across available pairs."""
+    pairs = []
+    if "e_0_v_aux" in method_keys and "e_0_bilinear" in method_keys:
+        pairs.append(("E(0): v_aux vs 2π", "e_0_v_aux", "e_0_bilinear"))
+    if "bsmc_bilinear_v_aux" in method_keys and "bsmc_double_pi" in method_keys:
+        pairs.append(("BSMC: Bilinear v_aux vs 2π", "bsmc_bilinear_v_aux", "bsmc_double_pi"))
+    if "e_lambda_v_aux" in method_keys and "bsmc_double_pi" in method_keys:
+        pairs.append(("E(λ) (v_aux) vs BSMC (2π)", "e_lambda_v_aux", "bsmc_double_pi"))
+    if not pairs:
+        return
+
+    ref_vals = np.array([
+        all_runs[e][reference_method][per_env_best_tags[(e, reference_method)]]["auc_mean"]
+        if reference_method in all_runs[e] and (e, reference_method) in per_env_best_tags else np.nan
+        for e in envs
+    ], dtype=float)
+
+    n_pairs = len(pairs)
+    fig, (ax_wtl, ax_iqm) = plt.subplots(1, 2, figsize=(12.5, 4.3))
+    y_pos = np.arange(n_pairs)
+
+    w_counts, t_counts, l_counts = [], [], []
+    left_iqms, right_iqms, left_lbls, right_lbls = [], [], [], []
+    pair_titles = []
+    for title, k_left, k_right in pairs:
+        v_left = np.array([
+            all_runs[e][k_left][per_env_best_tags[(e, k_left)]]["auc_mean"] for e in envs
+        ], dtype=float)
+        v_right = np.array([
+            all_runs[e][k_right][per_env_best_tags[(e, k_right)]]["auc_mean"] for e in envs
+        ], dtype=float)
+        wtl = _compute_wtl_stats(np.column_stack([v_left, v_right]), higher_is_better=True)
+        w_counts.append(int(wtl["pw_w"][0]))
+        t_counts.append(int(wtl["pw_t"][0]))
+        l_counts.append(int(wtl["pw_l"][0]))
+        _, iqm_l, _ = _normalized_pct_scores(v_left, ref_vals)
+        _, iqm_r, _ = _normalized_pct_scores(v_right, ref_vals)
+        left_iqms.append(iqm_l)
+        right_iqms.append(iqm_r)
+        left_lbls.append(get_algo_meta(k_left)["label"])
+        right_lbls.append(get_algo_meta(k_right)["label"])
+        pair_titles.append(title)
+
+    w_arr = np.array(w_counts)
+    t_arr = np.array(t_counts)
+    l_arr = np.array(l_counts)
+    ax_wtl.barh(y_pos, w_arr, color="#059669", height=0.52, label="v_aux Wins")
+    ax_wtl.barh(y_pos, t_arr, left=w_arr, color="#9ca3af", height=0.52, label="Tie (within 1%)")
+    ax_wtl.barh(y_pos, l_arr, left=w_arr + t_arr, color="#dc2626", height=0.52, label="Double-π Wins")
+    for idx in range(n_pairs):
+        ax_wtl.text(
+            (w_arr[idx] + t_arr[idx] + l_arr[idx]) / 2.0,
+            y_pos[idx],
+            f"{w_arr[idx]}W / {t_arr[idx]}T / {l_arr[idx]}L",
+            va="center", ha="center", color="white", fontweight="bold", fontsize=9.5,
+        )
+    ax_wtl.set_yticks(y_pos)
+    ax_wtl.set_yticklabels(pair_titles, fontsize=9.5, fontweight="bold")
+    ax_wtl.invert_yaxis()
+    ax_wtl.set_xlabel("Environments")
+    ax_wtl.set_title("Pairwise AUC W/T/L (v_aux vs. 2π)", fontsize=10.5, fontweight="bold", pad=22)
+    ax_wtl.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=3, fontsize=8.0, frameon=False)
+    ax_wtl.grid(True, alpha=0.25, axis="x")
+
+    bar_h = 0.34
+    ax_iqm.barh(y_pos - bar_h / 2, left_iqms, height=bar_h, color="#0284c7", label="v_aux variant")
+    ax_iqm.barh(y_pos + bar_h / 2, right_iqms, height=bar_h, color="#ea580c", label="Double-π (2π) variant")
+    ax_iqm.axvline(100.0, color="gray", linestyle="--", lw=1.1, label="Baseline (100%)")
+    for idx in range(n_pairs):
+        ax_iqm.text(left_iqms[idx] + 1.5, y_pos[idx] - bar_h / 2, f"{left_lbls[idx]} ({left_iqms[idx]:.1f}%)", va="center", fontsize=8.2)
+        ax_iqm.text(right_iqms[idx] + 1.5, y_pos[idx] + bar_h / 2, f"{right_lbls[idx]} ({right_iqms[idx]:.1f}%)", va="center", fontsize=8.2)
+    ax_iqm.set_yticks(y_pos)
+    ax_iqm.set_yticklabels(pair_titles, fontsize=9.5, fontweight="bold")
+    ax_iqm.invert_yaxis()
+    max_iqm = max([115.0] + left_iqms + right_iqms)
+    ax_iqm.set_xlim(min([0.0] + left_iqms + right_iqms) - 5.0, max_iqm + 55.0)
+    ax_iqm.set_xlabel("IQM Normalized AUC Return (%)")
+    ax_iqm.set_title("IQM Normalized Score (v_aux vs. 2π)", fontsize=10.5, fontweight="bold", pad=22)
+    ax_iqm.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=3, fontsize=8.0, frameon=False)
+    ax_iqm.grid(True, alpha=0.25, axis="x")
+
+    fig.suptitle(f"{suite_title}: v_aux vs. Double Policy Sample (2π)", fontsize=12.5, fontweight="bold", y=1.03)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "q1_q2_sampling_comparison.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(plots_dir, "q1_q2_sampling_comparison.pdf"), bbox_inches="tight")
+    plt.close()
+
+
+def _generate_head_to_head_vs_baseline_suite(
+    all_runs: dict,
+    envs: list[str],
+    method_keys: list[str],
+    ref_key: str,
+    per_env_best_tags: dict[tuple[str, str], str],
+    suite_title: str,
+    plots_dir: str,
+    tables_dir: str,
+) -> None:
+    """Q3: Direct fixed-algorithm head-to-head comparison against TD(lambda) / SARSA(lambda)."""
+    cand_keys = [m for m in method_keys if m != ref_key]
+    if not cand_keys:
+        return
+    ref_lbl = get_algo_meta(ref_key)["label"]
+    n_envs = len(envs)
+    n_cands = len(cand_keys)
+
+    ref_auc = np.array([all_runs[e][ref_key][per_env_best_tags[(e, ref_key)]]["auc_mean"] for e in envs], dtype=float)
+    ref_fin = np.array([all_runs[e][ref_key][per_env_best_tags[(e, ref_key)]]["final_mean"] for e in envs], dtype=float)
+
+    status_mat = np.zeros((n_envs, n_cands), dtype=int)  # +1 win, 0 tie, -1 loss
+    pct_diff_mat = np.zeros((n_envs, n_cands), dtype=float)
+    summary_rows = []
+
+    for j, m_key in enumerate(cand_keys):
+        lbl = get_algo_meta(m_key)["label"]
+        c_auc = np.array([all_runs[e][m_key][per_env_best_tags[(e, m_key)]]["auc_mean"] for e in envs], dtype=float)
+        c_fin = np.array([all_runs[e][m_key][per_env_best_tags[(e, m_key)]]["final_mean"] for e in envs], dtype=float)
+
+        wtl_auc = _compute_wtl_stats(np.column_stack([c_auc, ref_auc]), higher_is_better=True)
+        wtl_fin = _compute_wtl_stats(np.column_stack([c_fin, ref_fin]), higher_is_better=True)
+        strict_w = int(np.sum(c_auc > ref_auc + 1e-9))
+        strict_l = int(np.sum(ref_auc > c_auc + 1e-9))
+        strict_t = n_envs - strict_w - strict_l
+
+        for i in range(n_envs):
+            tol = _row_real_win_tol(np.array([c_auc[i], ref_auc[i]]))
+            diff = c_auc[i] - ref_auc[i]
+            if abs(diff) <= tol:
+                status_mat[i, j] = 0
+            elif diff > tol:
+                status_mat[i, j] = 1
+            else:
+                status_mat[i, j] = -1
+            denom = max(abs(ref_auc[i]), 1e-4)
+            pct_diff_mat[i, j] = (diff / denom) * 100.0
+
+        mean_pct, iqm_pct, med_pct = _normalized_pct_scores(c_auc, ref_auc)
+        summary_rows.append({
+            "Algorithm": lbl,
+            f"AUC W/T/L vs {ref_lbl}": f"{int(wtl_auc['pw_w'][0])}W / {int(wtl_auc['pw_t'][0])}T / {int(wtl_auc['pw_l'][0])}L",
+            f"Strict W/T/L vs {ref_lbl}": f"{strict_w}W / {strict_t}T / {strict_l}L",
+            f"Final W/T/L vs {ref_lbl}": f"{int(wtl_fin['pw_w'][0])}W / {int(wtl_fin['pw_t'][0])}T / {int(wtl_fin['pw_l'][0])}L",
+            "IQM (%)": f"{iqm_pct:.1f}%",
+            "Median (%)": f"{med_pct:.1f}%",
+            "Mean Norm (%)": f"{mean_pct:.1f}%",
+        })
+
+    _save_text_table_bundle(
+        pd.DataFrame(summary_rows),
+        f"{suite_title}: Fixed E-Variant Head-to-Head vs. {ref_lbl} ({n_envs} Envs, Tuned)",
+        os.path.join(tables_dir, "head_to_head_vs_baseline"),
+    )
+
+    from matplotlib.colors import ListedColormap
+    fig_h = max(4.8, 0.42 * n_envs + 2.2)
+    fig, (ax_bar, ax_heat) = plt.subplots(1, 2, figsize=(13.8, fig_h), gridspec_kw={"width_ratios": [1.0, 1.35]})
+
+    y_c = np.arange(n_cands)
+    w_arr = np.array([np.sum(status_mat[:, j] == 1) for j in range(n_cands)])
+    t_arr = np.array([np.sum(status_mat[:, j] == 0) for j in range(n_cands)])
+    l_arr = np.array([np.sum(status_mat[:, j] == -1) for j in range(n_cands)])
+    cand_labels = [get_algo_meta(m)["label"] for m in cand_keys]
+
+    ax_bar.barh(y_c, w_arr, color="#059669", height=0.55, label=f"Beat {ref_lbl}")
+    ax_bar.barh(y_c, t_arr, left=w_arr, color="#9ca3af", height=0.55, label="Tie (within 1%)")
+    ax_bar.barh(y_c, l_arr, left=w_arr + t_arr, color="#dc2626", height=0.55, label=f"Lose to {ref_lbl}")
+    for j in range(n_cands):
+        ax_bar.text(
+            n_envs / 2.0,
+            y_c[j],
+            f"{w_arr[j]}W / {t_arr[j]}T / {l_arr[j]}L ({summary_rows[j]['IQM (%)']} IQM)",
+            va="center", ha="center", color="white", fontweight="bold", fontsize=8.5,
+        )
+    ax_bar.set_yticks(y_c)
+    ax_bar.set_yticklabels(cand_labels, fontsize=9.5, fontweight="bold")
+    ax_bar.invert_yaxis()
+    ax_bar.set_xlim(0, n_envs)
+    ax_bar.set_xlabel(f"Environments ({n_envs} total)")
+    ax_bar.set_title(f"Fixed Algorithm Record vs. {ref_lbl}", fontsize=10.5, fontweight="bold", pad=22)
+    ax_bar.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=3, fontsize=8.0, frameon=False)
+    ax_bar.grid(True, alpha=0.25, axis="x")
+
+    cmap = ListedColormap(["#fca5a5", "#e5e7eb", "#86efac"])
+    ax_heat.imshow(status_mat + 1, cmap=cmap, vmin=0, vmax=2, aspect="auto")
+    ax_heat.set_xticks(np.arange(n_cands))
+    ax_heat.set_xticklabels(cand_labels, rotation=20, ha="right", fontsize=8.8, fontweight="bold")
+    ax_heat.set_yticks(np.arange(n_envs))
+    ax_heat.set_yticklabels([ENV_TITLES.get(e, e) for e in envs], fontsize=8.8)
+    for i in range(n_envs):
+        for j in range(n_cands):
+            tag = "W" if status_mat[i, j] == 1 else ("T" if status_mat[i, j] == 0 else "L")
+            pct = pct_diff_mat[i, j]
+            pct_str = f"{pct:+.0f}%" if abs(pct) < 999 else (">+999%" if pct > 0 else "<-999%")
+            ax_heat.text(j, i, f"{tag} ({pct_str})", ha="center", va="center", fontsize=7.6, color="#111827", fontweight="bold" if tag == "W" else "normal")
+    ax_heat.set_title(f"Per-Env AUC vs. {ref_lbl} (Green=Win, Red=Loss)", fontsize=10.5, fontweight="bold")
+
+    fig.suptitle(f"{suite_title}: Fixed E-Variants vs. {ref_lbl}", fontsize=12.5, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "head_to_head_vs_baseline.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(plots_dir, "head_to_head_vs_baseline.pdf"), bbox_inches="tight")
+    plt.close()
+
+
+def _generate_per_lambda_head_to_head_suite(
+    all_runs: dict,
+    envs: list[str],
+    method_keys: list[str],
+    ref_key: str,
+    suite_title: str,
+    plots_dir: str,
+    tables_dir: str,
+) -> None:
+    """Q4 & Q5: Head-to-head comparison of E(lambda) and BSMC vs TD/SARSA per lambda."""
+    lam_methods = [m for m in ["e_lambda_v_aux", "bsmc_v_aux", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_bilinear_v_aux"] if m in method_keys]
+    if not lam_methods or ref_key not in method_keys:
+        return
+
+    lambdas_set = set()
+    for env in envs:
+        for k in [ref_key] + lam_methods:
+            for res in all_runs[env].get(k, {}).values():
+                lv = _extract_run_lambda(res.get("params", {}))
+                if lv is not None:
+                    lambdas_set.add(lv)
+    lambdas = sorted(lambdas_set)
+    if not lambdas:
+        return
+
+    ref_lbl = get_algo_meta(ref_key)["label"]
+    ref_stem = ref_lbl.replace("(λ)", "").strip()
+    rows = []
+    wtl_store: dict[str, list[tuple[int, int, int, float]]] = {m: [] for m in lam_methods}
+
+    for m_key in lam_methods:
+        m_lbl = get_algo_meta(m_key)["label"]
+        for lmb in lambdas:
+            c_vals, r_vals = [], []
+            for env in envs:
+                r_cands = [
+                    r for r in all_runs[env].get(ref_key, {}).values()
+                    if (lv := _extract_run_lambda(r.get("params", {}))) is not None and abs(lv - lmb) < 1e-6
+                ]
+                m_cands = [
+                    r for r in all_runs[env].get(m_key, {}).values()
+                    if (lv := _extract_run_lambda(r.get("params", {}))) is not None and abs(lv - lmb) < 1e-6
+                ]
+                if not r_cands or not m_cands:
+                    continue
+                r_best = max(r_cands, key=lambda r: r["auc_mean"])
+                m_best = max(m_cands, key=lambda r: r["auc_mean"])
+                c_vals.append(m_best["auc_mean"])
+                r_vals.append(r_best["auc_mean"])
+            if not c_vals:
+                wtl_store[m_key].append((0, 0, 0, np.nan))
+                continue
+            c_arr = np.array(c_vals, dtype=float)
+            r_arr = np.array(r_vals, dtype=float)
+            wtl = _compute_wtl_stats(np.column_stack([c_arr, r_arr]), higher_is_better=True)
+            w, t, l = int(wtl["pw_w"][0]), int(wtl["pw_t"][0]), int(wtl["pw_l"][0])
+            sw = int(np.sum(c_arr > r_arr + 1e-9))
+            sl = int(np.sum(r_arr > c_arr + 1e-9))
+            st = len(c_arr) - sw - sl
+            mean_p, iqm_p, med_p = _normalized_pct_scores(c_arr, r_arr)
+            wtl_store[m_key].append((w, t, l, iqm_p))
+            rows.append({
+                "Method": m_lbl,
+                "λ": f"{lmb:g}",
+                f"W/T/L vs {ref_lbl}": f"{w}W / {t}T / {l}L",
+                f"Strict vs {ref_lbl}": f"{sw}W / {st}T / {sl}L",
+                "IQM (%)": f"{iqm_p:.1f}%",
+                "Median (%)": f"{med_p:.1f}%",
+                "Mean Norm (%)": f"{mean_p:.1f}%",
+            })
+
+    _save_text_table_bundle(
+        pd.DataFrame(rows),
+        f"{suite_title}: Per-λ Head-to-Head vs. {ref_lbl} (AUC Return)",
+        os.path.join(tables_dir, "per_lambda_head_to_head_vs_baseline"),
+    )
+
+    # 1. Summary figure across lambdas (W/T/L bars + IQM vs lambda)
+    n_lams = len(lambdas)
+    n_meths = len(lam_methods)
+    fig, (ax_wtl, ax_iqm) = plt.subplots(1, 2, figsize=(13.0, 4.6))
+    x_lams = np.arange(n_lams)
+    bar_w = 0.72 / max(1, n_meths)
+    for m_idx, m_key in enumerate(lam_methods):
+        meta = get_algo_meta(m_key)
+        offsets = x_lams + (m_idx - (n_meths - 1) / 2.0) * bar_w
+        ws = np.array([x[0] for x in wtl_store[m_key]], dtype=float)
+        ts = np.array([x[1] for x in wtl_store[m_key]], dtype=float)
+        ls = np.array([x[2] for x in wtl_store[m_key]], dtype=float)
+        tot = np.maximum(ws + ts + ls, 1.0)
+        win_rate = (ws / tot) * 100.0
+        tie_rate = (ts / tot) * 100.0
+        iqms = [x[3] for x in wtl_store[m_key]]
+
+        ax_wtl.bar(offsets, win_rate, width=bar_w * 0.9, color=meta["color"], alpha=0.88, label=f"{meta['label']} Win%")
+        for lx, wr, w_i, t_i, l_i in zip(offsets, win_rate, ws, ts, ls):
+            ax_wtl.text(lx, wr + 2.0, f"{int(w_i)}-{int(t_i)}-{int(l_i)}", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+        ax_iqm.plot(lambdas, iqms, marker="o", lw=2.2, ls=meta["ls"], color=meta["color"], label=meta["label"])
+
+    ax_wtl.axhline(50.0, color="gray", linestyle="--", lw=1.0)
+    ax_wtl.set_xticks(x_lams)
+    ax_wtl.set_xticklabels([f"λ={l:g}" for l in lambdas], fontsize=9.5, fontweight="bold")
+    ax_wtl.set_ylim(0, 118)
+    ax_wtl.set_ylabel(f"Win Rate vs. {ref_lbl} (%)")
+    ax_wtl.set_title(f"Matched-λ Win Rate vs. {ref_lbl} (labels: W-T-L)", fontsize=10.5, fontweight="bold")
+    ax_wtl.legend(loc="upper right", fontsize=8.0)
+    ax_wtl.grid(True, alpha=0.25, axis="y")
+
+    ax_iqm.axhline(100.0, color="gray", linestyle="--", lw=1.2, label=f"{ref_lbl} = 100%")
+    ax_iqm.set_xticks(lambdas)
+    ax_iqm.set_xlabel("Matched λ")
+    ax_iqm.set_ylabel(f"IQM Normalized AUC (% of {ref_lbl})")
+    ax_iqm.set_title(f"IQM Score vs. {ref_lbl} Across λ", fontsize=10.5, fontweight="bold")
+    ax_iqm.legend(loc="best", fontsize=8.0)
+    ax_iqm.grid(True, alpha=0.3)
+
+    fig.suptitle(f"{suite_title}: E(λ) & BSMC vs. {ref_lbl} at Matched λ", fontsize=12.5, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "per_lambda_wtl_vs_baseline.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(plots_dir, "per_lambda_wtl_vs_baseline.pdf"), bbox_inches="tight")
+    plt.close()
+
+    # 2. Per-env AUC vs lambda curves (Baseline + E(lambda) + BSMC)
+    n_envs = len(envs)
+    n_cols = min(3, n_envs)
+    n_rows = int(np.ceil(n_envs / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.3 * n_cols, 3.2 * n_rows), squeeze=False)
+    plot_keys = [ref_key] + lam_methods
+    for r_idx, env in enumerate(envs):
+        r, c = divmod(r_idx, n_cols)
+        ax = axes[r][c]
+        for k in plot_keys:
+            meta = get_algo_meta(k)
+            ys, es = [], []
+            for lmb in lambdas:
+                cands = [
+                    res for res in all_runs[env].get(k, {}).values()
+                    if (lv := _extract_run_lambda(res.get("params", {}))) is not None and abs(lv - lmb) < 1e-6
+                ]
+                if cands:
+                    best = max(cands, key=lambda res: res["auc_mean"])
+                    ys.append(best["auc_mean"])
+                    es.append(best["auc_std"])
+                else:
+                    ys.append(np.nan)
+                    es.append(np.nan)
+            ax.errorbar(lambdas, ys, yerr=es, marker="o", lw=2.0, ls=meta["ls"], color=meta["color"], label=meta["label"], capsize=3)
+        ax.set_title(ENV_TITLES.get(env, env), fontsize=10.5, fontweight="bold")
+        ax.set_xlabel("λ")
+        ax.set_ylabel("AUC Return")
+        ax.set_xticks(lambdas)
+        ax.grid(True, alpha=0.3)
+        if r_idx == 0:
+            ax.legend(loc="best", fontsize=7.5)
+    for idx in range(n_envs, n_rows * n_cols):
+        r, c = divmod(idx, n_cols)
+        axes[r][c].axis("off")
+    fig.suptitle(f"{suite_title}: Per-Environment Matched-λ AUC ({ref_lbl} vs. E(λ) vs. BSMC)", fontsize=12.5, fontweight="bold", y=1.01)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "per_lambda_head_to_head.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(plots_dir, "per_lambda_head_to_head.pdf"), bbox_inches="tight")
+    plt.close()
+
+
+def _generate_bsmc_regime_comparison(
+    all_runs: dict,
+    envs: list[str],
+    method_keys: list[str],
+    per_env_best_tags: dict[tuple[str, str], str],
+    suite_title: str,
+    tables_dir: str,
+) -> None:
+    """Q6: Show where BSMC lies relative to E(0) and E(lambda) per environment."""
+    if "e_0_v_aux" not in method_keys or "e_lambda_v_aux" not in method_keys:
+        return
+    bsmc_cols = [m for m in ["bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux"] if m in method_keys]
+    if not bsmc_cols:
+        return
+
+    rows = []
+    for env in envs:
+        e0 = all_runs[env]["e_0_v_aux"][per_env_best_tags[(env, "e_0_v_aux")]]["auc_mean"]
+        elam = all_runs[env]["e_lambda_v_aux"][per_env_best_tags[(env, "e_lambda_v_aux")]]["auc_mean"]
+        row = {
+            "Environment": ENV_TITLES.get(env, env),
+            "E(0) (v_aux)": f"{e0:.1f}",
+            "E(λ) (v_aux)": f"{elam:.1f}",
+        }
+        primary_bsmc = bsmc_cols[0]
+        if "bsmc_double_pi" in bsmc_cols:
+            primary_bsmc = "bsmc_double_pi"
+        for bk in bsmc_cols:
+            bval = all_runs[env][bk][per_env_best_tags[(env, bk)]]["auc_mean"]
+            row[get_algo_meta(bk)["label"]] = f"{bval:.1f}"
+        b_main = all_runs[env][primary_bsmc][per_env_best_tags[(env, primary_bsmc)]]["auc_mean"]
+        lo, hi = min(e0, elam), max(e0, elam)
+        span = max(hi - lo, 1e-4)
+        tol = 0.02 * max(abs(lo), abs(hi), 1.0)
+        if b_main > hi + tol:
+            regime = f"Above both (+{b_main - hi:.1f})"
+        elif b_main < lo - tol:
+            regime = f"Below both ({b_main - lo:.1f})"
+        elif abs(elam - e0) <= tol:
+            regime = "All ~tied"
+        else:
+            frac = (b_main - e0) / (elam - e0)
+            regime = f"{frac * 100:.0f}% toward E(λ)"
+        row[f"Regime ({get_algo_meta(primary_bsmc)['label']})"] = regime
+        rows.append(row)
+
+    _save_text_table_bundle(
+        pd.DataFrame(rows),
+        f"{suite_title}: BSMC vs. E(0) and E(λ) Regime Breakdown (Tuned AUC)",
+        os.path.join(tables_dir, "bsmc_regime_comparison"),
     )

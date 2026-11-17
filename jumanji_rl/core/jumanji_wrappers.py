@@ -65,6 +65,22 @@ class JumanjiEnvironment(Environment):
                 f"got {type(act_spec)} with shape {getattr(getattr(act_spec, 'num_values', None), 'shape', None)} for {clean_name}"
             )
 
+        # Inspect observation spec for categorical channel counts before probe reset
+        obs_spec = self._env.observation_spec
+        self._cube_num_classes = (
+            int(obs_spec.cube.maximum) + 1 if hasattr(obs_spec, "cube") and hasattr(obs_spec.cube, "maximum") else None
+        )
+        self._puzzle_num_classes = (
+            int(obs_spec.puzzle.maximum) + 1 if hasattr(obs_spec, "puzzle") and hasattr(obs_spec.puzzle, "maximum") else None
+        )
+        self._grid_num_classes = (
+            int(obs_spec.grid.maximum) + 1
+            if hasattr(obs_spec, "grid")
+            and jnp.issubdtype(obs_spec.grid.dtype, jnp.integer)
+            and hasattr(obs_spec.grid, "maximum")
+            else None
+        )
+
         # Probe reset for observation shape and bounds
         probe_state, probe_ts = self._env.reset(jax.random.PRNGKey(0))
         probe_obs = self._extract_obs(probe_ts.observation)
@@ -75,16 +91,18 @@ class JumanjiEnvironment(Environment):
         return JumanjiEnvParams(max_steps_in_episode=self.time_limit)
 
     def _extract_obs(self, observation: Any) -> jnp.ndarray:
-        """Extracts spatial (H, W, C) observation array from Jumanji observation NamedTuple."""
-        # 1. RubiksCube: (6, 3, 3) -> transpose to (3, 3, 6)
+        """Extracts spatial (H, W, C) float32 observation array, one-hot encoding categorical IDs."""
+        # 1. RubiksCube: (6, 3, 3) -> transpose to (3, 3, 6) and one-hot encode sticker colors -> (3, 3, 36)
         if hasattr(observation, "cube"):
-            cube = jnp.asarray(observation.cube, dtype=jnp.float32)
-            # Transpose (6, 3, 3) -> (3, 3, 6) for standard CNN (H, W, C)
+            cube = jnp.asarray(observation.cube)
             if cube.ndim == 3:
-                return jnp.transpose(cube, (1, 2, 0))
-            return cube
+                cube = jnp.transpose(cube, (1, 2, 0))
+            if self._cube_num_classes is not None:
+                oh = jax.nn.one_hot(cube.astype(jnp.int32), self._cube_num_classes, dtype=jnp.float32)
+                return oh.reshape(*cube.shape[:-1], cube.shape[-1] * self._cube_num_classes)
+            return cube.astype(jnp.float32)
 
-        # 2. Maze: walls (H, W), agent_position, target_position -> 3-channel grid (H, W, 3)
+        # 2. Maze: walls (H, W), agent_position, target_position -> 3-channel binary grid (H, W, 3)
         if hasattr(observation, "walls") and hasattr(observation, "agent_position") and hasattr(observation, "target_position"):
             walls = jnp.asarray(observation.walls, dtype=jnp.float32)
             H, W = walls.shape
@@ -92,16 +110,23 @@ class JumanjiEnvironment(Environment):
             target_grid = (jnp.arange(H)[:, None] == observation.target_position.row) & (jnp.arange(W)[None, :] == observation.target_position.col)
             return jnp.stack([walls, agent_grid.astype(jnp.float32), target_grid.astype(jnp.float32)], axis=-1)
 
-        # 3. SlidingTilePuzzle: puzzle (5, 5) -> add channel dimension (5, 5, 1)
+        # 3. SlidingTilePuzzle: puzzle (5, 5) -> one-hot encode tile IDs -> (5, 5, 25)
         if hasattr(observation, "puzzle"):
-            puzzle = jnp.asarray(observation.puzzle, dtype=jnp.float32)
+            puzzle = jnp.asarray(observation.puzzle)
+            if self._puzzle_num_classes is not None:
+                return jax.nn.one_hot(puzzle.astype(jnp.int32), self._puzzle_num_classes, dtype=jnp.float32)
+            puzzle = puzzle.astype(jnp.float32)
             if puzzle.ndim == 2:
                 puzzle = puzzle[..., None]
             return puzzle
 
-        # 4. Standard grid (e.g. Sokoban, Snake, Pacman)
+        # 4. Standard grid: integer categorical (Sokoban -> (10, 10, 10)) vs float32 (Snake -> (12, 12, 5))
         if hasattr(observation, "grid"):
-            return jnp.asarray(observation.grid, dtype=jnp.float32)
+            grid = jnp.asarray(observation.grid)
+            if self._grid_num_classes is not None:
+                oh = jax.nn.one_hot(grid.astype(jnp.int32), self._grid_num_classes, dtype=jnp.float32)
+                return oh.reshape(*grid.shape[:-1], grid.shape[-1] * self._grid_num_classes)
+            return grid.astype(jnp.float32)
 
         # 5. Game2048: board (4, 4) -> (4, 4, 1)
         if hasattr(observation, "board"):

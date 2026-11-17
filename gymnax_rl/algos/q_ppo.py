@@ -138,7 +138,7 @@ def make_train(base_config):
     def train(rng, hparams=None):
         config = merge_hparams(config_copy, hparams)
         c_type = config["CRITIC_TYPE"].lower()
-        if c_type in ("e_0", "e_0_q", "e_0_bilinear", "e0", "e", "bsmc_double_pi"):
+        if c_type in ("e_0", "e_0_q", "e_0_bilinear", "e_0_dir_marg", "e0", "e", "bsmc_double_pi", "bsmc_dir_marg"):
             # Non-aux bilinear/marginalized Q critics have no auxiliary branch.
             config = {**config, "E_VARIANT": "naive"}
         uses_aux = uses_aux_network(config)

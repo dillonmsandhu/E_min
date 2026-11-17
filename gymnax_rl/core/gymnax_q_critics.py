@@ -128,49 +128,20 @@ def bsmc_double_pi_q_critic_loss_fn(critic_params, actor_params, network, traj_b
 
 
 def bsmc_bilinear_v_aux_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
-    """1-step bilinear BSMC Q-critic loss debiased via state-only v_aux(s) without double-sampling pi."""
-    full_params = {"params": {**actor_params, **critic_params}}
-    sg = jax.lax.stop_gradient
-
-    q_i = _eval_q_taken(full_params, network, traj_batch.obs, traj_batch.action)
-    q_j = _eval_q_taken(full_params, network, traj_batch.next_obs, traj_batch.next_action)
-    v_aux_i = network.apply(full_params, traj_batch.obs, method=network.v_aux)
-    v_aux_next = network.apply(full_params, traj_batch.next_obs, method=network.v_aux)
-
-    targets_i = sg(targets if targets is not None else traj_batch.targets)
-    aux_targets = sg(traj_batch.aux_targets)
-    true_terminal = traj_batch.done & ~traj_batch.is_timeout
-    gamma = config["GAMMA"]
-    aux_coef = config["AUX_VF_COEF"]
-    bsmc_lambda = config["BSMC_LAMBDA"]
-
-    e_i = targets_i - q_i
-    e_proxy_i = sg(traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, v_aux_next) - q_i)
-    td_target_stop = sg(traj_batch.reward + gamma * jnp.where(true_terminal, 0.0, q_j))
-
-    cur_branch = 0.5 * e_i * (td_target_stop - q_i)
-    next_branch = 0.5 * gamma * jnp.where(true_terminal, 0.0, e_proxy_i * q_j)
-    e0_bilin_vaux = jnp.mean(cur_branch + next_branch)
-
-    mc_loss = 0.5 * jnp.mean(e_i ** 2)
-    w_extra = ((1.0 - gamma) * bsmc_lambda) / jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
-    aux_mc_loss = compute_aux_head_loss(v_aux_i, aux_targets, aux_coef=aux_coef)
-
-    value_loss = (1.0 - w_extra) * e0_bilin_vaux + w_extra * mc_loss + aux_mc_loss
-    scaled_loss = config["VF_COEF"] * value_loss
-    return scaled_loss, {
-        "val_loss": value_loss,
-        "e0_bilin_vaux": e0_bilin_vaux,
-        "mc_loss": mc_loss,
-        "aux_loss": aux_mc_loss,
-        "delta_mag": jnp.abs(e_i).mean(),
-    }
+    """1-step Dirichlet BSMC Q-critic loss debiased via state-only v_aux(s)."""
+    return bsmc_v_aux_q_critic_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config
+    )
 
 
 def _q_dirichlet_v_aux_loss_fn(
-    critic_params, actor_params, network, traj_batch, targets, config, is_jump: bool
+    critic_params, actor_params, network, traj_batch, targets, config, is_jump: bool, is_bsmc: bool = False
 ) -> tuple:
-    """Shared Dirichlet Q-critic loss debiased via state-only v_aux(s) for E(0) and E(lambda)."""
+    """
+    Shared Dirichlet Q-critic loss debiased via state-only v_aux(s) for
+    1-step E(0) (is_jump=False, is_bsmc=False), 1-step BSMC (is_jump=False, is_bsmc=True),
+    and geometric-jump E(lambda) (is_jump=True).
+    """
     full_params = {"params": {**actor_params, **critic_params}}
     sg = jax.lax.stop_gradient
     gamma = config["GAMMA"]
@@ -206,8 +177,14 @@ def _q_dirichlet_v_aux_loss_fn(
         j_next_obs = traj_batch.next_next_obs
         j_term = traj_batch.next_true_terminal
         valid_pair = (~true_terminal_i) & (~is_timeout) & (~traj_batch.is_horizon)
-        weight_mc = 0.5 * (1.0 - gamma)
-        weight_dir = 0.5 * gamma
+        if is_bsmc:
+            bsmc_lambda = config["BSMC_LAMBDA"]
+            denom = jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+            weight_mc = 0.5 * (1.0 - gamma) / denom
+            weight_dir = 0.5 * (gamma * (1.0 - bsmc_lambda)) / denom
+        else:
+            weight_mc = 0.5 * (1.0 - gamma)
+            weight_dir = 0.5 * gamma
         start_weight = 0.25 * gamma
 
     q_j = _eval_q_taken(full_params, network, j_obs, j_act)
@@ -255,6 +232,108 @@ def e_lambda_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, 
     )
 
 
+def bsmc_v_aux_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
+    """1-step Dirichlet BSMC Q-critic loss debiased via state-only v_aux(s)."""
+    return _q_dirichlet_v_aux_loss_fn(
+        critic_params, actor_params, network, traj_batch, targets, config, is_jump=False, is_bsmc=True
+    )
+
+
+def _q_dirichlet_marginalized_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+    weight_mc: float,
+    weight_dir: float,
+    start_weight: float,
+) -> tuple:
+    """
+    1-step Dirichlet Expected-Successor E-loss using exact discrete marginalization
+    V(s_{t+1}) = sum_a pi(a|s_{t+1}) Q(s_{t+1}, a) in the backward branch (no v_aux).
+    """
+    if not hasattr(network, "q_values"):
+        raise AttributeError(
+            f"Dirichlet-Marginalized Q-critic requires discrete 'q_values', got {type(network)}."
+        )
+
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+
+    q_i = _eval_q_taken(full_params, network, traj_batch.obs, traj_batch.action)
+    q_j = _eval_q_taken(full_params, network, traj_batch.next_obs, traj_batch.next_action)
+    q_all_j = network.apply(full_params, traj_batch.next_obs, method=network.q_values)
+    pi_j = network.apply(full_params, traj_batch.next_obs, method=network.policy)
+    probs_j = sg(pi_j.probs)
+    v_j = jnp.sum(probs_j * q_all_j, axis=-1)
+
+    targets_i = sg(targets if targets is not None else traj_batch.targets)
+    targets_j = sg(traj_batch.next_targets)
+    is_timeout = traj_batch.is_timeout
+    true_terminal_i = traj_batch.done & ~is_timeout
+    valid_pair = (~true_terminal_i) & (~is_timeout) & (~traj_batch.is_horizon)
+
+    e_i = targets_i - q_i
+    e_j = jnp.where(true_terminal_i, 0.0, targets_j - q_j)
+
+    branch_i = (e_i - sg(e_j)) ** 2
+    branch_j = 2.0 * sg(e_i - e_j) * v_j
+    diff_sq = jnp.where(valid_pair, branch_i + branch_j, e_i ** 2)
+
+    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
+    dirichlet_loss = weight_dir * jnp.mean(diff_sq)
+    start_anchor_loss = start_weight * jnp.mean(jnp.where(traj_batch.is_start, e_i ** 2, 0.0))
+
+    value_loss = magnitude_loss + dirichlet_loss + start_anchor_loss
+    scaled_loss = config["VF_COEF"] * value_loss
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "delta_mag": jnp.abs(e_i).mean(),
+    }
+
+
+def e_0_dir_marg_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
+    """1-step Dirichlet-Marginalized E(0) Q-critic loss (discrete deterministic envs)."""
+    gamma = config["GAMMA"]
+    return _q_dirichlet_marginalized_loss_fn(
+        critic_params,
+        actor_params,
+        network,
+        traj_batch,
+        targets,
+        config,
+        weight_mc=0.5 * (1.0 - gamma),
+        weight_dir=0.5 * gamma,
+        start_weight=0.25 * gamma,
+    )
+
+
+def bsmc_dir_marg_q_critic_loss_fn(critic_params, actor_params, network, traj_batch, targets, config) -> tuple:
+    """1-step Dirichlet-Marginalized BSMC Q-critic loss (discrete deterministic envs)."""
+    gamma = config["GAMMA"]
+    bsmc_lambda = config["BSMC_LAMBDA"]
+    denom = jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+    weight_mc = 0.5 * (1.0 - gamma) / denom
+    weight_dir = 0.5 * (gamma * (1.0 - bsmc_lambda)) / denom
+    start_weight = 0.25 * (gamma * (1.0 - bsmc_lambda)) / denom
+    return _q_dirichlet_marginalized_loss_fn(
+        critic_params,
+        actor_params,
+        network,
+        traj_batch,
+        targets,
+        config,
+        weight_mc=weight_mc,
+        weight_dir=weight_dir,
+        start_weight=start_weight,
+    )
+
+
 Q_CRITIC_LOSS_FNS = {
     "sarsa": sarsa_critic_loss_fn,
     "sarsa_lambda": sarsa_critic_loss_fn,
@@ -269,13 +348,17 @@ Q_CRITIC_LOSS_FNS = {
     "e0": e_0_q_critic_loss_fn,
     "e": e_0_q_critic_loss_fn,
     "e_0_v_aux": e_0_v_aux_q_critic_loss_fn,
+    "e_0_dir_marg": e_0_dir_marg_q_critic_loss_fn,
     "e_lambda": e_lambda_q_critic_loss_fn,
     "e_lambda_q": e_lambda_q_critic_loss_fn,
     "e_lambda_v_aux": e_lambda_q_critic_loss_fn,
     "elambda": e_lambda_q_critic_loss_fn,
     "e_geometric": e_lambda_q_critic_loss_fn,
+    "bsmc": bsmc_v_aux_q_critic_loss_fn,
+    "bsmc_v_aux": bsmc_v_aux_q_critic_loss_fn,
     "bsmc_double_pi": bsmc_double_pi_q_critic_loss_fn,
     "bsmc_bilinear_v_aux": bsmc_bilinear_v_aux_q_critic_loss_fn,
+    "bsmc_dir_marg": bsmc_dir_marg_q_critic_loss_fn,
 }
 
 

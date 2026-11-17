@@ -178,7 +178,7 @@ def make_train(config):
     uses_aux = (
         c_type in (
             "e_0_v_aux", "e_lambda_v_aux", "e_lambda", "e_lambda_q",
-            "elambda", "e_geometric", "bsmc_bilinear_v_aux",
+            "elambda", "e_geometric", "bsmc", "bsmc_v_aux", "bsmc_bilinear_v_aux",
         )
         and e_variant == "aux"
     )

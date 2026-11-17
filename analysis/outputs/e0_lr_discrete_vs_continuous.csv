@@ -1,0 +1,7 @@
+Group,Method,N_Envs,LR_Counts,EP_Counts
+Brax Continuous (K=4),E(0) (v_aux),9,"{0.0003: 2, 0.001: 5, 0.003: 2}","{4: 3, 8: 6}"
+Brax Continuous (K=4),"E(0) (Bilinear, 2π)",9,"{0.0003: 4, 0.001: 2, 0.003: 3}","{4: 2, 8: 7}"
+Gymnax Discrete (Marg.),E(0) (v_aux),10,"{0.0001: 2, 0.0003: 2, 0.001: 6}","{4: 4, 8: 6}"
+Gymnax Continuous (K=4),E(0) (v_aux),4,{0.001: 4},{8: 4}
+Gymnax Discrete (Marg.),"E(0) (Bilinear, 2π)",10,"{0.0001: 2, 0.0003: 3, 0.001: 5}","{4: 4, 8: 6}"
+Gymnax Continuous (K=4),"E(0) (Bilinear, 2π)",4,"{0.0003: 2, 0.001: 2}","{4: 2, 8: 2}"

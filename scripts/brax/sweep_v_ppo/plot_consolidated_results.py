@@ -25,10 +25,12 @@ def main():
     parser.add_argument("--out_dir", type=str, default="results/brax/sweep_v_ppo")
     parser.add_argument("--save_dir", type=str, default=None)
     parser.add_argument("--all_pairs", action="store_true")
+    parser.add_argument("--exclude_methods", nargs="*", default=[])
     args = parser.parse_args()
+    active_methods = [m for m in METHOD_KEYS if m not in set(args.exclude_methods)]
     consolidate_standardized_sweep(
         out_dir=args.out_dir,
-        method_keys=METHOD_KEYS,
+        method_keys=active_methods,
         suite_title=SUITE_TITLE,
         reference_method=REFERENCE_METHOD,
         is_v_ppo=True,

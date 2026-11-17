@@ -27,9 +27,9 @@ config = {
     "ADAM_EPS": 1e-5,
 
     # Rollout & Training Loop
-    "NUM_ENVS": 256,
+    "NUM_ENVS": 128,
     "NUM_STEPS": 128,              # Rollout horizon (128 >= 120 Sokoban limit -> full episode MC)
-    "TOTAL_TIMESTEPS": 2_000_000,
+    "TOTAL_TIMESTEPS": 10_000_000,
     "NUM_EPOCHS": 4,
     "ACTOR_EPOCHS": None,
     "CRITIC_EPOCHS": None,
