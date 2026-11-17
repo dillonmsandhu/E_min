@@ -35,6 +35,16 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "color": "#2563eb",
         "ls": "-",
     },
+    "td_0": {
+        "label": "TD(0)",
+        "color": "#2563eb",
+        "ls": "-",
+    },
+    "msbe": {
+        "label": "MSBE (2s)",
+        "color": "#64748b",
+        "ls": "-.",
+    },
     "sarsa_lambda": {
         "label": "SARSA(λ)",
         "color": "#2563eb",
@@ -44,6 +54,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "label": "E(0) (v_aux)",
         "color": "#059669",
         "ls": "-",
+    },
+    "e_0_dir_double": {
+        "label": "E(0) (Dir, 2s)",
+        "color": "#ea580c",
+        "ls": "--",
     },
     "e_0_bilinear": {
         "label": "E(0) (Bilinear, 2π)",
@@ -65,6 +80,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "color": "#dc2626",
         "ls": "-.",
     },
+    "bsmc_fwd": {
+        "label": "BSMC (fwd)",
+        "color": "#64748b",
+        "ls": ":",
+    },
     "bsmc_bilinear_v_aux": {
         "label": "BSMC (Bilinear, v_aux)",
         "color": "#dc2626",
@@ -78,6 +98,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
     "bsmc_dir_marg": {
         "label": "BSMC (Dir-Marg)",
         "color": "#16a34a",
+        "ls": "--",
+    },
+    "bsmc_dir_double": {
+        "label": "BSMC (Dir, 2s)",
+        "color": "#ea580c",
         "ls": "--",
     },
 }
@@ -1426,7 +1451,13 @@ def _generate_per_lambda_head_to_head_suite(
     tables_dir: str,
 ) -> None:
     """Q4 & Q5: Head-to-head comparison of E(lambda) and BSMC vs TD/SARSA per lambda."""
-    lam_methods = [m for m in ["e_lambda_v_aux", "bsmc_v_aux", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_bilinear_v_aux"] if m in method_keys]
+    lam_methods = [
+        m for m in [
+            "e_lambda_v_aux", "bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi",
+            "bsmc_dir_marg", "bsmc_dir_double", "bsmc_bilinear_v_aux",
+        ]
+        if m in method_keys
+    ]
     if not lam_methods or ref_key not in method_keys:
         return
 

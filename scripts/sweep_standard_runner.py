@@ -32,15 +32,20 @@ from scripts.sweep_standard_plotting import (
 def _method_critic_type(method_key: str) -> str:
     mapping = {
         "td_lambda": "fitted",
+        "td_0": "td_0",
+        "msbe": "msbe",
         "sarsa_lambda": "sarsa_lambda",
         "e_0_v_aux": "e_0_v_aux",
         "e_0_bilinear": "e_0_bilinear",
         "e_0_dir_marg": "e_0_dir_marg",
+        "e_0_dir_double": "e_dirichlet_double",
         "e_lambda_v_aux": "e_lambda_v_aux",
         "bsmc_v_aux": "bsmc_v_aux",
+        "bsmc_fwd": "bsmc",
         "bsmc_double_pi": "bsmc_double_pi",
         "bsmc_bilinear_v_aux": "bsmc_bilinear_v_aux",
         "bsmc_dir_marg": "bsmc_dir_marg",
+        "bsmc_dir_double": "bsmc_dir_double",
     }
     if method_key not in mapping:
         raise ValueError(f"Unknown canonical method_key '{method_key}'.")
@@ -52,9 +57,9 @@ def _method_lambda_key(method_key: str) -> str | None:
         return "VALUE_LAMBDA"
     if method_key == "e_lambda_v_aux":
         return "E_LAMBDA"
-    if method_key in ("bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux", "bsmc_dir_marg"):
+    if method_key in ("bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi", "bsmc_bilinear_v_aux", "bsmc_dir_marg", "bsmc_dir_double"):
         return "BSMC_LAMBDA"
-    if method_key in ("e_0_v_aux", "e_0_bilinear", "e_0_dir_marg"):
+    if method_key in ("e_0_v_aux", "e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe"):
         return None
     raise ValueError(f"Unknown canonical method_key '{method_key}'.")
 
@@ -124,8 +129,10 @@ def _apply_params(
     else:
         cfg["CRITIC_TYPE"] = _method_critic_type(method_key)
 
-    if method_key in ("e_0_bilinear", "e_0_dir_marg", "bsmc_double_pi", "bsmc_dir_marg"):
+    if method_key in ("e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_dir_double"):
         cfg["E_VARIANT"] = "naive"
+    elif method_key == "bsmc_fwd":
+        cfg["E_VARIANT"] = "fwd"
     else:
         cfg["E_VARIANT"] = "aux"
 
@@ -234,7 +241,8 @@ def run_standardized_sweep(
                 for cand in cands:
                     tag = cand["tag"]
                     cfg = _apply_params(base_cfg, m_key, cand["params"], is_brax=is_brax, is_v_ppo=is_v_ppo)
-                    res = run_candidate(make_train_fn, cfg, seed_keys, metric_key=metric_key)
+                    train_factory = make_train_fn[m_key] if isinstance(make_train_fn, dict) else make_train_fn
+                    res = run_candidate(train_factory, cfg, seed_keys, metric_key=metric_key)
                     res["params"] = cand["params"]
                     res["config"] = cfg
                     all_runs[env][m_key][tag] = res

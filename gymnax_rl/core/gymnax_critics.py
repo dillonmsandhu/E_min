@@ -86,12 +86,16 @@ def get_critic_target_lambda(config: dict) -> float:
         "bsmc_double_pi",
         "bsmc_bilinear_v_aux",
         "bsmc_dir_marg",
+        "bsmc_dir_double",
         "sampled_e",
         "surgical_v_aux",
         "surgical",
         "e_inner",
         "e_bilinear",
         "e_double",
+        "e_dirichlet_double",
+        "e_dir_double",
+        "double_e_dirichlet",
         "e_min",
     ):
         return config["RETURN_LAMBDA"]
@@ -764,6 +768,133 @@ def double_sample_e_inner_critic_loss_fn(
     }
 
 
+def _double_sample_dirichlet_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+    weight_mc: float,
+    weight_dir: float,
+):
+    """
+    Shared double-sampled Dirichlet E(0) / BSMC critic loss using branch 1
+    (obs, next_obs, targets, next_targets) and independent 1-step probe branch 2
+    (probe_next_obs) with no v_aux:
+        L(theta) = weight_mc * (e_i^(1))^2
+                 + 0.5 * weight_dir * (e_i^(1) - sg(e_j^(1)))^2
+                 + weight_dir * [ sg(e_i^(1)) * b2 * v(s_j^(2)) - sg(e_j^(1)) * b1 * v(s_j^(1)) ]
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+    vf_coef = config.get("VF_COEF", 0.5)
+
+    targets_i = targets if targets is not None else traj_batch.targets
+    targets_j = traj_batch.next_targets
+
+    v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+    v_j_1 = network.apply(full_params, traj_batch.next_obs, method=network.value)
+    v_j_2 = network.apply(full_params, traj_batch.probe_next_obs, method=network.value)
+
+    true_term_1 = traj_batch.done & ~traj_batch.is_timeout
+    true_term_2 = traj_batch.probe_done & ~traj_batch.probe_is_timeout
+
+    if v_i.ndim > traj_batch.reward.ndim:
+        reward_1 = traj_batch.reward[..., None]
+        reward_2 = traj_batch.probe_reward[..., None]
+        true_term_1 = true_term_1[..., None]
+        true_term_2 = true_term_2[..., None]
+        targets_i = targets_i[..., None]
+        targets_j = targets_j[..., None]
+    else:
+        reward_1 = traj_batch.reward
+        reward_2 = traj_batch.probe_reward
+
+    bootstrap_1 = 1.0 - true_term_1
+    bootstrap_2 = 1.0 - true_term_2
+
+    e_i = targets_i - v_i
+    e_j = jnp.where(true_term_1, 0.0, targets_j - v_j_1)
+
+    magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
+    forward_dir = jnp.where(
+        true_term_1,
+        weight_dir * (e_i ** 2),
+        0.5 * weight_dir * ((e_i - sg(e_j)) ** 2),
+    )
+    backward_dir = weight_dir * (
+        sg(e_i) * bootstrap_2 * v_j_2 - sg(e_j) * bootstrap_1 * v_j_1
+    )
+    dirichlet_loss = jnp.mean(forward_dir + backward_dir)
+
+    value_loss = magnitude_loss + dirichlet_loss
+    scaled_loss = vf_coef * value_loss
+
+    delta_1 = reward_1 + gamma * bootstrap_1 * v_j_1 - v_i
+    delta_2 = reward_2 + gamma * bootstrap_2 * v_j_2 - v_i
+    diagnostic_msbe = jnp.mean(delta_1 * delta_2)
+
+    return scaled_loss, {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "delta_mag": jnp.mean(jnp.abs(delta_1)),
+        "delta2_mag": jnp.mean(jnp.abs(delta_2)),
+        "e_mag": jnp.mean(jnp.abs(e_i)),
+        "diagnostic_msbe": diagnostic_msbe,
+    }
+
+
+def double_sample_e_dirichlet_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """Double-sampled Dirichlet E(0) critic loss (0.5 * E(0) scale)."""
+    gamma = config["GAMMA"]
+    return _double_sample_dirichlet_loss_fn(
+        critic_params,
+        actor_params,
+        network,
+        traj_batch,
+        targets,
+        config,
+        weight_mc=0.5 * (1.0 - gamma),
+        weight_dir=0.5 * gamma,
+    )
+
+
+def double_sample_bsmc_dirichlet_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """Double-sampled Dirichlet BSMC critic loss (MC-reweighted 1-step Dirichlet, no v_aux)."""
+    gamma = config["GAMMA"]
+    bsmc_lambda = config["BSMC_LAMBDA"]
+    denom = jnp.maximum(1.0 - gamma * bsmc_lambda, 1e-8)
+    weight_mc = 0.5 * (1.0 - gamma) / denom
+    weight_dir = 0.5 * (gamma * (1.0 - bsmc_lambda)) / denom
+    return _double_sample_dirichlet_loss_fn(
+        critic_params,
+        actor_params,
+        network,
+        traj_batch,
+        targets,
+        config,
+        weight_mc=weight_mc,
+        weight_dir=weight_dir,
+    )
+
+
 def double_sample_mspbe_critic_loss_fn(
     critic_params,
     actor_params,
@@ -900,6 +1031,10 @@ SPLIT_CRITIC_LOSS_FNS = {
     "e_inner": double_sample_e_inner_critic_loss_fn,
     "e_bilinear": double_sample_e_inner_critic_loss_fn,
     "e_double": double_sample_e_inner_critic_loss_fn,
+    "e_dirichlet_double": double_sample_e_dirichlet_critic_loss_fn,
+    "e_dir_double": double_sample_e_dirichlet_critic_loss_fn,
+    "double_e_dirichlet": double_sample_e_dirichlet_critic_loss_fn,
+    "bsmc_dir_double": double_sample_bsmc_dirichlet_critic_loss_fn,
     "e_min": double_sample_e_inner_critic_loss_fn,
     "mspbe": double_sample_mspbe_critic_loss_fn,
     "double_mspbe": double_sample_mspbe_critic_loss_fn,
