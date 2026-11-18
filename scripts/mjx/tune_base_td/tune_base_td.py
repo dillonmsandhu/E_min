@@ -116,12 +116,24 @@ def build_base_td_candidates(mode: str = "oat") -> list[dict[str, Any]]:
         "08_steps128_lam0.8",
         {**base_128, "GAE_LAMBDA": 0.8, "ACTOR_GAE_LAMBDA": 0.8, "VALUE_LAMBDA": 0.8},
     )
+
+    # 6. More critic gradient updates (higher critic epochs / smaller critic minibatch)
+    _add("09_steps128_cep32", {**base_128, "CRITIC_EPOCHS": 32})
+    _add("10_steps128_cmb512", {**base_128, "CRITIC_MINIBATCH_SIZE": 512})
     return candidates
 
 
-def apply_candidate_overrides(env_name: str, impl: str, overrides: dict[str, Any], total_timesteps: int | None) -> dict[str, Any]:
+def apply_candidate_overrides(
+    env_name: str,
+    impl: str,
+    overrides: dict[str, Any],
+    total_timesteps: int | None,
+    critic_type: str = "fitted",
+) -> dict[str, Any]:
     cfg = get_dmc_brax_parity_config(env_name, impl=impl)
-    cfg["CRITIC_TYPE"] = "fitted"
+    cfg["CRITIC_TYPE"] = critic_type
+    if critic_type == "e_lambda":
+        cfg["E_VARIANT"] = "aux"
     if total_timesteps is not None:
         cfg["TOTAL_TIMESTEPS"] = int(total_timesteps)
 
@@ -262,6 +274,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--envs", nargs="+", default=DEFAULT_DMC_5_ENVS)
     p.add_argument("--env_name", type=str, default=None, help="Single env override (writes to out_dir/<env_name>)")
     p.add_argument("--impl", type=str, default="jax", choices=["jax", "warp"])
+    p.add_argument("--critic_type", type=str, default="fitted", choices=["fitted", "td_0", "e_lambda"])
     p.add_argument("--mode", type=str, default="oat", choices=["parity_only", "oat"])
     p.add_argument("--total_timesteps", type=int, default=None)
     p.add_argument("--n_seeds", type=int, default=3)
@@ -309,7 +322,13 @@ def main():
                     f"| Fin={res['final_mean']:8.2f}"
                 )
                 continue
-            cfg = apply_candidate_overrides(env, args.impl, cand["overrides"], args.total_timesteps)
+            cfg = apply_candidate_overrides(
+                env,
+                args.impl,
+                cand["overrides"],
+                args.total_timesteps,
+                critic_type=args.critic_type,
+            )
             timesteps[env] = int(cfg["TOTAL_TIMESTEPS"])
 
             sig = static_compile_signature(cfg)

@@ -64,6 +64,7 @@ fi
 
 OUT_DIR="${OUT_DIR:-results/mjx/tune_base_td}"
 IMPL="${IMPL:-jax}"
+CRITIC_TYPE="${CRITIC_TYPE:-fitted}"
 MODE="${MODE:-oat}"
 N_SEEDS="${N_SEEDS:-3}"
 MASTER_SEED="${MASTER_SEED:-42}"
@@ -76,6 +77,7 @@ fi
 $PYTHON -u scripts/mjx/tune_base_td/tune_base_td.py \
     --env_name "$ENV_NAME" \
     --impl "$IMPL" \
+    --critic_type "$CRITIC_TYPE" \
     --mode "$MODE" \
     $TIMESTEP_FLAG \
     --n_seeds "$N_SEEDS" \

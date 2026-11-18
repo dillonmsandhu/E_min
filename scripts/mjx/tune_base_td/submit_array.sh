@@ -14,11 +14,12 @@ N_SEEDS=${2:-3}
 OUT_DIR=${3:-"results/mjx/tune_base_td"}
 MODE=${MODE:-oat}
 IMPL=${IMPL:-jax}
+CRITIC_TYPE=${CRITIC_TYPE:-fitted}
 MASTER_SEED=${MASTER_SEED:-42}
 ENVS=${ENVS:-"CheetahRun WalkerWalk HopperStand FishSwim FingerSpin"}
 GPU_GRES=${GPU_GRES:-auto}
 
-export TOTAL_TIMESTEPS N_SEEDS OUT_DIR MODE IMPL MASTER_SEED REPO_ROOT
+export TOTAL_TIMESTEPS N_SEEDS OUT_DIR MODE IMPL CRITIC_TYPE MASTER_SEED REPO_ROOT
 
 if [ -x "$REPO_ROOT/.venv_mjx/bin/python" ]; then
     PYTHON="$REPO_ROOT/.venv_mjx/bin/python"
