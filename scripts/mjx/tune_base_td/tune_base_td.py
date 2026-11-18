@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import copy
 import glob
+import json
 import os
 import pickle
 import sys
@@ -200,6 +201,32 @@ def plot_and_summarize(all_runs: dict[str, dict[str, Any]], timesteps: dict[str,
             f.write("### MJX Playground Base TD(λ) Config Ranking (AUC Return)\n\n")
             f.write(pivot_auc.to_markdown(floatfmt=".1f"))
             f.write("\n")
+
+        # Save winning overall config and per-env best configs as JSON
+        best_tag = str(pivot_auc.index[0])
+        sample_env = envs[0]
+        if best_tag in all_runs[sample_env]:
+            best_overall = {
+                "best_tag": best_tag,
+                "mean_auc": float(pivot_auc.loc[best_tag, "Mean_AUC"]),
+                "overrides": all_runs[sample_env][best_tag].get("overrides", {}),
+                "config": all_runs[sample_env][best_tag].get("config", {}),
+            }
+            with open(os.path.join(tables_dir, "best_overall_config.json"), "w") as f:
+                json.dump(best_overall, f, indent=2, default=str)
+
+        per_env_best = {}
+        for env in envs:
+            env_best_tag = max(all_runs[env].keys(), key=lambda t: all_runs[env][t]["auc_mean"])
+            per_env_best[env] = {
+                "best_tag": env_best_tag,
+                "auc_mean": float(all_runs[env][env_best_tag]["auc_mean"]),
+                "final_mean": float(all_runs[env][env_best_tag]["final_mean"]),
+                "overrides": all_runs[env][env_best_tag].get("overrides", {}),
+                "config": all_runs[env][env_best_tag].get("config", {}),
+            }
+        with open(os.path.join(tables_dir, "best_per_env_configs.json"), "w") as f:
+            json.dump(per_env_best, f, indent=2, default=str)
 
 
 def consolidate_base_td(out_dir: str) -> None:
