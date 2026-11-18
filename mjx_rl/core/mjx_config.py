@@ -77,16 +77,44 @@ DEFAULT_DMC_5_ENVS = [
 def get_dmc_brax_parity_config(env_name: str, impl: str = "jax") -> dict:
     """
     Returns a configuration dictionary matching the tuned Brax PPO hyperparameters
-    from MuJoCo Playground (`rss2025/mujoco_playground/config/dm_control_suite_params.py`).
+    from MuJoCo Playground (`rss2025/mujoco_playground/config/dm_control_suite_params.py`),
+    with per-environment `TOTAL_TIMESTEPS` sized to convergence based on the paper's
+    PPO learning curves.
     """
     cfg = copy.deepcopy(config)
     cfg["ENV_NAME"] = env_name
     cfg["IMPL"] = impl
 
-    if env_name.startswith("AcrobotSwingup") or env_name.startswith("Swimmer") or env_name == "WalkerRun":
-        cfg["TOTAL_TIMESTEPS"] = 100_000_000
-    else:
-        cfg["TOTAL_TIMESTEPS"] = 60_000_000
+    # Per-env convergence budgets (from Playground RSS 2025 PPO curves)
+    timesteps_by_env = {
+        "CartpoleBalance": 20_000_000,
+        "CartpoleBalanceSparse": 20_000_000,
+        "PointMass": 20_000_000,
+        "ReacherEasy": 20_000_000,
+        "ReacherHard": 20_000_000,
+        "CartpoleSwingup": 30_000_000,
+        "CartpoleSwingupSparse": 40_000_000,
+        "FingerTurnEasy": 30_000_000,
+        "FingerTurnHard": 30_000_000,
+        "WalkerStand": 50_000_000,
+        "WalkerWalk": 50_000_000,
+        "BallInCup": 60_000_000,
+        "FingerSpin": 60_000_000,
+        "HopperHop": 60_000_000,
+        "HopperStand": 60_000_000,
+        "PendulumSwingup": 60_000_000,
+        "PendulumSwingUp": 60_000_000,
+        "CheetahRun": 80_000_000,
+        "FishSwim": 80_000_000,
+        "HumanoidRun": 100_000_000,
+        "HumanoidStand": 100_000_000,
+        "HumanoidWalk": 100_000_000,
+        "SwimmerSwimmer6": 100_000_000,
+        "AcrobotSwingup": 150_000_000,
+        "AcrobotSwingupSparse": 150_000_000,
+        "WalkerRun": 150_000_000,
+    }
+    cfg["TOTAL_TIMESTEPS"] = timesteps_by_env.get(env_name, 60_000_000)
 
     if env_name in ("BallInCup", "FingerSpin"):
         cfg["GAMMA"] = 0.95

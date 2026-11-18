@@ -55,7 +55,7 @@ get_env_gres() {
         return
     fi
     case "$env" in
-        *Humanoid*|AcrobotSwingup*|WalkerRun|Swimmer*)
+        *Humanoid*)
             echo "gpu:a6000:1"
             ;;
         *)
