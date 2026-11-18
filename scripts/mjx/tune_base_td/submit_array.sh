@@ -15,7 +15,7 @@ OUT_DIR=${3:-"results/mjx/tune_base_td"}
 MODE=${MODE:-oat}
 IMPL=${IMPL:-jax}
 MASTER_SEED=${MASTER_SEED:-42}
-ENVS=${ENVS:-"CheetahRun WalkerWalk HopperHop CartpoleSwingup FingerSpin"}
+ENVS=${ENVS:-"CheetahRun WalkerWalk HopperStand FishSwim FingerSpin"}
 GPU_GRES=${GPU_GRES:-auto}
 
 export TOTAL_TIMESTEPS N_SEEDS OUT_DIR MODE IMPL MASTER_SEED REPO_ROOT

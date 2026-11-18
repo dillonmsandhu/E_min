@@ -68,8 +68,8 @@ config = {
 DEFAULT_DMC_5_ENVS = [
     "CheetahRun",
     "WalkerWalk",
-    "HopperHop",
-    "CartpoleSwingup",
+    "HopperStand",
+    "FishSwim",
     "FingerSpin",
 ]
 

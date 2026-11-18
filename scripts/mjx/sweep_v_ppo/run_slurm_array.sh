@@ -38,8 +38,8 @@ fi
 ALL_ENVS=(
     "CheetahRun"
     "WalkerWalk"
-    "HopperHop"
-    "CartpoleSwingup"
+    "HopperStand"
+    "FishSwim"
     "FingerSpin"
 )
 
