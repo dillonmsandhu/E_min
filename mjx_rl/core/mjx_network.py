@@ -336,10 +336,12 @@ class DualTrainState(NamedTuple):
         return self._replace(actor=self.actor.apply_gradients(grads=grads))
 
 
-def initialize_split_train_state(config, network, network_params):
+def initialize_split_train_state(config, network, network_params, hparams: dict | None = None):
     """
     Initializes independent TrainStates for Actor and Critic, supporting both
     standard Adam (Brax PPO default) and AdamW, as well as constant/linear/cosine LR schedules.
+    When `hparams` is provided, `hparams['actor_lr']` and `hparams['critic_lr']` may be
+    traced JAX scalars so different learning rates share a single compiled XLA executable.
     """
     p = network_params.get("params", network_params)
     actor_keys = {"actor_net", "actor_mean", "log_std"}
@@ -365,33 +367,37 @@ def initialize_split_train_state(config, network, network_params):
     actor_total_steps = n_updates * actor_num_minibatches * actor_epochs
     critic_total_steps = n_updates * critic_num_minibatches * critic_epochs
 
-    actor_lr = float(config["ACTOR_LR"])
-    critic_lr = float(config["CRITIC_LR"])
+    actor_lr = hparams["actor_lr"] if hparams is not None else float(config["ACTOR_LR"])
+    critic_lr = hparams["critic_lr"] if hparams is not None else float(config["CRITIC_LR"])
     actor_lr_end = float(config.get("ACTOR_LR_END", net_cfg.get("LR_END", 1e-5)))
     critic_lr_end = float(config.get("CRITIC_LR_END", net_cfg.get("LR_END", 1e-5)))
 
     schedule_type = net_cfg.get("LR_SCHEDULE", "constant").lower()
     if schedule_type == "linear":
-        actor_schedule = optax.linear_schedule(actor_lr, actor_lr_end, max(1, actor_total_steps))
-        critic_schedule = optax.linear_schedule(critic_lr, critic_lr_end, max(1, critic_total_steps))
+        actor_end_ratio = actor_lr_end / max(float(config["ACTOR_LR"]), 1e-12)
+        critic_end_ratio = critic_lr_end / max(float(config["CRITIC_LR"]), 1e-12)
+        actor_unit_sched = optax.linear_schedule(1.0, actor_end_ratio, max(1, actor_total_steps))
+        critic_unit_sched = optax.linear_schedule(1.0, critic_end_ratio, max(1, critic_total_steps))
     elif schedule_type == "cosine":
-        actor_schedule = optax.warmup_cosine_decay_schedule(
-            init_value=1e-20,
-            peak_value=actor_lr,
+        actor_end_ratio = actor_lr_end / max(float(config["ACTOR_LR"]), 1e-12)
+        critic_end_ratio = critic_lr_end / max(float(config["CRITIC_LR"]), 1e-12)
+        actor_unit_sched = optax.warmup_cosine_decay_schedule(
+            init_value=1e-12,
+            peak_value=1.0,
             warmup_steps=max(1, actor_total_steps // 20),
-            end_value=actor_lr_end,
+            end_value=actor_end_ratio,
             decay_steps=max(1, actor_total_steps),
         )
-        critic_schedule = optax.warmup_cosine_decay_schedule(
-            init_value=1e-20,
-            peak_value=critic_lr,
+        critic_unit_sched = optax.warmup_cosine_decay_schedule(
+            init_value=1e-12,
+            peak_value=1.0,
             warmup_steps=max(1, critic_total_steps // 20),
-            end_value=critic_lr_end,
+            end_value=critic_end_ratio,
             decay_steps=max(1, critic_total_steps),
         )
     elif schedule_type in ("constant", "none"):
-        actor_schedule = actor_lr
-        critic_schedule = critic_lr
+        actor_unit_sched = None
+        critic_unit_sched = None
     else:
         raise ValueError(f"Unsupported LR_SCHEDULE '{schedule_type}'.")
 
@@ -399,20 +405,28 @@ def initialize_split_train_state(config, network, network_params):
     opt_name = net_cfg.get("OPTIMIZER", "adam").lower()
     adam_eps = float(net_cfg.get("ADAM_EPS", 1e-8))
     if opt_name == "adam":
-        actor_opt = optax.adam(learning_rate=actor_schedule, eps=adam_eps)
-        critic_opt = optax.adam(learning_rate=critic_schedule, eps=adam_eps)
+        actor_opt = optax.inject_hyperparams(optax.adam)(learning_rate=actor_lr, eps=adam_eps)
+        critic_opt = optax.inject_hyperparams(optax.adam)(learning_rate=critic_lr, eps=adam_eps)
     elif opt_name == "adamw":
-        actor_opt = optax.adamw(learning_rate=actor_schedule, eps=adam_eps)
-        critic_opt = optax.adamw(learning_rate=critic_schedule, eps=adam_eps)
+        actor_opt = optax.inject_hyperparams(optax.adamw)(learning_rate=actor_lr, eps=adam_eps)
+        critic_opt = optax.inject_hyperparams(optax.adamw)(learning_rate=critic_lr, eps=adam_eps)
     else:
         raise ValueError(f"Unsupported OPTIMIZER '{opt_name}'.")
 
+    actor_chain = []
+    critic_chain = []
     if max_grad_norm is not None and max_grad_norm > 0:
-        actor_tx = optax.chain(optax.clip_by_global_norm(max_grad_norm), actor_opt)
-        critic_tx = optax.chain(optax.clip_by_global_norm(max_grad_norm), critic_opt)
-    else:
-        actor_tx = actor_opt
-        critic_tx = critic_opt
+        actor_chain.append(optax.clip_by_global_norm(max_grad_norm))
+        critic_chain.append(optax.clip_by_global_norm(max_grad_norm))
+    actor_chain.append(actor_opt)
+    critic_chain.append(critic_opt)
+    if actor_unit_sched is not None:
+        actor_chain.append(optax.scale_by_schedule(actor_unit_sched))
+    if critic_unit_sched is not None:
+        critic_chain.append(optax.scale_by_schedule(critic_unit_sched))
+
+    actor_tx = optax.chain(*actor_chain)
+    critic_tx = optax.chain(*critic_chain)
 
     actor_state = TrainState.create(
         apply_fn=network.apply,

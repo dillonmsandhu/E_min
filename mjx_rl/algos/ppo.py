@@ -50,7 +50,54 @@ def _index_obs_last(obs):
     return jax.tree_util.tree_map(lambda x: x[-1], obs)
 
 
-def make_train(config):
+def extract_hparams(config: dict) -> dict[str, jnp.ndarray]:
+    """
+    Extracts scalar hyperparameters as JAX float32 arrays so sweeps can vary
+    LRs, lambdas, clip_eps, ent_coef, etc. without triggering XLA recompilation.
+    """
+    return {
+        "actor_lr": jnp.asarray(float(config["ACTOR_LR"]), dtype=jnp.float32),
+        "critic_lr": jnp.asarray(float(config["CRITIC_LR"]), dtype=jnp.float32),
+        "clip_eps": jnp.asarray(float(config["CLIP_EPS"]), dtype=jnp.float32),
+        "ent_coef": jnp.asarray(float(config["ENT_COEF"]), dtype=jnp.float32),
+        "vf_coef": jnp.asarray(float(config["VF_COEF"]), dtype=jnp.float32),
+        "aux_vf_coef": jnp.asarray(float(config["AUX_VF_COEF"]), dtype=jnp.float32),
+        "gae_lambda": jnp.asarray(float(config.get("ACTOR_GAE_LAMBDA", config["GAE_LAMBDA"])), dtype=jnp.float32),
+        "target_lambda": jnp.asarray(float(get_critic_target_lambda(config)), dtype=jnp.float32),
+        "e_lambda": jnp.asarray(float(config["E_LAMBDA"]), dtype=jnp.float32),
+        "aux_lambda": jnp.asarray(float(config["AUX_LAMBDA"]), dtype=jnp.float32),
+        "reward_scaling": jnp.asarray(float(config.get("REWARD_SCALING", 1.0)), dtype=jnp.float32),
+    }
+
+
+def static_compile_signature(config: dict) -> tuple:
+    """
+    Returns a hashable key of all compile-time static fields in `config`
+    (shapes, scan lengths, epochs, critic type, network architecture, LR schedule).
+    Configs with the same signature can share a single compiled XLA executable.
+    """
+    net_cfg = config["NETWORK_CONFIG"]
+    return (
+        config["ENV_NAME"],
+        config.get("IMPL", "jax"),
+        int(config["TOTAL_TIMESTEPS"]),
+        int(config["NUM_ENVS"]),
+        int(config["NUM_STEPS"]),
+        int(config.get("ACTION_REPEAT", 1)),
+        int(config.get("EPISODE_LENGTH", 1000)),
+        int(config.get("ACTOR_EPOCHS", net_cfg["NUM_EPOCHS"])),
+        int(config.get("CRITIC_EPOCHS", net_cfg["NUM_EPOCHS"])),
+        int(config.get("ACTOR_MINIBATCH_SIZE", net_cfg["MINIBATCH_SIZE"])),
+        int(config.get("CRITIC_MINIBATCH_SIZE", net_cfg["MINIBATCH_SIZE"])),
+        config["CRITIC_TYPE"].lower(),
+        config["E_VARIANT"].lower(),
+        net_cfg.get("LR_SCHEDULE", "constant").lower(),
+        bool(net_cfg.get("NORMALIZE_ENV", True)),
+        bool(net_cfg.get("NORMALIZE_REW", False)),
+    )
+
+
+def make_train(config, dynamic_hparams: bool = False):
     cfg = copy.deepcopy(base_default_config)
     net_cfg = copy.deepcopy(cfg["NETWORK_CONFIG"])
     if "NETWORK_CONFIG" in config:
@@ -107,14 +154,24 @@ def make_train(config):
 
     reward_scaling = float(config.get("REWARD_SCALING", 1.0))
 
-    def train(rng):
+    def _train_impl(rng, hparams):
         c_type = config["CRITIC_TYPE"].lower()
         e_variant = config["E_VARIANT"].lower()
         critic_loss_fn = get_critic_loss_fn(c_type, split=True)
         actor_loss_fn = ppo_actor_loss_fn
 
-        gae_lambda = float(config.get("ACTOR_GAE_LAMBDA", config["GAE_LAMBDA"]))
-        target_lambda = get_critic_target_lambda(config)
+        gae_lambda = hparams["gae_lambda"]
+        target_lambda = hparams["target_lambda"]
+        r_scale = hparams["reward_scaling"]
+        traced_cfg = {
+            **config,
+            "CLIP_EPS": hparams["clip_eps"],
+            "ENT_COEF": hparams["ent_coef"],
+            "VF_COEF": hparams["vf_coef"],
+            "AUX_VF_COEF": hparams["aux_vf_coef"],
+            "E_LAMBDA": hparams["e_lambda"],
+            "AUX_LAMBDA": hparams["aux_lambda"],
+        }
         uses_aux = (
             c_type in [
                 "e_0", "e0", "e", "sampled_e", "surgical_v_aux", "surgical",
@@ -162,7 +219,7 @@ def make_train(config):
         rng, _rng = jax.random.split(rng)
         init_x = _make_dummy_obs(env.observation_space(env_params))
         network_params = network.init(_rng, init_x)
-        train_state = initialize_split_train_state(config, network, network_params)
+        train_state = initialize_split_train_state(config, network, network_params, hparams=hparams)
 
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -193,7 +250,7 @@ def make_train(config):
                 obsv, env_state, reward, done, info = env.step(
                     rng_step, env_state, action, env_params
                 )
-                scaled_reward = reward * reward_scaling
+                scaled_reward = reward * r_scale
 
                 next_obs = info["real_next_obs"]
                 is_timeout = info["is_timeout"]
@@ -235,15 +292,12 @@ def make_train(config):
                 gamma=config["GAMMA"],
                 gae_lambda=gae_lambda,
             )
-            if target_lambda == gae_lambda:
-                targets = gae_targets
-            else:
-                targets = calculate_targets(
-                    traj_batch,
-                    next_value,
-                    gamma=config["GAMMA"],
-                    target_lambda=target_lambda,
-                )
+            targets = calculate_targets(
+                traj_batch,
+                next_value,
+                gamma=config["GAMMA"],
+                target_lambda=target_lambda,
+            )
 
             if uses_aux and e_variant == "aux":
                 final_next_aux_val = network.apply(
@@ -258,7 +312,7 @@ def make_train(config):
                 if timeout_aux_next.ndim > regular_aux_next.ndim:
                     timeout_aux_next = timeout_aux_next.squeeze(-1)
                 aux_next_value = jnp.where(traj_batch.is_timeout, timeout_aux_next, regular_aux_next)
-                aux_lambda = config["AUX_LAMBDA"]
+                aux_lambda = hparams["aux_lambda"]
                 traj_batch_aux = traj_batch._replace(value=traj_batch.v_aux)
                 _, aux_targets = calculate_gae(
                     traj_batch_aux,
@@ -267,7 +321,7 @@ def make_train(config):
                     gae_lambda=aux_lambda,
                 )
             elif uses_aux and e_variant == "e_aux":
-                aux_lambda = config["AUX_LAMBDA"]
+                aux_lambda = hparams["aux_lambda"]
                 aux_targets = calculate_targets(
                     traj_batch,
                     next_value,
@@ -299,7 +353,7 @@ def make_train(config):
                 targets=targets,
                 last_val=last_val,
                 gamma=config["GAMMA"],
-                e_lambda=config["E_LAMBDA"],
+                e_lambda=hparams["e_lambda"],
                 rng=_rng,
             )
 
@@ -315,7 +369,7 @@ def make_train(config):
                             network,
                             traj_mb,
                             traj_mb.targets,
-                            config,
+                            traced_cfg,
                         )
 
                     (_, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(
@@ -354,7 +408,7 @@ def make_train(config):
                             network,
                             traj_mb,
                             adv_mb,
-                            config,
+                            traced_cfg,
                             rng=_rng,
                         )
 
@@ -423,5 +477,11 @@ def make_train(config):
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )
         return {"runner_state": runner_state, "metrics": metrics}
+
+    if dynamic_hparams:
+        return _train_impl
+
+    def train(rng):
+        return _train_impl(rng, extract_hparams(config))
 
     return train

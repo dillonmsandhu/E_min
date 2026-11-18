@@ -21,6 +21,7 @@ import glob
 import os
 import pickle
 import sys
+import time
 from typing import Any
 
 import jax
@@ -43,9 +44,12 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
     )
 ]
 
-from mjx_rl.algos.ppo import make_train as make_ppo_train
+from mjx_rl.algos.ppo import (
+    extract_hparams,
+    make_train as make_ppo_train,
+    static_compile_signature,
+)
 from mjx_rl.core.mjx_config import DEFAULT_DMC_5_ENVS, get_dmc_brax_parity_config
-from scripts.sweep_standard_runner import run_candidate
 
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["ps.fonttype"] = 42
@@ -259,14 +263,41 @@ def main():
 
     for env in envs:
         all_runs[env] = {}
+        compiled_cache: dict[tuple, Any] = {}
         print(f"\n=== Base TD(λ) Tuning: {env} ({len(candidates)} candidates x {args.n_seeds} seeds) ===")
         for cand in candidates:
             tag = cand["tag"]
             cfg = apply_candidate_overrides(env, args.impl, cand["overrides"], args.total_timesteps)
             timesteps[env] = int(cfg["TOTAL_TIMESTEPS"])
-            res = run_candidate(make_ppo_train, cfg, seed_keys, metric_key="returned_episode_returns")
-            res["overrides"] = cand["overrides"]
-            res["config"] = cfg
+
+            sig = static_compile_signature(cfg)
+            if sig not in compiled_cache:
+                train_fn = make_ppo_train(cfg, dynamic_hparams=True)
+                compiled_cache[sig] = jax.jit(jax.vmap(train_fn, in_axes=(0, None)))
+
+            t0 = time.time()
+            out = compiled_cache[sig](seed_keys, extract_hparams(cfg))
+            jax.tree_util.tree_map(
+                lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x,
+                out["metrics"]["returned_episode_returns"],
+            )
+            elapsed = time.time() - t0
+
+            returns = np.asarray(out["metrics"]["returned_episode_returns"])
+            if returns.ndim == 1:
+                returns = returns[None, :]
+            seed_aucs = returns.mean(axis=-1)
+            seed_finals = returns[:, -1]
+            res = {
+                "returned_episode_returns": returns,
+                "auc_mean": float(seed_aucs.mean()),
+                "auc_std": float(seed_aucs.std()),
+                "final_mean": float(seed_finals.mean()),
+                "final_std": float(seed_finals.std()),
+                "elapsed_time": float(elapsed),
+                "overrides": cand["overrides"],
+                "config": cfg,
+            }
             all_runs[env][tag] = res
             print(
                 f"  {tag:28s} | AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "

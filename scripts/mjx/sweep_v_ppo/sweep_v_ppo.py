@@ -15,7 +15,12 @@ from __future__ import annotations
 import argparse
 import copy
 import os
+import pickle
 import sys
+import time
+
+import jax
+import numpy as np
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _repo_root = os.path.abspath(os.path.join(_script_dir, "../../.."))
@@ -30,9 +35,14 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
     )
 ]
 
-from mjx_rl.algos.ppo import make_train as make_ppo_train
+from mjx_rl.algos.ppo import (
+    extract_hparams,
+    make_train as make_ppo_train,
+    static_compile_signature,
+)
 from mjx_rl.core.mjx_config import DEFAULT_DMC_5_ENVS, get_dmc_brax_parity_config
-from scripts.sweep_standard_runner import run_standardized_sweep
+from scripts.sweep_standard_plotting import DEFAULT_PAIRWISE_V_PPO, generate_standardized_suite
+from scripts.sweep_standard_runner import _apply_params, build_candidates_for_method
 
 METHOD_KEYS = ["td_lambda", "e_lambda_v_aux"]
 SUITE_TITLE = "MJX Playground V-PPO"
@@ -117,12 +127,110 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def run_sweep(args) -> dict:
-    return run_standardized_sweep(
-        envs=args.envs,
-        method_keys=list(args.methods),
-        make_train_fn=make_ppo_train,
-        build_base_config_fn=lambda env: build_base_config(
-            env_name=env,
+    data_dir = os.path.join(args.out_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    pkl_path = os.path.join(data_dir, "sweep_metrics_all.pkl")
+    method_keys = list(args.methods)
+
+    if args.load_existing and os.path.exists(args.load_existing):
+        with open(args.load_existing, "rb") as f:
+            payload = pickle.load(f)
+        all_runs = payload["runs"]
+        timesteps = payload["timesteps"]
+        batch_sizes = payload["batch_sizes"]
+    else:
+        all_runs = {}
+        timesteps = {}
+        batch_sizes = {}
+        seed_keys = jax.random.split(jax.random.PRNGKey(args.master_seed), args.n_seeds)
+
+        for env in args.envs:
+            env_ts = int(get_env_default_timesteps(env, args.total_timesteps))
+            base_cfg = build_base_config(
+                env_name=env,
+                impl=args.impl,
+                actor_lr=args.actor_lr,
+                gae_lambda=args.gae_lambda,
+                num_envs=args.num_envs,
+                num_steps=args.num_steps,
+                minibatch_size=args.minibatch_size,
+                actor_epochs=args.actor_epochs,
+                clip_eps=args.clip_eps,
+                ent_coef=args.ent_coef,
+                reward_scaling=args.reward_scaling,
+                aux_vf_coef=args.aux_vf_coef,
+            )
+            base_cfg["TOTAL_TIMESTEPS"] = env_ts
+            timesteps[env] = env_ts
+            batch_sizes[env] = int(base_cfg["NUM_ENVS"]) * int(base_cfg["NUM_STEPS"])
+            all_runs[env] = {}
+
+            compiled_cache = {}
+            print(f"\n=== Environment: {env} ({env_ts:,} steps, bs={batch_sizes[env]}) ===")
+            for m_key in method_keys:
+                all_runs[env][m_key] = {}
+                cands = build_candidates_for_method(
+                    method_key=m_key,
+                    critic_lrs=args.critic_lrs,
+                    critic_epochs_list=args.critic_epochs,
+                    lambdas=args.lambdas,
+                    default_critic_lr=args.default_critic_lr,
+                    default_critic_epochs=args.default_critic_epochs,
+                    default_lambda=args.default_lambda,
+                )
+                print(f"  [{m_key}] Running {len(cands)} configs x {args.n_seeds} seeds...")
+                for cand in cands:
+                    tag = cand["tag"]
+                    cfg = _apply_params(base_cfg, m_key, cand["params"], is_brax=True, is_v_ppo=True)
+                    sig = static_compile_signature(cfg)
+                    if sig not in compiled_cache:
+                        train_fn = make_ppo_train(cfg, dynamic_hparams=True)
+                        compiled_cache[sig] = jax.jit(jax.vmap(train_fn, in_axes=(0, None)))
+
+                    t0 = time.time()
+                    out = compiled_cache[sig](seed_keys, extract_hparams(cfg))
+                    jax.tree_util.tree_map(
+                        lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x,
+                        out["metrics"][args.metric_key],
+                    )
+                    elapsed = time.time() - t0
+
+                    returns = np.asarray(out["metrics"][args.metric_key])
+                    if returns.ndim == 1:
+                        returns = returns[None, :]
+                    seed_aucs = returns.mean(axis=-1)
+                    seed_finals = returns[:, -1]
+
+                    res = {
+                        "returned_episode_returns": returns,
+                        "auc_mean": float(seed_aucs.mean()),
+                        "auc_std": float(seed_aucs.std()),
+                        "final_mean": float(seed_finals.mean()),
+                        "final_std": float(seed_finals.std()),
+                        "elapsed_time": float(elapsed),
+                        "params": cand["params"],
+                        "config": cfg,
+                    }
+                    all_runs[env][m_key][tag] = res
+                    print(
+                        f"    {tag:28s} | AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "
+                        f"| Fin={res['final_mean']:8.2f} ({res['elapsed_time']:.1f}s)"
+                    )
+
+            with open(pkl_path, "wb") as f:
+                pickle.dump(
+                    {
+                        "runs": all_runs,
+                        "timesteps": timesteps,
+                        "batch_sizes": batch_sizes,
+                        "method_keys": method_keys,
+                    },
+                    f,
+                )
+
+    if not args.no_plots and all_runs:
+        sample_cfg = build_base_config(
+            env_name=args.envs[0],
             impl=args.impl,
             actor_lr=args.actor_lr,
             gae_lambda=args.gae_lambda,
@@ -134,26 +242,32 @@ def run_sweep(args) -> dict:
             ent_coef=args.ent_coef,
             reward_scaling=args.reward_scaling,
             aux_vf_coef=args.aux_vf_coef,
-        ),
-        get_timesteps_fn=lambda env: get_env_default_timesteps(env, args.total_timesteps),
-        is_brax=True,
-        is_v_ppo=True,
-        suite_title=SUITE_TITLE,
-        reference_method=REFERENCE_METHOD,
-        out_dir=args.out_dir,
-        n_seeds=args.n_seeds,
-        master_seed=args.master_seed,
-        critic_lrs=args.critic_lrs,
-        critic_epochs_list=args.critic_epochs,
-        lambdas=args.lambdas,
-        default_critic_lr=args.default_critic_lr,
-        default_critic_epochs=args.default_critic_epochs,
-        default_lambda=args.default_lambda,
-        metric_key=args.metric_key,
-        load_existing=args.load_existing,
-        generate_plots=not args.no_plots,
-        all_pairs=args.all_pairs,
-    )
+        )
+        base_summary = {
+            "ACTOR_LR": sample_cfg["ACTOR_LR"],
+            "GAE_LAMBDA": sample_cfg["GAE_LAMBDA"],
+            "DEFAULT_CRITIC_LR": args.default_critic_lr,
+            "DEFAULT_CRITIC_EPOCHS": args.default_critic_epochs,
+            "DEFAULT_LAMBDA": args.default_lambda,
+            "CRITIC_LRS": args.critic_lrs,
+            "CRITIC_EPOCHS": args.critic_epochs,
+            "LAMBDAS": args.lambdas,
+            "N_SEEDS": args.n_seeds,
+        }
+        generate_standardized_suite(
+            all_runs=all_runs,
+            method_keys=method_keys,
+            timesteps=timesteps,
+            out_dir=args.out_dir,
+            suite_title=SUITE_TITLE,
+            batch_sizes=batch_sizes,
+            base_config=base_summary,
+            reference_method=REFERENCE_METHOD,
+            pairwise_pairs=DEFAULT_PAIRWISE_V_PPO,
+            all_pairs=args.all_pairs,
+        )
+
+    return all_runs
 
 
 def main():
