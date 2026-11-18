@@ -1,0 +1,68 @@
+#!/bin/bash
+set -e
+
+[ -f "mjx_rl/core/mjx_config.py" ] || cd "$(dirname "$0")/../../.."
+REPO_ROOT="$(pwd)"
+DATE=${DATE:-$(date +%Y-%m-%d)}
+SWEEP_NAME="sweep_v_ppo"
+LOG_DIR="slurm/${DATE}/mjx_${SWEEP_NAME}"
+mkdir -p "$LOG_DIR"
+export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
+
+TOTAL_TIMESTEPS=${1:-auto}
+N_SEEDS=${2:-3}
+OUT_DIR=${3:-"results/mjx/sweep_v_ppo"}
+IMPL=${IMPL:-jax}
+METHODS=${METHODS:-"td_lambda e_lambda_v_aux"}
+MASTER_SEED=${MASTER_SEED:-42}
+CRITIC_LRS=${CRITIC_LRS:-"0.0003 0.001 0.003"}
+CRITIC_EPOCHS=${CRITIC_EPOCHS:-"8 16"}
+LAMBDAS=${LAMBDAS:-"0.8 0.95 0.99"}
+ACTOR_LR=${ACTOR_LR:-0.001}
+ACTOR_EPOCHS=${ACTOR_EPOCHS:-16}
+GAE_LAMBDA=${GAE_LAMBDA:-0.95}
+CLIP_EPS=${CLIP_EPS:-0.3}
+ENT_COEF=${ENT_COEF:-0.01}
+REWARD_SCALING=${REWARD_SCALING:-10.0}
+NUM_ENVS=${NUM_ENVS:-2048}
+NUM_STEPS=${NUM_STEPS:-30}
+MINIBATCH_SIZE=${MINIBATCH_SIZE:-1920}
+
+export TOTAL_TIMESTEPS N_SEEDS MASTER_SEED IMPL METHODS CRITIC_LRS CRITIC_EPOCHS LAMBDAS \
+    ACTOR_LR ACTOR_EPOCHS GAE_LAMBDA CLIP_EPS ENT_COEF REWARD_SCALING \
+    NUM_ENVS NUM_STEPS MINIBATCH_SIZE OUT_DIR REPO_ROOT
+
+if [ -x "$REPO_ROOT/.venv_mjx/bin/python" ]; then
+    PYTHON="$REPO_ROOT/.venv_mjx/bin/python"
+elif [ -f "/home/users/ds541/.pyenv/versions/mjx/bin/python" ]; then
+    PYTHON="/home/users/ds541/.pyenv/versions/mjx/bin/python"
+elif [ -f "/home/users/ds541/.pyenv/versions/3.12/envs/mjx/bin/python" ]; then
+    PYTHON="/home/users/ds541/.pyenv/versions/3.12/envs/mjx/bin/python"
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
+else
+    PYTHON="python"
+fi
+
+ARRAY_JOB_ID=$(sbatch --parsable \
+    --chdir="$REPO_ROOT" \
+    --output="${LOG_DIR}/%A_%a.out" \
+    --error="${LOG_DIR}/%A_%a.err" \
+    --export=ALL \
+    scripts/mjx/sweep_v_ppo/run_slurm_array.sh)
+
+POST_JOB_ID=$(sbatch --parsable \
+    --job-name=plot_v_ppo_mjx \
+    --output="${LOG_DIR}/%A_consolidated_plot.out" \
+    --error="${LOG_DIR}/%A_consolidated_plot.err" \
+    --time=01:00:00 \
+    --partition=compsci \
+    --cpus-per-task=4 \
+    --mem=16G \
+    --dependency=afterany:$ARRAY_JOB_ID \
+    --chdir="$REPO_ROOT" \
+    --wrap="$PYTHON scripts/mjx/sweep_v_ppo/plot_consolidated_results.py --out_dir '$OUT_DIR'")
+
+echo "Submitted MJX V-PPO Array Job $ARRAY_JOB_ID and Post Job $POST_JOB_ID -> $OUT_DIR"

@@ -1,0 +1,23 @@
+# Separate environment for mjx_rl (MuJoCo Playground rss2025 / JAX-MJX).
+# Incompatible with the root requirements.txt (jax 0.4.33 / brax 0.10.5 / mujoco 3.2.3).
+# Core pins follow rss2025/uv.lock at the pinned playground commit.
+# Install with mjx_rl/setup_env.sh.
+playground @ git+https://github.com/google-deepmind/mujoco_playground@3ff05b53d303f92b30a457c2973036186f2ffe13#subdirectory=rss2025
+jax==0.12.0.1
+jaxlib==0.12.0.1
+mujoco==3.16.0
+mujoco-mjx==3.16.0
+brax==0.14.2
+flax==0.12.10
+optax==0.2.8
+warp-lang==1.18.0
+ml-collections==1.1.0
+distrax
+gymnax
+matplotlib
+pandas
+seaborn
+scipy
+tabulate
+pyyaml
+cloudpickle
