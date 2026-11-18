@@ -95,7 +95,7 @@ def get_critic_target_lambda(config: dict) -> float:
         "sampled_e", "surgical_v_aux", "surgical",
         "e_lambda", "e_lambda_q", "e_lambda_v_aux", "elambda", "e_geometric",
         "bsmc", "bsmc_v_aux", "bsmc_double_pi", "bsmc_bilinear_v_aux",
-        "e_inner", "e_bilinear", "e_double", "e_min",
+        "e_inner", "e_bilinear", "e_double", "e_dirichlet_double", "e_dir_double", "double_e_dirichlet", "e_min",
     ]:
         return config["RETURN_LAMBDA"]
     elif critic_type in ["td_0", "td", "td0", "sarsa_0", "msbe", "double_msbe", "mspbe", "double_mspbe", "online_td0", "semi_gradient_td0"]:
@@ -1023,6 +1023,83 @@ def double_sample_e_inner_critic_loss_fn(
     }
 
 
+def double_sample_e_dirichlet_critic_loss_fn(
+    critic_params,
+    actor_params,
+    network,
+    traj_batch,
+    targets,
+    config,
+):
+    """
+    Double-sampled Dirichlet E(0) critic loss (0.5 * E(0) scale, matching double_sample_e_inner_critic_loss_fn):
+        0.5 * E(0) = 0.5 * (1 - gamma) * ||e||_D^2 + 0.25 * gamma * E_{i,j}[(e_i - e_j)^2]
+    Surrogate loss using branch 1 (obs, next_obs, targets, next_targets) and
+    independent 1-step probe branch 2 (probe_next_obs) with no v_aux:
+        L(theta) = 0.5 * (1 - gamma) * (e_i^(1))^2
+                 + 0.25 * gamma * (e_i^(1) - sg(e_j^(1)))^2
+                 + 0.5 * gamma * [ sg(e_i^(1)) * bootstrap_2 * v(s_j^(2)) - sg(e_j^(1)) * bootstrap_1 * v(s_j^(1)) ]
+    (At true terminal transitions on branch 1, reduces to 0.5 * (e_i^(1))^2.)
+    """
+    full_params = {"params": {**actor_params, **critic_params}}
+    sg = jax.lax.stop_gradient
+    gamma = config["GAMMA"]
+
+    targets_i = targets if targets is not None else traj_batch.targets
+    targets_j = traj_batch.next_targets
+
+    v_i = network.apply(full_params, traj_batch.obs, method=network.value)
+    v_j_1 = network.apply(full_params, traj_batch.next_obs, method=network.value)
+    v_j_2 = network.apply(full_params, traj_batch.probe_next_obs, method=network.value)
+
+    true_term_1 = traj_batch.done & ~traj_batch.is_timeout
+    true_term_2 = traj_batch.probe_done & ~traj_batch.probe_is_timeout
+
+    if v_i.ndim > traj_batch.reward.ndim:
+        reward_1 = traj_batch.reward[..., None]
+        reward_2 = traj_batch.probe_reward[..., None]
+        true_term_1 = true_term_1[..., None]
+        true_term_2 = true_term_2[..., None]
+        targets_i = targets_i[..., None]
+        targets_j = targets_j[..., None]
+    else:
+        reward_1 = traj_batch.reward
+        reward_2 = traj_batch.probe_reward
+
+    bootstrap_1 = 1.0 - true_term_1
+    bootstrap_2 = 1.0 - true_term_2
+
+    e_i = targets_i - v_i
+    e_j = jnp.where(true_term_1, 0.0, targets_j - v_j_1)
+
+    magnitude_loss = 0.5 * (1.0 - gamma) * jnp.mean(e_i ** 2)
+    forward_dir = jnp.where(
+        true_term_1,
+        0.5 * gamma * (e_i ** 2),
+        0.25 * gamma * ((e_i - sg(e_j)) ** 2),
+    )
+    backward_dir = 0.5 * gamma * (
+        sg(e_i) * bootstrap_2 * v_j_2 - sg(e_j) * bootstrap_1 * v_j_1
+    )
+    dirichlet_loss = jnp.mean(forward_dir + backward_dir)
+
+    value_loss = magnitude_loss + dirichlet_loss
+
+    delta_1 = reward_1 + gamma * bootstrap_1 * v_j_1 - v_i
+    delta_2 = reward_2 + gamma * bootstrap_2 * v_j_2 - v_i
+    diagnostic_msbe = jnp.mean(delta_1 * delta_2)
+
+    return value_loss, {
+        "val_loss": value_loss,
+        "magnitude_loss": magnitude_loss,
+        "dirichlet_loss": dirichlet_loss,
+        "delta_mag": jnp.mean(jnp.abs(delta_1)),
+        "delta2_mag": jnp.mean(jnp.abs(delta_2)),
+        "e_mag": jnp.mean(jnp.abs(e_i)),
+        "diagnostic_msbe": diagnostic_msbe,
+    }
+
+
 def double_sample_mspbe_critic_loss_fn(
     critic_params,
     actor_params,
@@ -1155,6 +1232,9 @@ SPLIT_CRITIC_LOSS_FNS = {
     "e_inner": double_sample_e_inner_critic_loss_fn,
     "e_bilinear": double_sample_e_inner_critic_loss_fn,
     "e_double": double_sample_e_inner_critic_loss_fn,
+    "e_dirichlet_double": double_sample_e_dirichlet_critic_loss_fn,
+    "e_dir_double": double_sample_e_dirichlet_critic_loss_fn,
+    "double_e_dirichlet": double_sample_e_dirichlet_critic_loss_fn,
     "e_min": double_sample_e_inner_critic_loss_fn,
     "mspbe": double_sample_mspbe_critic_loss_fn,
     "double_mspbe": double_sample_mspbe_critic_loss_fn,

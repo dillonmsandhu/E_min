@@ -190,10 +190,18 @@ def make_train(base_config):
                     target_lambda=target_lambda,
                 )
 
+            # Align next targets G_{t+1}
+            true_terminal = traj_batch.done & ~traj_batch.is_timeout
+            next_targets = jnp.roll(targets, shift=-1, axis=0)
+            next_targets = next_targets.at[-1].set(final_next_val)
+            next_targets = jnp.where(traj_batch.is_timeout, next_value, next_targets)
+            next_targets = jnp.where(true_terminal, 0.0, next_targets)
+
             traj_batch = traj_batch._replace(
                 next_value=next_value,
                 probe_next_value=probe_next_val,
                 targets=targets,
+                next_targets=next_targets,
             )
 
             # 3. CRITIC UPDATE PHASE

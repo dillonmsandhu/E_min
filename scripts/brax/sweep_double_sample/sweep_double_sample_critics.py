@@ -5,13 +5,12 @@ sweep_double_sample_critics.py
 Comprehensive Critic Comparison Sweep & Automated Publication Analysis Suite
 for Continuous Control on Brax across Two-Timescale Actor-Critic Regimes.
 
-Evaluates 6 critic algorithms in the double-sampling / 1-step regime:
+Evaluates 5 critic algorithms in the double-sampling / 1-step regime:
 1. online_td0: Online semi-gradient batch TD(0) with live target stop_gradient(r + gamma * (1-d) * V_theta(s'))
-2. fitted_td0: Fitted Value Iteration with lambda=0 (pure 1-step TD, frozen targets per update)
+2. fitted_td1: Fitted Value Iteration with lambda=1.0 (Monte Carlo / TD(1) regression)
 3. msbe: Baird double-sampled 1-step Mean Squared Bellman Error: 0.5 * (sg(delta_1)*delta_2 + sg(delta_2)*delta_1)
-4. e_inner: Double-sampled bilinear energy minimization: 0.5 * <e, bar_delta>_D without v_aux
-5. mspbe: 1-step Tangent Projected Bellman Error with CG projection & exact Hessian-vector products
-6. fitted_gae: GAE(lambda=0.95) reference (empirical multi-step / MC upper bound)
+4. e_inner: Double-sampled bilinear E(0) minimization: 0.5 * <e, bar_delta>_D without v_aux
+5. e_dirichlet_double: Double-sampled Dirichlet E(0) minimization without v_aux
 
 Evaluated across 11 deterministic continuous-control Brax environments:
 - hopper (10M steps)
@@ -99,20 +98,18 @@ DEFAULT_ENVS = [
 ]
 
 CRITIC_VARIANTS = [
-    ("online_td0", "Online TD(0) (Semi-Gradient)"),
-    ("fitted_td0", "Fitted TD(0) (λ=0 Baseline)"),
+    ("online_td0", "TD(0)"),
+    ("fitted_td1", "Fitted TD(1)"),
     ("msbe", "MSBE (Baird Double)"),
-    ("e_inner_rl1.0", "E-Min (λ_ret=1.0)"),
-    ("e_inner_rl0.95", "E-Min (λ_ret=0.95)"),
-    ("mspbe", "MSPBE (Tangent CG + HVP)"),
-    ("fitted_gae", "Fitted GAE (λ=0.95 Ref)"),
+    ("e_inner", "E-Min (Bilinear)"),
+    ("e_dirichlet_double", "E-Min (Dirichlet)"),
 ]
 
 DEFAULT_CRITIC_LRS = [3e-4, 1e-3, 3e-3]
 DEFAULT_CRITIC_EPOCHS = [4, 8, 12]
 DEFAULT_ACTOR_LR = 1e-4  # Slower actor for two-timescale separation
 DEFAULT_ACTOR_GAE_LAMBDA = 0.4
-DEFAULT_RETURN_LAMBDAS = [1.0, 0.95]
+DEFAULT_RETURN_LAMBDAS = [1.0]
 REAL_WIN_REL_TOL = 0.01  # 1% of environment return magnitude
 
 
@@ -678,11 +675,9 @@ def run_sweep(args):
         print(f"\n>>> Running Double-Sampling Sweep: {env_name} ({env_timesteps:,} steps, actor_gae_lambda={base_cfg['ACTOR_GAE_LAMBDA']}) <<<")
 
         for var_key, var_label in CRITIC_VARIANTS:
-            if var_key.startswith("e_inner_rl"):
-                ret_lam = float(var_key.replace("e_inner_rl", ""))
-                if ret_lam not in getattr(args, "return_lambdas", DEFAULT_RETURN_LAMBDAS):
-                    continue
-                critic_type = "e_inner"
+            if var_key == "fitted_td1":
+                ret_lam = 1.0
+                critic_type = "fitted"
             else:
                 ret_lam = 1.0
                 critic_type = var_key
@@ -702,10 +697,8 @@ def run_sweep(args):
                         "CRITIC_TYPE": critic_type,
                         "RETURN_LAMBDA": ret_lam,
                     }
-                    if var_key == "fitted_td0":
-                        cfg["VALUE_LAMBDA"] = 0.0
-                    elif var_key == "fitted_gae":
-                        cfg["VALUE_LAMBDA"] = 0.95
+                    if var_key == "fitted_td1":
+                        cfg["VALUE_LAMBDA"] = 1.0
 
                     res = run_experiment(cfg, seed_keys)
                     env_dict[var_key][cfg_key] = res
@@ -740,8 +733,8 @@ def generate_diagnostics_and_plots(all_runs, timesteps, out_dir, envs, critic_lr
     active_variants = variants if variants is not None else CRITIC_VARIANTS
     var_keys = [k for k, _ in active_variants]
     var_labels = [label for _, label in active_variants]
-    colors = ["#f59e0b", "#64748b", "#dc2626", "#059669", "#10b981", "#7c3aed", "#2563eb"]
-    linestyles = ["-", "--", "-.", ":", "-.", "-", "--"]
+    colors = ["#f59e0b", "#2563eb", "#dc2626", "#059669", "#7c3aed"]
+    linestyles = ["-", "--", ":", "-", "-."]
 
     # -------------------------------------------------------------
     # 1. ANALYSIS 1: Double Sampling Critic Comparison (Learning Curves & Return)
