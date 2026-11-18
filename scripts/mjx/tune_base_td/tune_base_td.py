@@ -53,67 +53,63 @@ plt.rcParams["ps.fonttype"] = 42
 
 def build_base_td_candidates(mode: str = "oat") -> list[dict[str, Any]]:
     """
-    Builds candidate configurations around the Brax PPO DMC parity baseline:
-      num_envs=2048, num_steps=30, num_minibatches=32 (mb=1920), epochs=16,
-      lr=1e-3 (constant), clip_eps=0.3, ent_coef=0.01, gae_lambda=0.95.
+    Builds candidate configurations for base TD(λ) tuning:
+      - `00_brax_parity_default`: exact Brax PPO DMC config (2048 x 30) as reference
+      - All tuning candidates (`01_*` onward) fix `NUM_STEPS = 128` (so rollouts are
+        long enough for E(λ)) with `NUM_ENVS = 512` (batch_size = 65,536, mb = 2048)
+        or `NUM_ENVS = 1024` (batch_size = 131,072, mb = 4096).
     """
     candidates: list[dict[str, Any]] = []
 
     def _add(tag: str, overrides: dict[str, Any]):
         candidates.append({"tag": tag, "overrides": overrides})
 
-    # 1. Exact Brax PPO DMC parity configuration
+    # 1. Exact Brax PPO DMC parity configuration (reference)
     _add("00_brax_parity_default", {})
 
     if mode == "parity_only":
         return candidates
 
-    # 2. Rollout horizon & batch geometry variations
+    base_128 = {
+        "NUM_ENVS": 512,
+        "NUM_STEPS": 128,
+        "ACTOR_MINIBATCH_SIZE": 2048,
+        "CRITIC_MINIBATCH_SIZE": 2048,
+    }
+
+    # 2. Rollout geometry & epochs with NUM_STEPS=128
+    _add("01_steps128_envs512_ep16", {**base_128})
     _add(
-        "01_steps60_ep8",
-        {
-            "NUM_ENVS": 2048,
-            "NUM_STEPS": 60,
-            "ACTOR_EPOCHS": 8,
-            "CRITIC_EPOCHS": 8,
-            "ACTOR_MINIBATCH_SIZE": 3840,
-            "CRITIC_MINIBATCH_SIZE": 3840,
-        },
+        "02_steps128_envs512_ep8",
+        {**base_128, "ACTOR_EPOCHS": 8, "CRITIC_EPOCHS": 8},
     )
     _add(
-        "02_envs1024_steps60_ep8",
+        "03_steps128_envs1024_ep8",
         {
             "NUM_ENVS": 1024,
-            "NUM_STEPS": 60,
+            "NUM_STEPS": 128,
             "ACTOR_EPOCHS": 8,
             "CRITIC_EPOCHS": 8,
-            "ACTOR_MINIBATCH_SIZE": 1920,
-            "CRITIC_MINIBATCH_SIZE": 1920,
-        },
-    )
-    _add(
-        "03_ep8",
-        {
-            "ACTOR_EPOCHS": 8,
-            "CRITIC_EPOCHS": 8,
+            "ACTOR_MINIBATCH_SIZE": 4096,
+            "CRITIC_MINIBATCH_SIZE": 4096,
         },
     )
 
-    # 3. Learning rate & schedule variations
-    _add("04_lr3e-4_const", {"ACTOR_LR": 3e-4, "CRITIC_LR": 3e-4})
+    # 3. Learning rate & schedule variations (at NUM_STEPS=128)
+    _add("04_steps128_lr3e-4_const", {**base_128, "ACTOR_LR": 3e-4, "CRITIC_LR": 3e-4})
     _add(
-        "05_lr1e-3_linear",
-        {"ACTOR_LR": 1e-3, "CRITIC_LR": 1e-3, "LR_SCHEDULE": "linear"},
+        "05_steps128_lr1e-3_linear",
+        {**base_128, "ACTOR_LR": 1e-3, "CRITIC_LR": 1e-3, "LR_SCHEDULE": "linear"},
     )
 
-    # 4. Clipping & entropy variations
-    _add("06_clip0.2", {"CLIP_EPS": 0.2})
-    _add("07_ent1e-3", {"ENT_COEF": 1e-3})
+    # 4. Clipping & entropy variations (at NUM_STEPS=128)
+    _add("06_steps128_clip0.2", {**base_128, "CLIP_EPS": 0.2})
+    _add("07_steps128_ent1e-3", {**base_128, "ENT_COEF": 1e-3})
 
-    # 5. GAE / Value lambda variations
+    # 5. GAE / Value lambda variations (at NUM_STEPS=128)
     _add(
-        "08_lam0.8",
-        {"GAE_LAMBDA": 0.8, "ACTOR_GAE_LAMBDA": 0.8, "VALUE_LAMBDA": 0.8},
+        "08_steps128_lam0.8",
+        {**base_128, "GAE_LAMBDA": 0.8, "ACTOR_GAE_LAMBDA": 0.8, "VALUE_LAMBDA": 0.8},
     )
     return candidates
 
