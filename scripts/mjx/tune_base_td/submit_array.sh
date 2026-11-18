@@ -15,6 +15,8 @@ OUT_DIR=${3:-"results/mjx/tune_base_td"}
 MODE=${MODE:-oat}
 IMPL=${IMPL:-jax}
 MASTER_SEED=${MASTER_SEED:-42}
+ENVS=${ENVS:-"CheetahRun WalkerWalk HopperHop CartpoleSwingup FingerSpin"}
+GPU_GRES=${GPU_GRES:-auto}
 
 export TOTAL_TIMESTEPS N_SEEDS OUT_DIR MODE IMPL MASTER_SEED REPO_ROOT
 
@@ -32,23 +34,50 @@ else
     PYTHON="python"
 fi
 
-ARRAY_JOB_ID=$(sbatch --parsable \
-    --chdir="$REPO_ROOT" \
-    --output="${LOG_DIR}/%A_%a.out" \
-    --error="${LOG_DIR}/%A_%a.err" \
-    --export=ALL \
-    scripts/mjx/tune_base_td/run_slurm_array.sh)
+get_env_gres() {
+    local env="$1"
+    if [ "$GPU_GRES" != "auto" ]; then
+        echo "$GPU_GRES"
+        return
+    fi
+    case "$env" in
+        *Humanoid*|AcrobotSwingup*|WalkerRun|Swimmer*)
+            echo "gpu:a6000:1"
+            ;;
+        *)
+            echo "gpu:a5000:1"
+            ;;
+    esac
+}
+
+JOB_IDS=()
+for ENV_NAME in $ENVS; do
+    GRES=$(get_env_gres "$ENV_NAME")
+    JID=$(sbatch --parsable \
+        --job-name="tune_td_${ENV_NAME}" \
+        --gres="$GRES" \
+        --array=0-0 \
+        --chdir="$REPO_ROOT" \
+        --output="${LOG_DIR}/%A_${ENV_NAME}.out" \
+        --error="${LOG_DIR}/%A_${ENV_NAME}.err" \
+        --export=ALL \
+        scripts/mjx/tune_base_td/run_slurm_array.sh "$ENV_NAME")
+    echo "  Submitted $ENV_NAME ($GRES) -> Job $JID"
+    JOB_IDS+=("$JID")
+done
+
+DEP_STR=$(IFS=:; echo "${JOB_IDS[*]}")
 
 POST_JOB_ID=$(sbatch --parsable \
     --job-name=plot_tune_td_mjx \
-    --output="${LOG_DIR}/%A_consolidated_plot.out" \
-    --error="${LOG_DIR}/%A_consolidated_plot.err" \
+    --output="${LOG_DIR}/%j_consolidated_plot.out" \
+    --error="${LOG_DIR}/%j_consolidated_plot.err" \
     --time=00:30:00 \
     --partition=compsci \
     --cpus-per-task=4 \
     --mem=16G \
-    --dependency=afterany:$ARRAY_JOB_ID \
+    --dependency=afterany:${DEP_STR} \
     --chdir="$REPO_ROOT" \
     --wrap="$PYTHON scripts/mjx/tune_base_td/tune_base_td.py --consolidate_only --out_dir '$OUT_DIR'")
 
-echo "Submitted MJX Base TD(λ) Tuning Array Job $ARRAY_JOB_ID and Post Job $POST_JOB_ID -> $OUT_DIR"
+echo "Submitted MJX Base TD(λ) Tuning Jobs (${DEP_STR}) and Post Job $POST_JOB_ID -> $OUT_DIR"
