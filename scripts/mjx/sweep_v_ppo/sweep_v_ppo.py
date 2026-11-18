@@ -139,9 +139,16 @@ def run_sweep(args) -> dict:
         timesteps = payload["timesteps"]
         batch_sizes = payload["batch_sizes"]
     else:
-        all_runs = {}
-        timesteps = {}
-        batch_sizes = {}
+        if os.path.exists(pkl_path):
+            with open(pkl_path, "rb") as f:
+                payload = pickle.load(f)
+            all_runs = payload.get("runs", {})
+            timesteps = payload.get("timesteps", {})
+            batch_sizes = payload.get("batch_sizes", {})
+        else:
+            all_runs = {}
+            timesteps = {}
+            batch_sizes = {}
         seed_keys = jax.random.split(jax.random.PRNGKey(args.master_seed), args.n_seeds)
 
         for env in args.envs:
@@ -163,12 +170,14 @@ def run_sweep(args) -> dict:
             base_cfg["TOTAL_TIMESTEPS"] = env_ts
             timesteps[env] = env_ts
             batch_sizes[env] = int(base_cfg["NUM_ENVS"]) * int(base_cfg["NUM_STEPS"])
-            all_runs[env] = {}
+            if env not in all_runs:
+                all_runs[env] = {}
 
             compiled_cache = {}
             print(f"\n=== Environment: {env} ({env_ts:,} steps, bs={batch_sizes[env]}) ===")
             for m_key in method_keys:
-                all_runs[env][m_key] = {}
+                if m_key not in all_runs[env]:
+                    all_runs[env][m_key] = {}
                 cands = build_candidates_for_method(
                     method_key=m_key,
                     critic_lrs=args.critic_lrs,
@@ -181,6 +190,13 @@ def run_sweep(args) -> dict:
                 print(f"  [{m_key}] Running {len(cands)} configs x {args.n_seeds} seeds...")
                 for cand in cands:
                     tag = cand["tag"]
+                    if tag in all_runs[env][m_key]:
+                        res = all_runs[env][m_key][tag]
+                        print(
+                            f"    {tag:28s} | [CACHED] AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "
+                            f"| Fin={res['final_mean']:8.2f}"
+                        )
+                        continue
                     cfg = _apply_params(base_cfg, m_key, cand["params"], is_brax=True, is_v_ppo=True)
                     sig = static_compile_signature(cfg)
                     if sig not in compiled_cache:
@@ -216,17 +232,16 @@ def run_sweep(args) -> dict:
                         f"    {tag:28s} | AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "
                         f"| Fin={res['final_mean']:8.2f} ({res['elapsed_time']:.1f}s)"
                     )
-
-            with open(pkl_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "runs": all_runs,
-                        "timesteps": timesteps,
-                        "batch_sizes": batch_sizes,
-                        "method_keys": method_keys,
-                    },
-                    f,
-                )
+                    with open(pkl_path, "wb") as f:
+                        pickle.dump(
+                            {
+                                "runs": all_runs,
+                                "timesteps": timesteps,
+                                "batch_sizes": batch_sizes,
+                                "method_keys": method_keys,
+                            },
+                            f,
+                        )
 
     if not args.no_plots and all_runs:
         sample_cfg = build_base_config(

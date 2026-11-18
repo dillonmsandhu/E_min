@@ -285,15 +285,30 @@ def main():
     candidates = build_base_td_candidates(args.mode)
     seed_keys = jax.random.split(jax.random.PRNGKey(args.master_seed), args.n_seeds)
 
-    all_runs: dict[str, dict[str, Any]] = {}
-    timesteps: dict[str, int] = {}
+    pkl_path = os.path.join(data_dir, "base_td_metrics.pkl")
+    if os.path.exists(pkl_path):
+        with open(pkl_path, "rb") as f:
+            existing = pickle.load(f)
+        all_runs: dict[str, dict[str, Any]] = existing.get("runs", {})
+        timesteps: dict[str, int] = existing.get("timesteps", {})
+    else:
+        all_runs = {}
+        timesteps = {}
 
     for env in envs:
-        all_runs[env] = {}
+        if env not in all_runs:
+            all_runs[env] = {}
         compiled_cache: dict[tuple, Any] = {}
         print(f"\n=== Base TD(λ) Tuning: {env} ({len(candidates)} candidates x {args.n_seeds} seeds) ===")
         for cand in candidates:
             tag = cand["tag"]
+            if tag in all_runs[env]:
+                res = all_runs[env][tag]
+                print(
+                    f"  {tag:28s} | [CACHED] AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "
+                    f"| Fin={res['final_mean']:8.2f}"
+                )
+                continue
             cfg = apply_candidate_overrides(env, args.impl, cand["overrides"], args.total_timesteps)
             timesteps[env] = int(cfg["TOTAL_TIMESTEPS"])
 
