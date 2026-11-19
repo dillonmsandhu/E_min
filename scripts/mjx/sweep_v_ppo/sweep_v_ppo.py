@@ -104,7 +104,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--lambdas", nargs="+", type=float, default=[0.8, 0.95, 0.99])
     p.add_argument("--actor_lr", type=float, default=3e-4)
     p.add_argument("--actor_epochs", type=int, default=16)
-    p.add_argument("--gae_lambda", type=float, default=0.95)
+    p.add_argument("--gae_lambda", type=float, default=0.8)
     p.add_argument("--clip_eps", type=float, default=0.3)
     p.add_argument("--ent_coef", type=float, default=0.01)
     p.add_argument("--reward_scaling", type=float, default=10.0)
