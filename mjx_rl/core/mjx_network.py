@@ -404,29 +404,36 @@ def initialize_split_train_state(config, network, network_params, hparams: dict 
     max_grad_norm = net_cfg.get("MAX_GRAD_NORM", 1.0)
     opt_name = net_cfg.get("OPTIMIZER", "adam").lower()
     adam_eps = float(net_cfg.get("ADAM_EPS", 1e-8))
-    if opt_name == "adam":
-        actor_opt = optax.inject_hyperparams(optax.adam)(learning_rate=actor_lr, eps=adam_eps)
-        critic_opt = optax.inject_hyperparams(optax.adam)(learning_rate=critic_lr, eps=adam_eps)
-    elif opt_name == "adamw":
-        actor_opt = optax.inject_hyperparams(optax.adamw)(learning_rate=actor_lr, eps=adam_eps)
-        critic_opt = optax.inject_hyperparams(optax.adamw)(learning_rate=critic_lr, eps=adam_eps)
-    else:
+    def _make_opt(lr):
+        if opt_name == "adam":
+            return optax.inject_hyperparams(optax.adam)(learning_rate=lr, eps=adam_eps)
+        elif opt_name == "adamw":
+            return optax.inject_hyperparams(optax.adamw)(learning_rate=lr, eps=adam_eps)
         raise ValueError(f"Unsupported OPTIMIZER '{opt_name}'.")
 
-    actor_chain = []
-    critic_chain = []
-    if max_grad_norm is not None and max_grad_norm > 0:
-        actor_chain.append(optax.clip_by_global_norm(max_grad_norm))
-        critic_chain.append(optax.clip_by_global_norm(max_grad_norm))
-    actor_chain.append(actor_opt)
-    critic_chain.append(critic_opt)
-    if actor_unit_sched is not None:
-        actor_chain.append(optax.scale_by_schedule(actor_unit_sched))
-    if critic_unit_sched is not None:
-        critic_chain.append(optax.scale_by_schedule(critic_unit_sched))
+    def _build_chain(lr, unit_sched):
+        chain = []
+        if max_grad_norm is not None and max_grad_norm > 0:
+            chain.append(optax.clip_by_global_norm(max_grad_norm))
+        chain.append(_make_opt(lr))
+        if unit_sched is not None:
+            chain.append(optax.scale_by_schedule(unit_sched))
+        return optax.chain(*chain)
 
-    actor_tx = optax.chain(*actor_chain)
-    critic_tx = optax.chain(*critic_chain)
+    actor_tx = _build_chain(actor_lr, actor_unit_sched)
+    critic_tx = _build_chain(critic_lr, critic_unit_sched)
+
+    if config.get("SPLIT_AUX_OPTIMIZER", False) and any("aux" in k for k in critic_params.keys()):
+        aux_critic_tx = _build_chain(critic_lr, critic_unit_sched)
+
+        def _critic_label(path, _val):
+            is_aux = any("aux" in getattr(node, "key", str(node)) for node in path)
+            return "critic_aux" if is_aux else "critic"
+
+        critic_tx = optax.multi_transform(
+            {"critic": critic_tx, "critic_aux": aux_critic_tx},
+            jax.tree_util.tree_map_with_path(_critic_label, critic_params),
+        )
 
     actor_state = TrainState.create(
         apply_fn=network.apply,

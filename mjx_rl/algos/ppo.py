@@ -91,6 +91,7 @@ def static_compile_signature(config: dict) -> tuple:
         int(config.get("CRITIC_MINIBATCH_SIZE", net_cfg["MINIBATCH_SIZE"])),
         config["CRITIC_TYPE"].lower(),
         config["E_VARIANT"].lower(),
+        bool(config.get("SPLIT_AUX_OPTIMIZER", False)),
         net_cfg.get("LR_SCHEDULE", "constant").lower(),
         bool(net_cfg.get("NORMALIZE_ENV", True)),
         bool(net_cfg.get("NORMALIZE_REW", False)),
