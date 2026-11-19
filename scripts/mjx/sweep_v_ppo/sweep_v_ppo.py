@@ -44,7 +44,7 @@ from mjx_rl.core.mjx_config import DEFAULT_DMC_5_ENVS, get_dmc_brax_parity_confi
 from scripts.sweep_standard_plotting import DEFAULT_PAIRWISE_V_PPO, generate_standardized_suite
 from scripts.sweep_standard_runner import _apply_params, build_candidates_for_method
 
-METHOD_KEYS = ["td_lambda", "e_lambda_v_aux"]
+METHOD_KEYS = ["td_lambda", "td_0", "e_0_v_aux", "e_lambda_v_aux"]
 SUITE_TITLE = "MJX Playground V-PPO"
 REFERENCE_METHOD = "td_lambda"
 
@@ -101,7 +101,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--impl", type=str, default="jax", choices=["jax", "warp"])
     p.add_argument("--critic_lrs", nargs="+", type=float, default=[3e-4, 1e-3, 3e-3])
     p.add_argument("--critic_epochs", nargs="+", type=int, default=[8, 16, 32])
-    p.add_argument("--lambdas", nargs="+", type=float, default=[0.8, 0.95, 0.99])
+    p.add_argument("--lambdas", nargs="+", type=float, default=[0.6, 0.8, 0.9, 0.95, 1.0])
     p.add_argument("--actor_lr", type=float, default=3e-4)
     p.add_argument("--actor_epochs", type=int, default=16)
     p.add_argument("--gae_lambda", type=float, default=0.8)
