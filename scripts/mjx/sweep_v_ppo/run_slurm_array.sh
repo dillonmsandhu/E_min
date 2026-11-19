@@ -2,7 +2,7 @@
 #SBATCH --job-name=v_ppo_mjx
 #SBATCH --output=slurm/%A_%a.out
 #SBATCH --error=slurm/%A_%a.err
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --partition=compsci-gpu
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
@@ -68,7 +68,7 @@ METHODS="${METHODS:-td_lambda td_0 e_0_v_aux e_lambda_v_aux}"
 N_SEEDS="${N_SEEDS:-3}"
 MASTER_SEED="${MASTER_SEED:-42}"
 CRITIC_LRS="${CRITIC_LRS:-0.0003 0.001 0.003}"
-CRITIC_EPOCHS="${CRITIC_EPOCHS:-8 16 32}"
+CRITIC_EPOCHS="${CRITIC_EPOCHS:-8 16}"
 LAMBDAS="${LAMBDAS:-0.6 0.8 0.9 0.95 1.0}"
 ACTOR_LR="${ACTOR_LR:-0.0003}"
 ACTOR_EPOCHS="${ACTOR_EPOCHS:-16}"

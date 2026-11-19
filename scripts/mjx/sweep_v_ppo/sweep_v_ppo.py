@@ -100,7 +100,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--methods", nargs="+", default=METHOD_KEYS)
     p.add_argument("--impl", type=str, default="jax", choices=["jax", "warp"])
     p.add_argument("--critic_lrs", nargs="+", type=float, default=[3e-4, 1e-3, 3e-3])
-    p.add_argument("--critic_epochs", nargs="+", type=int, default=[8, 16, 32])
+    p.add_argument("--critic_epochs", nargs="+", type=int, default=[8, 16])
     p.add_argument("--lambdas", nargs="+", type=float, default=[0.6, 0.8, 0.9, 0.95, 1.0])
     p.add_argument("--actor_lr", type=float, default=3e-4)
     p.add_argument("--actor_epochs", type=int, default=16)
