@@ -83,8 +83,12 @@ def main():
             cfg["SPLIT_AUX_OPTIMIZER"] = split_opt
 
             t0 = time.time()
-            train_fn = jax.jit(jax.vmap(make_ppo_train(cfg)))
-            out = train_fn(seed_keys)
+            if args.n_seeds == 1:
+                train_fn = jax.jit(make_ppo_train(cfg))
+                out = train_fn(seed_keys[0])
+            else:
+                train_fn = jax.jit(jax.vmap(make_ppo_train(cfg)))
+                out = train_fn(seed_keys)
             jax.block_until_ready(out["metrics"]["returned_episode_returns"])
             dt = time.time() - t0
 

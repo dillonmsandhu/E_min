@@ -18,6 +18,7 @@ fi
 REPO_ROOT="$(pwd)"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_FLAGS="${XLA_FLAGS:-} --xla_gpu_enable_command_buffer="
 if [ -d "/usr/xtmp/${USER}" ]; then
     export JAX_COMPILATION_CACHE_DIR="/usr/xtmp/${USER}/jax_compilation_cache"
 else
