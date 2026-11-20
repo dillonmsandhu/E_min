@@ -245,6 +245,20 @@ def initialize_split_train_state(config, network, network_params):
         optax.clip_by_global_norm(max_grad_norm),
         optax.adamw(learning_rate=critic_schedule, eps=1e-5),
     )
+    if config.get("SPLIT_AUX_OPTIMIZER", False) and any("aux" in k for k in critic_params.keys()):
+        aux_critic_tx = optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
+            optax.adamw(learning_rate=critic_schedule, eps=1e-5),
+        )
+
+        def _critic_label(path, _val):
+            is_aux = any("aux" in getattr(node, "key", str(node)) for node in path)
+            return "critic_aux" if is_aux else "critic"
+
+        critic_tx = optax.multi_transform(
+            {"critic": critic_tx, "critic_aux": aux_critic_tx},
+            jax.tree_util.tree_map_with_path(_critic_label, critic_params),
+        )
 
     actor_state = TrainState.create(
         apply_fn=network.apply,

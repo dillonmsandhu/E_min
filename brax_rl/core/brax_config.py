@@ -12,6 +12,7 @@ config = {
     "E_VARIANT": "aux",
     "AUX_LAMBDA": 1.0,
     "AUX_VF_COEF": 1.0,
+    "SPLIT_AUX_OPTIMIZER": False,
     "K_ACTIONS": 4,
     "GAE_CONTINUOUS_MODE": "loo",
     "CLIP_EPS": 0.2,
