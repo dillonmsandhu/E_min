@@ -40,6 +40,7 @@ config = {
     "POLICY_OBS_KEY": "state",
     "VALUE_OBS_KEY": "state",
     "SHARED_TORSO": False,
+    "AUX_STOP_GRAD_TORSO": False,
     "SPLIT_AUX_OPTIMIZER": True,
     "LAYER_NORM": False,
     "NETWORK_CONFIG": {

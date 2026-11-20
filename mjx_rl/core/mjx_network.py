@@ -242,6 +242,7 @@ class ActorCriticDualCritic(nn.Module):
     log_std_init: float = -0.5
     layer_norm: bool = False
     shared_torso: bool = False
+    aux_stop_grad_torso: bool = False
     policy_obs_key: str = "state"
     value_obs_key: str = "state"
 
@@ -305,14 +306,22 @@ class ActorCriticDualCritic(nn.Module):
 
     def v_aux(self, x):
         obs_v = _extract_obs(x, self.value_obs_key)
-        phi = self.critic_torso(obs_v) if self.shared_torso else self.aux_torso(obs_v)
+        if self.shared_torso:
+            phi = self.critic_torso(obs_v)
+            if self.aux_stop_grad_torso:
+                phi = jax.lax.stop_gradient(phi)
+        else:
+            phi = self.aux_torso(obs_v)
         return jnp.squeeze(self.aux_head(phi), axis=-1)
 
     def both(self, x):
         obs_v = _extract_obs(x, self.value_obs_key)
         phi_v = self.critic_torso(obs_v)
         v = jnp.squeeze(self.critic_head(phi_v), axis=-1)
-        phi_aux = phi_v if self.shared_torso else self.aux_torso(obs_v)
+        if self.shared_torso:
+            phi_aux = jax.lax.stop_gradient(phi_v) if self.aux_stop_grad_torso else phi_v
+        else:
+            phi_aux = self.aux_torso(obs_v)
         v_aux = jnp.squeeze(self.aux_head(phi_aux), axis=-1)
         return v, v_aux
 

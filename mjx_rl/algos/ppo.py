@@ -91,6 +91,8 @@ def static_compile_signature(config: dict) -> tuple:
         int(config.get("CRITIC_MINIBATCH_SIZE", net_cfg["MINIBATCH_SIZE"])),
         config["CRITIC_TYPE"].lower(),
         config["E_VARIANT"].lower(),
+        bool(config.get("SHARED_TORSO", False)),
+        bool(config.get("AUX_STOP_GRAD_TORSO", False)),
         bool(config.get("SPLIT_AUX_OPTIMIZER", False)),
         net_cfg.get("LR_SCHEDULE", "constant").lower(),
         bool(net_cfg.get("NORMALIZE_ENV", True)),
@@ -200,6 +202,7 @@ def make_train(config, dynamic_hparams: bool = False):
                 kernel_init_type=kernel_init_type,
                 layer_norm=config.get("LAYER_NORM", False),
                 shared_torso=config.get("SHARED_TORSO", False),
+                aux_stop_grad_torso=config.get("AUX_STOP_GRAD_TORSO", False),
                 policy_obs_key=policy_obs_key,
                 value_obs_key=value_obs_key,
             )
