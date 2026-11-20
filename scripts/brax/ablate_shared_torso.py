@@ -39,9 +39,10 @@ DEFAULT_BRAX_5_ENVS = [
 ]
 
 VARIANTS = [
-    ("shared_torso", True, False),
-    ("shared_torso_sg", True, True),
-    ("separate_torso", False, False),
+    ("shared_torso", True, False, False),
+    ("shared_torso_sg", True, True, False),
+    ("separate_torso", False, False, False),
+    ("separate_torso_split_opt", False, False, True),
 ]
 
 
@@ -69,7 +70,7 @@ def main():
         results[env] = {}
         ts = get_env_default_timesteps(env, args.total_timesteps)
         print(f"\n=== {env} ({ts:,} steps | E(lambda={args.e_lambda}), lr={args.lr}, ep={args.epochs}) ===")
-        for label, shared_torso, stop_grad in VARIANTS:
+        for label, shared_torso, stop_grad, split_opt in VARIANTS:
             cfg = copy.deepcopy(brax_ppo_config)
             cfg["ENV_NAME"] = env
             cfg["TOTAL_TIMESTEPS"] = int(ts)
@@ -89,6 +90,7 @@ def main():
             cfg["CRITIC_MINIBATCH_SIZE"] = int(args.minibatch_size)
             cfg["SHARED_TORSO"] = shared_torso
             cfg["AUX_STOP_GRAD_TORSO"] = stop_grad
+            cfg["SPLIT_AUX_OPTIMIZER"] = split_opt
 
             t0 = time.time()
             if args.n_seeds == 1:
