@@ -33,6 +33,13 @@ fi
 REPO_ROOT="$(pwd)"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+if [ -d "/usr/xtmp/${USER}" ]; then
+    export JAX_COMPILATION_CACHE_DIR="/usr/xtmp/${USER}/jax_compilation_cache"
+else
+    export JAX_COMPILATION_CACHE_DIR="${HOME}/.cache/jax_compilation_cache"
+fi
+export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=2
+mkdir -p "$JAX_COMPILATION_CACHE_DIR"
 
 # Ensure fallback log folder exists if run directly via sbatch without submit_array.sh
 mkdir -p slurm
