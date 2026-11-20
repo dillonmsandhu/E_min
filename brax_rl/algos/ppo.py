@@ -96,6 +96,7 @@ def make_train(config):
                 activation=net_cfg.get("ACTIVATION", "tanh"),
                 layer_norm=config.get("LAYER_NORM", False),
                 shared_torso=config.get("SHARED_TORSO", True),
+                aux_stop_grad_torso=config.get("AUX_STOP_GRAD_TORSO", False),
             )
         else:
             network = ActorCritic(

@@ -87,6 +87,7 @@ class ActorCriticDualCritic(nn.Module):
     log_std_init: float = -0.5
     layer_norm: bool = False
     shared_torso: bool = True
+    aux_stop_grad_torso: bool = False
 
     def setup(self):
         activation = nn.relu if self.activation == "relu" else nn.tanh
@@ -159,7 +160,10 @@ class ActorCriticDualCritic(nn.Module):
     def both(self, x):
         phi_v = self.critic_torso(x)
         v = self.critic_head(phi_v).squeeze(-1)
-        phi_aux = phi_v if self.shared_torso else self.aux_torso(x)
+        if self.shared_torso:
+            phi_aux = jax.lax.stop_gradient(phi_v) if self.aux_stop_grad_torso else phi_v
+        else:
+            phi_aux = self.aux_torso(x)
         v_aux = self.aux_head(phi_aux).squeeze(-1)
         return v, v_aux
 
