@@ -37,8 +37,8 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
     },
     "td_0": {
         "label": "TD(0)",
-        "color": "#2563eb",
-        "ls": "-",
+        "color": "#0891b2",
+        "ls": "--",
     },
     "msbe": {
         "label": "MSBE (2s)",
@@ -1569,7 +1569,11 @@ def _generate_per_lambda_head_to_head_suite(
     plt.savefig(os.path.join(plots_dir, "per_lambda_wtl_vs_baseline.pdf"), bbox_inches="tight")
     plt.close()
 
-    # 2. Per-env AUC vs lambda curves (Baseline + E(lambda) + BSMC)
+    # 2. Per-env AUC vs lambda curves (Baseline + E(lambda) + BSMC, plus λ=0 when td_0 / e_0_v_aux are present)
+    has_zero_pt = ("td_0" in method_keys) or ("e_0_v_aux" in method_keys)
+    curve_lambdas = ([0.0] + lambdas) if has_zero_pt else lambdas
+    zero_map = {"td_lambda": "td_0", "e_lambda_v_aux": "e_0_v_aux"}
+
     n_envs = len(envs)
     n_cols = min(3, n_envs)
     n_rows = int(np.ceil(n_envs / n_cols))
@@ -1581,11 +1585,15 @@ def _generate_per_lambda_head_to_head_suite(
         for k in plot_keys:
             meta = get_algo_meta(k)
             ys, es = [], []
-            for lmb in lambdas:
-                cands = [
-                    res for res in all_runs[env].get(k, {}).values()
-                    if (lv := _extract_run_lambda(res.get("params", {}))) is not None and abs(lv - lmb) < 1e-6
-                ]
+            for lmb in curve_lambdas:
+                if abs(lmb) < 1e-9:
+                    z_key = zero_map.get(k)
+                    cands = list(all_runs[env].get(z_key, {}).values()) if z_key and z_key in method_keys else []
+                else:
+                    cands = [
+                        res for res in all_runs[env].get(k, {}).values()
+                        if (lv := _extract_run_lambda(res.get("params", {}))) is not None and abs(lv - lmb) < 1e-6
+                    ]
                 if cands:
                     best = max(cands, key=lambda res: res["auc_mean"])
                     ys.append(best["auc_mean"])
@@ -1593,11 +1601,11 @@ def _generate_per_lambda_head_to_head_suite(
                 else:
                     ys.append(np.nan)
                     es.append(np.nan)
-            ax.errorbar(lambdas, ys, yerr=es, marker="o", lw=2.0, ls=meta["ls"], color=meta["color"], label=meta["label"], capsize=3)
+            ax.errorbar(curve_lambdas, ys, yerr=es, marker="o", lw=2.0, ls=meta["ls"], color=meta["color"], label=meta["label"], capsize=3)
         ax.set_title(ENV_TITLES.get(env, env), fontsize=10.5, fontweight="bold")
         ax.set_xlabel("λ")
         ax.set_ylabel("AUC Return")
-        ax.set_xticks(lambdas)
+        ax.set_xticks(curve_lambdas)
         ax.grid(True, alpha=0.3)
         if r_idx == 0:
             ax.legend(loc="best", fontsize=7.5)
