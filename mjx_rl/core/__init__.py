@@ -2,8 +2,10 @@
 
 from mjx_rl.core.mjx_config import (
     DEFAULT_DMC_5_ENVS,
+    DEFAULT_LOCOMOTION_5_ENVS,
     config as default_config,
     get_dmc_brax_parity_config,
+    get_locomotion_brax_parity_config,
 )
 from mjx_rl.core.mjx_critics import (
     CRITIC_LOSS_FNS,

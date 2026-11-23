@@ -75,6 +75,15 @@ DEFAULT_DMC_5_ENVS = [
     "FingerSpin",
 ]
 
+# Five diverse robotics locomotion tasks (quadruped + bipedal humanoid)
+DEFAULT_LOCOMOTION_5_ENVS = [
+    "Go1JoystickFlatTerrain",
+    "Go1Getup",
+    "Go1Handstand",
+    "G1JoystickFlatTerrain",
+    "BerkeleyHumanoidJoystickFlatTerrain",
+]
+
 
 def get_dmc_brax_parity_config(env_name: str, impl: str = "jax") -> dict:
     """
@@ -128,5 +137,88 @@ def get_dmc_brax_parity_config(env_name: str, impl: str = "jax") -> dict:
         cfg["ACTOR_EPOCHS"] = 4
         cfg["CRITIC_EPOCHS"] = 4
         cfg["NETWORK_CONFIG"]["NUM_EPOCHS"] = 4
+
+    return cfg
+
+
+def get_locomotion_brax_parity_config(env_name: str, impl: str = "jax") -> dict:
+    """
+    Returns a configuration dictionary matching the tuned Brax PPO hyperparameters
+    from MuJoCo Playground (`rss2025/mujoco_playground/config/locomotion_params.py`).
+    """
+    cfg = copy.deepcopy(config)
+    cfg["ENV_NAME"] = env_name
+    cfg["IMPL"] = impl
+
+    cfg["GAMMA"] = 0.97
+    cfg["REWARD_SCALING"] = 1.0
+    cfg["ACTOR_LR"] = 3e-4
+    cfg["CRITIC_LR"] = 3e-4
+    cfg["ACTOR_EPOCHS"] = 4
+    cfg["CRITIC_EPOCHS"] = 4
+    cfg["ENT_COEF"] = 1e-2
+    cfg["CLIP_EPS"] = 0.3
+    cfg["NUM_ENVS"] = 512
+    cfg["NUM_STEPS"] = 128
+    cfg["MINIBATCH_SIZE"] = 2048
+    cfg["ACTOR_MINIBATCH_SIZE"] = 2048
+    cfg["CRITIC_MINIBATCH_SIZE"] = 2048
+
+    net_cfg = cfg["NETWORK_CONFIG"]
+    net_cfg["LR"] = 3e-4
+    net_cfg["NUM_EPOCHS"] = 4
+    net_cfg["MINIBATCH_SIZE"] = 2048
+    net_cfg["POLICY_HIDDEN_LAYER_SIZES"] = (128, 128, 128, 128)
+    net_cfg["VALUE_HIDDEN_LAYER_SIZES"] = (256, 256, 256, 256, 256)
+
+    privileged_envs = (
+        "Go1JoystickFlatTerrain",
+        "Go1JoystickRoughTerrain",
+        "Go1Handstand",
+        "Go1Footstand",
+        "Go1Backflip",
+        "Go1Getup",
+        "G1JoystickFlatTerrain",
+        "G1JoystickRoughTerrain",
+        "BerkeleyHumanoidJoystickFlatTerrain",
+        "BerkeleyHumanoidJoystickRoughTerrain",
+        "T1JoystickFlatTerrain",
+        "T1JoystickRoughTerrain",
+        "ApolloJoystickFlatTerrain",
+    )
+    if env_name in privileged_envs:
+        cfg["POLICY_OBS_KEY"] = "state"
+        cfg["VALUE_OBS_KEY"] = "privileged_state"
+        net_cfg["POLICY_HIDDEN_LAYER_SIZES"] = (512, 256, 128)
+        net_cfg["VALUE_HIDDEN_LAYER_SIZES"] = (512, 256, 128)
+
+    if env_name in ("Go1JoystickFlatTerrain", "Go1JoystickRoughTerrain", "Go1Backflip"):
+        cfg["TOTAL_TIMESTEPS"] = 200_000_000
+    elif env_name == "Go1Getup":
+        cfg["TOTAL_TIMESTEPS"] = 50_000_000
+    elif env_name in ("Go1Handstand", "Go1Footstand"):
+        cfg["TOTAL_TIMESTEPS"] = 100_000_000
+    elif env_name in (
+        "G1JoystickFlatTerrain",
+        "G1JoystickRoughTerrain",
+        "T1JoystickFlatTerrain",
+        "T1JoystickRoughTerrain",
+        "ApolloJoystickFlatTerrain",
+    ):
+        cfg["TOTAL_TIMESTEPS"] = 200_000_000
+        cfg["CLIP_EPS"] = 0.2
+        cfg["ENT_COEF"] = 0.005
+    elif env_name in (
+        "BerkeleyHumanoidJoystickFlatTerrain",
+        "BerkeleyHumanoidJoystickRoughTerrain",
+    ):
+        cfg["TOTAL_TIMESTEPS"] = 150_000_000
+        cfg["CLIP_EPS"] = 0.2
+        cfg["ENT_COEF"] = 0.005
+    else:
+        cfg["TOTAL_TIMESTEPS"] = 100_000_000
+
+    if env_name == "Go1Backflip":
+        cfg["GAMMA"] = 0.95
 
     return cfg
