@@ -27,7 +27,8 @@ def main():
     parser.add_argument("--env_name", type=str, required=True, help="Single MJX Locomotion environment name")
     args = parser.parse_args()
     args.envs = [args.env_name]
-    args.out_dir = os.path.join(args.out_dir, args.env_name)
+    tag = args.env_name if len(args.methods) > 1 else f"{args.env_name}__{args.methods[0]}"
+    args.out_dir = os.path.join(args.out_dir, tag)
     os.makedirs(args.out_dir, exist_ok=True)
     run_sweep(args)
 

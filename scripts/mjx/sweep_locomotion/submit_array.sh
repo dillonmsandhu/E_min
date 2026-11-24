@@ -17,9 +17,9 @@ METHODS=${METHODS:-"td_lambda td_0 e_0_v_aux e_lambda_v_aux"}
 ENVS=${ENVS:-"Go1JoystickFlatTerrain Go1Getup Go1Handstand G1JoystickFlatTerrain BerkeleyHumanoidJoystickFlatTerrain"}
 GPU_GRES=${GPU_GRES:-auto}
 MASTER_SEED=${MASTER_SEED:-42}
-CRITIC_LRS=${CRITIC_LRS:-"0.0003 0.001 0.003"}
-CRITIC_EPOCHS=${CRITIC_EPOCHS:-"4 8"}
-LAMBDAS=${LAMBDAS:-"0.6 0.8 0.9 0.95 1.0"}
+CRITIC_LRS=${CRITIC_LRS:-"0.0003 0.001"}
+CRITIC_EPOCHS=${CRITIC_EPOCHS:-"4"}
+LAMBDAS=${LAMBDAS:-"0.6 0.8 0.95"}
 ACTOR_LR=${ACTOR_LR:-0.0003}
 ACTOR_EPOCHS=${ACTOR_EPOCHS:-4}
 GAE_LAMBDA=${GAE_LAMBDA:-0.8}
@@ -58,20 +58,25 @@ get_env_gres() {
     esac
 }
 
+# Ensure mujoco_menagerie is downloaded once before parallel Slurm jobs start (avoids git clone race).
+$PYTHON -c "from mujoco_playground._src.mjx_env import ensure_menagerie_exists; ensure_menagerie_exists()"
+
 JOB_IDS=()
 for ENV_NAME in $ENVS; do
     GRES=$(get_env_gres "$ENV_NAME")
-    JID=$(sbatch --parsable \
-        --job-name="loco_${ENV_NAME}" \
-        --gres="$GRES" \
-        --array=0-0 \
-        --chdir="$REPO_ROOT" \
-        --output="${LOG_DIR}/%A_${ENV_NAME}.out" \
-        --error="${LOG_DIR}/%A_${ENV_NAME}.err" \
-        --export=ALL \
-        scripts/mjx/sweep_locomotion/run_slurm_array.sh "$ENV_NAME")
-    echo "  Submitted $ENV_NAME ($GRES) -> Job $JID"
-    JOB_IDS+=("$JID")
+    for METHOD in $METHODS; do
+        JID=$(sbatch --parsable \
+            --job-name="loco_${ENV_NAME}_${METHOD}" \
+            --gres="$GRES" \
+            --array=0-0 \
+            --chdir="$REPO_ROOT" \
+            --output="${LOG_DIR}/%A_${ENV_NAME}_${METHOD}.out" \
+            --error="${LOG_DIR}/%A_${ENV_NAME}_${METHOD}.err" \
+            --export=ALL,METHODS="$METHOD" \
+            scripts/mjx/sweep_locomotion/run_slurm_array.sh "$ENV_NAME")
+        echo "  Submitted $ENV_NAME [$METHOD] ($GRES) -> Job $JID"
+        JOB_IDS+=("$JID")
+    done
 done
 
 DEP_STR=$(IFS=:; echo "${JOB_IDS[*]}")
