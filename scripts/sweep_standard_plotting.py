@@ -55,6 +55,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "color": "#059669",
         "ls": "-",
     },
+    "e_0_rot_gated": {
+        "label": "E(0) (Rot-Gated)",
+        "color": "#16a34a",
+        "ls": "--",
+    },
     "e_0_dir_double": {
         "label": "E(0) (Dir, 2s)",
         "color": "#ea580c",
@@ -74,6 +79,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "label": "E(λ) (v_aux)",
         "color": "#7c3aed",
         "ls": "-",
+    },
+    "e_lambda_rot_gated": {
+        "label": "E(λ) (Rot-Gated)",
+        "color": "#d946ef",
+        "ls": "--",
     },
     "bsmc_v_aux": {
         "label": "BSMC (v_aux)",

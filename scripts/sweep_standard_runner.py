@@ -36,10 +36,12 @@ def _method_critic_type(method_key: str) -> str:
         "msbe": "msbe",
         "sarsa_lambda": "sarsa_lambda",
         "e_0_v_aux": "e_0_v_aux",
+        "e_0_rot_gated": "e_0",
         "e_0_bilinear": "e_0_bilinear",
         "e_0_dir_marg": "e_0_dir_marg",
         "e_0_dir_double": "e_dirichlet_double",
         "e_lambda_v_aux": "e_lambda_v_aux",
+        "e_lambda_rot_gated": "e_lambda",
         "bsmc_v_aux": "bsmc_v_aux",
         "bsmc_fwd": "bsmc",
         "bsmc_double_pi": "bsmc_double_pi",
@@ -55,11 +57,11 @@ def _method_critic_type(method_key: str) -> str:
 def _method_lambda_key(method_key: str) -> str | None:
     if method_key in ("td_lambda", "sarsa_lambda"):
         return "VALUE_LAMBDA"
-    if method_key == "e_lambda_v_aux":
+    if method_key in ("e_lambda_v_aux", "e_lambda_rot_gated"):
         return "E_LAMBDA"
     if method_key in ("bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi", "bsmc_bilinear_v_aux", "bsmc_dir_marg", "bsmc_dir_double"):
         return "BSMC_LAMBDA"
-    if method_key in ("e_0_v_aux", "e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe"):
+    if method_key in ("e_0_v_aux", "e_0_rot_gated", "e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe"):
         return None
     raise ValueError(f"Unknown canonical method_key '{method_key}'.")
 
@@ -120,14 +122,19 @@ def _apply_params(
     is_v_ppo: bool,
 ) -> dict[str, Any]:
     cfg = copy.deepcopy(base_cfg)
-    if is_v_ppo and method_key == "e_0_v_aux":
+    if is_v_ppo and method_key in ("e_0_v_aux", "e_0_rot_gated"):
         cfg["CRITIC_TYPE"] = "e_0"
-    elif is_v_ppo and method_key == "e_lambda_v_aux":
+    elif is_v_ppo and method_key in ("e_lambda_v_aux", "e_lambda_rot_gated"):
         cfg["CRITIC_TYPE"] = "e_lambda"
     elif is_v_ppo and method_key == "bsmc_v_aux":
         cfg["CRITIC_TYPE"] = "bsmc"
     else:
         cfg["CRITIC_TYPE"] = _method_critic_type(method_key)
+
+    if method_key in ("e_0_rot_gated", "e_lambda_rot_gated"):
+        cfg["ROT_GATE_ENABLED"] = True
+    else:
+        cfg["ROT_GATE_ENABLED"] = False
 
     if method_key in ("e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_dir_double"):
         cfg["E_VARIANT"] = "naive"
@@ -165,7 +172,7 @@ def run_candidate(make_train_fn: Callable, cfg: dict[str, Any], seed_keys: jax.A
     seed_aucs = returns.mean(axis=-1)
     seed_finals = returns[:, -1]
 
-    return {
+    result = {
         "returned_episode_returns": returns,
         "auc_mean": float(seed_aucs.mean()),
         "auc_std": float(seed_aucs.std()),
@@ -173,6 +180,13 @@ def run_candidate(make_train_fn: Callable, cfg: dict[str, Any], seed_keys: jax.A
         "final_std": float(seed_finals.std()),
         "elapsed_time": float(elapsed),
     }
+    for extra_key in ("rot_omega", "rot_r_rot_ema", "rot_alpha_eff", "rot_beta_eff"):
+        if extra_key in metrics:
+            arr = np.asarray(metrics[extra_key])
+            if arr.ndim == 1:
+                arr = arr[None, :]
+            result[extra_key] = arr
+    return result
 
 
 def run_standardized_sweep(

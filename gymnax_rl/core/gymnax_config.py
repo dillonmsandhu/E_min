@@ -75,6 +75,13 @@ config = {
     "ADV_STD_FLOOR": 0.1,
     "ADV_CLIP": 3.0,
 
+    # Rotation-Gated E(0) / E(lambda)
+    "ROT_GATE_ENABLED": False,
+    "ROT_GATE_TAU": 0.25,
+    "ROT_GATE_EMA": 0.95,
+    "ROT_PROBE_ENVS": 16,
+    "ROT_OMEGA": 1.0,
+
     # Slurm & Metadata
     "SLURM_JOB_ID": None,
     "SLURM_ARRAY_JOB_ID": None,

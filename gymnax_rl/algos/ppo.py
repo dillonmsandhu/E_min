@@ -28,6 +28,7 @@ from gymnax_rl.core.gymnax_critics import (
     get_critic_target_lambda,
     prepare_critic_transitions,
     ppo_actor_loss_fn,
+    compute_lambda_trace_rotation_ratio,
 )
 from gymnax_rl.core.runtime_metrics import compute_runtime_metrics
 
@@ -92,6 +93,15 @@ def make_train(base_config):
         )
         train_state = initialize_split_flax_train_state(config, network, network_params)
 
+        # Rotation-gating configuration (static Python dispatch for zero overhead when disabled)
+        rot_gate_enabled = bool(config["ROT_GATE_ENABLED"])
+        rot_gate_tau = float(config["ROT_GATE_TAU"])
+        rot_gate_ema = float(config["ROT_GATE_EMA"])
+        rot_probe_envs = int(config["ROT_PROBE_ENVS"])
+        rot_lambda = float(config["E_LAMBDA"]) if c_type in ("e_lambda", "elambda", "e_geometric") else 0.0
+        if rot_gate_enabled and not (0.0 < rot_gate_tau <= 1.0):
+            raise ValueError(f"ROT_GATE_TAU must be in (0, 1], got {rot_gate_tau}")
+
         # Initialize Environment
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -99,9 +109,23 @@ def make_train(base_config):
         start_obs = obsv
         last_true_terminal = jnp.zeros(config["NUM_ENVS"], dtype=bool)
         steps_since_start = jnp.full((config["NUM_ENVS"],), 10_000, dtype=jnp.int32)
+        rot_alpha_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
+        rot_beta_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
+        rot_omega_init = jnp.asarray(0.0 if rot_gate_enabled else 1.0, dtype=jnp.float32)
 
         def _update_step(runner_state, unused):
-            train_state, env_state, last_obs, last_true_terminal, rng, idx, steps_since_start = runner_state
+            (
+                train_state,
+                env_state,
+                last_obs,
+                last_true_terminal,
+                rng,
+                idx,
+                steps_since_start,
+                rot_alpha_ema,
+                rot_beta_ema,
+                rot_omega,
+            ) = runner_state
 
             # 1. COLLECT TRAJECTORIES
             def _env_step(env_scan_state, unused):
@@ -240,6 +264,34 @@ def make_train(base_config):
                 steps_since_start=steps_since_start,
             )
 
+            # 3b. ONLINE ROTATION-GATE MEASUREMENT (1 JVP + 1 VJP via lambda-traces)
+            if rot_gate_enabled:
+                alpha_eff, beta_eff = compute_lambda_trace_rotation_ratio(
+                    critic_params=train_state.critic.params,
+                    actor_params=train_state.actor.params,
+                    network=network,
+                    traj_batch=traj_batch,
+                    gamma=config["GAMMA"],
+                    lmbda=rot_lambda,
+                    n_probe_envs=rot_probe_envs,
+                )
+                rot_alpha_ema = jnp.where(
+                    idx == 1, alpha_eff, rot_gate_ema * rot_alpha_ema + (1.0 - rot_gate_ema) * alpha_eff
+                )
+                rot_beta_ema = jnp.where(
+                    idx == 1, beta_eff, rot_gate_ema * rot_beta_ema + (1.0 - rot_gate_ema) * beta_eff
+                )
+                r_rot_ema = rot_beta_ema / jnp.maximum(rot_alpha_ema, 1e-6)
+                omega_target = jnp.maximum(0.0, (r_rot_ema - rot_gate_tau) / (r_rot_ema + rot_gate_tau))
+                # Slow EMA on omega starting from 0.0 -> starts as forward-only while v_aux warms up
+                rot_omega = rot_gate_ema * rot_omega + (1.0 - rot_gate_ema) * omega_target
+                critic_cfg = {**config, "ROT_OMEGA": rot_omega}
+            else:
+                alpha_eff = jnp.asarray(0.0, dtype=jnp.float32)
+                beta_eff = jnp.asarray(0.0, dtype=jnp.float32)
+                r_rot_ema = jnp.asarray(0.0, dtype=jnp.float32)
+                critic_cfg = config
+
             # 4. CRITIC UPDATE PHASE
             def _critic_epoch(critic_state, unused):
                 def _critic_minibatch(train_state, mb):
@@ -252,7 +304,7 @@ def make_train(base_config):
                             network,
                             traj_mb,
                             traj_mb.targets,
-                            config,
+                            critic_cfg,
                         )
 
                     (loss, aux), grads = jax.value_and_grad(_c_loss, has_aux=True)(train_state.critic.params)
@@ -318,12 +370,39 @@ def make_train(base_config):
             metric["pi_idx"] = idx
             metric["pi_num"] = idx
             metric["advantage"] = advantages.mean()
+            if rot_gate_enabled:
+                metric["rot_omega"] = rot_omega
+                metric["rot_r_rot_ema"] = r_rot_ema
+                metric["rot_alpha_eff"] = alpha_eff
+                metric["rot_beta_eff"] = beta_eff
 
-            runner_state = (train_state, env_state, last_obs, last_true_terminal, rng, idx + 1, steps_since_start)
+            runner_state = (
+                train_state,
+                env_state,
+                last_obs,
+                last_true_terminal,
+                rng,
+                idx + 1,
+                steps_since_start,
+                rot_alpha_ema,
+                rot_beta_ema,
+                rot_omega,
+            )
             return runner_state, metric
 
         rng, _rng = jax.random.split(rng)
-        runner_state = (train_state, env_state, obsv, last_true_terminal, _rng, 1, steps_since_start)
+        runner_state = (
+            train_state,
+            env_state,
+            obsv,
+            last_true_terminal,
+            _rng,
+            1,
+            steps_since_start,
+            rot_alpha_ema_init,
+            rot_beta_ema_init,
+            rot_omega_init,
+        )
         runner_state, metrics = jax.lax.scan(_update_step, runner_state, None, config["NUM_UPDATES"])
         return {"runner_state": runner_state, "metrics": metrics}
 
