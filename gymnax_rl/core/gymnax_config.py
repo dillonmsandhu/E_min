@@ -19,6 +19,7 @@ config = {
 
     # Network Architecture
     "NETWORK_TYPE": "mlp",
+    "CNN_AVG_POOL": False,
     "SHARED_TORSO": False,
     "USE_VISUAL_OBS": True,
     "k": 16,

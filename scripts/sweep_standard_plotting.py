@@ -148,6 +148,7 @@ ENV_TITLES: dict[str, str] = {
     "Breakout-MinAtar": "Breakout (MinAtar)",
     "Freeway-MinAtar": "Freeway (MinAtar)",
     "SpaceInvaders-MinAtar": "Space Invaders (MinAtar)",
+    "SpaceInvaders-MinAtar-AvgPool": "Space Invaders (AvgPool)",
 }
 
 DEFAULT_PAIRWISE_V_PPO = [

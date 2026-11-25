@@ -1060,21 +1060,27 @@ def compute_lambda_trace_rotation_ratio(
 
             _, advs = jax.lax.scan(_gae_scan, jnp.zeros((E_p,), dtype=jnp.float32), (deltas, cont_p), reverse=True)
             target = jax.lax.stop_gradient(advs + v_s)
-        return 0.5 * jnp.mean((v_s - target) ** 2)
+        # Centered TD semi-gradient u_c = J_c^T (v - target) removes constant scalar bias mode
+        err = jax.lax.stop_gradient(v_s - target)
+        err_c = err - jnp.mean(err)
+        return jnp.mean(err_c * v_s)
 
     g_td = jax.grad(td_probe_loss)(critic_params)
     g_flat, unravel = ravel_pytree(g_td)
     u_tree = unravel(g_flat / jnp.maximum(jnp.linalg.norm(g_flat), 1e-12))
 
-    # 2. Single JVP over rollout states + final next_obs
+    # 2. Single JVP over rollout states + final next_obs, then center j_c = j - E[j]
     _, j_flat = jax.jvp(lambda cp: v_flat_fn(cp, obs_flat), (critic_params,), (u_tree,))
     _, j_last = jax.jvp(lambda cp: v_flat_fn(cp, next_obs_last), (critic_params,), (u_tree,))
-    j = j_flat.reshape((T, E_p))
+    j_raw = j_flat.reshape((T, E_p))
+    j_mean = jnp.mean(j_raw)
+    j = j_raw - j_mean
+    j_last_c = j_last - j_mean
 
-    # 3. Exact future (backward scan) and past (forward scan) lambda-traces
+    # 3. Exact future (backward scan) and past (forward scan) lambda-traces on centered j_c
     #    j_fwd[t] = cont[t] * (gamma * (1 - lmbda) * j[t+1] + gamma * lmbda * j_fwd[t+1])
     #    j_bwd[t] = cont[t-1] * (gamma * (1 - lmbda) * j[t-1] + gamma * lmbda * j_bwd[t-1])
-    j_next_arr = jnp.concatenate([j[1:], j_last[None]], axis=0)
+    j_next_arr = jnp.concatenate([j[1:], j_last_c[None]], axis=0)
 
     def _fwd_trace_step(trace_next, step_in):
         j_tp1, c_t = step_in
@@ -1101,11 +1107,12 @@ def compute_lambda_trace_rotation_ratio(
         reverse=False,
     )
 
-    # 4. alpha_eff = u^T S_{J,lambda} u; beta_eff = ||K_{J,lambda} u||_2 via 1 VJP
+    # 4. alpha_eff = u_c^T S_{J_c,lambda} u_c; beta_eff = ||K_{J_c,lambda} u_c||_2 via 1 centered VJP
     alpha_eff = jnp.mean(j * j - j * j_fwd)
 
     _, vjp_fn = jax.vjp(lambda cp: v_flat_fn(cp, obs_flat), critic_params)
-    w_k = (0.5 / float(T * E_p)) * (j_bwd - j_fwd).reshape((T * E_p,))
+    w_raw = j_bwd - j_fwd
+    w_k = (0.5 / float(T * E_p)) * (w_raw - jnp.mean(w_raw)).reshape((T * E_p,))
     ku_tree = vjp_fn(w_k)[0]
     ku_flat, _ = ravel_pytree(ku_tree)
     beta_eff = jnp.linalg.norm(ku_flat)

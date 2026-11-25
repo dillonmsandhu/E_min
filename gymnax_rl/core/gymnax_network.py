@@ -99,6 +99,7 @@ def uses_aux_network(config: dict) -> bool:
 class PQN_CNN(nn.Module):
     norm_type: str
     final_hidden_dim: int
+    use_avg_pool: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray):
@@ -125,6 +126,9 @@ class PQN_CNN(nn.Module):
         )(x)
         x = normalize(x)
         x = nn.relu(x)
+
+        if self.use_avg_pool:
+            x = nn.avg_pool(x, window_shape=(3, 3), strides=(2, 2), padding="SAME")
 
         x = x.reshape(*batch_dims, -1)
 
@@ -198,10 +202,11 @@ class PQN_AC(nn.Module):
     norm_type: str = "none"
     is_continuous: bool = False
     n_value_heads: int = 1
+    use_avg_pool: bool = False
 
     def setup(self):
-        self.actor_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
-        self.critic_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+        self.actor_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim, use_avg_pool=self.use_avg_pool)
+        self.critic_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim, use_avg_pool=self.use_avg_pool)
         self.actor_head = PolicyHead(self.action_dim, self.is_continuous)
         if self.n_value_heads > 1:
             self.critic_head = nn.Dense(self.n_value_heads, kernel_init=orthogonal(1.0), bias_init=constant(0.0))
@@ -364,12 +369,13 @@ class PQN_AC_DualCritic(nn.Module):
     norm_type: str = "none"
     is_continuous: bool = False
     shared_torso: bool = False
+    use_avg_pool: bool = False
 
     def setup(self):
-        self.actor_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
-        self.critic_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+        self.actor_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim, use_avg_pool=self.use_avg_pool)
+        self.critic_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim, use_avg_pool=self.use_avg_pool)
         if not self.shared_torso:
-            self.critic_aux_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim)
+            self.critic_aux_cnn = PQN_CNN(norm_type=self.norm_type, final_hidden_dim=self.final_hidden_dim, use_avg_pool=self.use_avg_pool)
         self.actor_head = PolicyHead(self.action_dim, self.is_continuous)
         self.critic_head = nn.Dense(1, kernel_init=nn.initializers.zeros, bias_init=constant(0.0))
         self.critic_aux_head = nn.Dense(1, kernel_init=nn.initializers.zeros, bias_init=constant(0.0))
@@ -654,6 +660,7 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
 
     uses_aux = uses_aux_network(config)
     shared_torso = config["SHARED_TORSO"]
+    use_avg_pool = bool(config["CNN_AVG_POOL"])
 
     if uses_aux:
         if use_mlp:
@@ -671,6 +678,7 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
                 final_hidden_dim=k,
                 norm_type=norm_type,
                 shared_torso=shared_torso,
+                use_avg_pool=use_avg_pool,
             )
     else:
         if use_mlp:
@@ -688,6 +696,7 @@ def initialize_actor_critic(rng, obs_shape, env, env_params, config):
                 final_hidden_dim=k,
                 norm_type=norm_type,
                 n_value_heads=n_value_heads,
+                use_avg_pool=use_avg_pool,
             )
 
     params = model.init(init_rng, jnp.zeros(obs_shape))
