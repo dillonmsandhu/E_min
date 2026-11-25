@@ -151,6 +151,15 @@ ENV_TITLES: dict[str, str] = {
     "Freeway-MinAtar": "Freeway (MinAtar)",
     "SpaceInvaders-MinAtar": "Space Invaders (MinAtar)",
     "SpaceInvaders-MinAtar-AvgPool": "Space Invaders (AvgPool)",
+    # Octax
+    "Octax-pong": "Octax Pong",
+    "Octax-brix": "Octax Brix",
+    "Octax-tetris": "Octax Tetris",
+    "Octax-blinky": "Octax Blinky",
+    "Octax-missile": "Octax Missile",
+    "Octax-ufo": "Octax UFO",
+    "Octax-tank": "Octax Tank",
+    "Octax-worm": "Octax Worm",
 }
 
 DEFAULT_PAIRWISE_V_PPO = [
