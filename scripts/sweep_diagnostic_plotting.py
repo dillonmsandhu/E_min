@@ -445,16 +445,36 @@ def _plot_2x2_scatter_for_pair(
             ax.axvline(spec["ref_line"], color="#94a3b8", ls=":", lw=1.0, alpha=0.8)
 
         if xv.size > 0:
+            use_symlog = bool(np.max(np.abs(yv)) > 80.0)
+            if use_symlog:
+                ax.set_yscale("symlog", linthresh=25.0, linscale=1.2)
+
             colors = [
                 "#16a34a" if y > 1.0 else ("#dc2626" if y < -1.0 else "#64748b")
                 for y in yv
             ]
             ax.scatter(xv, yv, s=72, c=colors, edgecolors="#111827", linewidths=0.7, zorder=4)
-            for xi, yi, txt in zip(xv, yv, lbls):
+
+            # Simple greedy vertical offset staggering to reduce label overlap
+            x_span = max(float(np.max(xv) - np.min(xv)), 1e-8)
+            y_trans = np.sign(yv) * np.log1p(np.abs(yv) / 25.0) if use_symlog else yv
+            y_span = max(float(np.max(y_trans) - np.min(y_trans)), 1e-8)
+            order = np.argsort(xv)
+            placed: list[tuple[float, float]] = []
+            for oi in order:
+                xi, yi, txt = float(xv[oi]), float(yv[oi]), lbls[oi]
+                xn = xi / x_span
+                yn = float(y_trans[oi]) / y_span
+                dy = 5
+                dx = 5
+                for px, py in placed:
+                    if abs(xn - px) < 0.16 and abs(yn - py) < 0.08:
+                        dy = -11 if dy > 0 else dy - 10
+                placed.append((xn, yn))
                 ax.annotate(
                     txt,
                     (xi, yi),
-                    xytext=(5, 4),
+                    xytext=(dx, dy),
                     textcoords="offset points",
                     fontsize=7.8,
                     color="#1e293b",
@@ -462,7 +482,7 @@ def _plot_2x2_scatter_for_pair(
 
             if xv.size >= 3 and np.std(xv) > 1e-12:
                 slope, intercept = np.polyfit(xv, yv, 1)
-                x_line = np.linspace(float(np.min(xv)), float(np.max(xv)), 50)
+                x_line = np.linspace(float(np.min(xv)), float(np.max(xv)), 80)
                 ax.plot(x_line, slope * x_line + intercept, color="#2563eb", lw=1.4, ls="-", alpha=0.7, zorder=3)
 
             r_p = _pearson_corr(xv, yv)
