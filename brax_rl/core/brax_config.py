@@ -31,6 +31,12 @@ config = {
         "NORMALIZE_REW": True,
         "LR_SCHEDULE": "linear",
     },
+    # Rotation-Gated E(0) / E(lambda)
+    "ROT_GATE_ENABLED": False,
+    "ROT_GATE_TAU": 0.25,
+    "ROT_GATE_EMA": 0.95,
+    "ROT_PROBE_ENVS": 16,
+    "ROT_OMEGA": 1.0,
     # Contraction & Variance Diagnostics
     "LOG_CONTRACTION_DIAGNOSTICS": True,
     "DIAG_PROBE_ENVS": 16,

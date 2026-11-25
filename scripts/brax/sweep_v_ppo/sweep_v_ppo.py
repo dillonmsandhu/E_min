@@ -3,10 +3,11 @@
 scripts/brax/sweep_v_ppo/sweep_v_ppo.py
 
 Standardized Brax V-PPO sweep comparing:
-  - td_lambda      : TD(λ) (fitted state-value critic)
-  - e_0_v_aux      : E(0) (v_aux)
-  - e_lambda_v_aux : E(λ) (v_aux)
-  - bsmc_v_aux     : BSMC (v_aux)
+  - td_lambda          : TD(λ) (fitted state-value critic)
+  - e_0_v_aux          : E(0) (v_aux)
+  - e_0_rot_gated      : E(0) (Rot-Gated)
+  - e_lambda_v_aux     : E(λ) (v_aux)
+  - e_lambda_rot_gated : E(λ) (Rot-Gated)
 """
 
 from __future__ import annotations
@@ -29,7 +30,13 @@ from brax_rl.algos.ppo import make_train as make_ppo_train
 from brax_rl.core.brax_config import config as brax_ppo_config
 from scripts.sweep_standard_runner import run_standardized_sweep
 
-METHOD_KEYS = ["td_lambda", "e_0_v_aux", "e_lambda_v_aux", "bsmc_v_aux"]
+METHOD_KEYS = [
+    "td_lambda",
+    "e_0_v_aux",
+    "e_0_rot_gated",
+    "e_lambda_v_aux",
+    "e_lambda_rot_gated",
+]
 SUITE_TITLE = "Brax V-PPO"
 REFERENCE_METHOD = "td_lambda"
 
@@ -68,6 +75,9 @@ def build_base_config(
     num_steps: int,
     minibatch_size: int,
     aux_vf_coef: float,
+    rot_gate_tau: float = 0.25,
+    rot_gate_ema: float = 0.95,
+    rot_probe_envs: int = 16,
 ) -> dict:
     cfg = copy.deepcopy(brax_ppo_config)
     cfg["ENV_NAME"] = env_name
@@ -83,6 +93,9 @@ def build_base_config(
     cfg["ACTOR_EPOCHS"] = int(cfg["NETWORK_CONFIG"]["NUM_EPOCHS"])
     cfg["CRITIC_EPOCHS"] = int(cfg["NETWORK_CONFIG"]["NUM_EPOCHS"])
     cfg["AUX_VF_COEF"] = float(aux_vf_coef)
+    cfg["ROT_GATE_TAU"] = float(rot_gate_tau)
+    cfg["ROT_GATE_EMA"] = float(rot_gate_ema)
+    cfg["ROT_PROBE_ENVS"] = int(rot_probe_envs)
     return cfg
 
 
@@ -98,6 +111,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--default_critic_epochs", type=int, default=4)
     p.add_argument("--default_lambda", type=float, default=0.8)
     p.add_argument("--aux_vf_coef", type=float, default=1.0)
+    p.add_argument("--rot_gate_tau", type=float, default=0.25)
+    p.add_argument("--rot_gate_ema", type=float, default=0.95)
+    p.add_argument("--rot_probe_envs", type=int, default=16)
     p.add_argument("--total_timesteps", type=int, default=None)
     p.add_argument("--num_envs", type=int, default=512)
     p.add_argument("--num_steps", type=int, default=128)
@@ -125,6 +141,9 @@ def run_sweep(args) -> dict:
             num_steps=args.num_steps,
             minibatch_size=args.minibatch_size,
             aux_vf_coef=args.aux_vf_coef,
+            rot_gate_tau=args.rot_gate_tau,
+            rot_gate_ema=args.rot_gate_ema,
+            rot_probe_envs=args.rot_probe_envs,
         ),
         get_timesteps_fn=lambda env: get_env_default_timesteps(env, args.total_timesteps),
         is_brax=True,

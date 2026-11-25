@@ -688,8 +688,9 @@ def e_lambda_geometric_critic_loss_fn(
         e_jump = jnp.where(is_absorbing, 0.0, targets_jump - v_jump)
         e_aux_i = sg(v_aux_i) - v_i
         e_aux_jump = jnp.where(is_absorbing, 0.0, sg(v_aux_jump) - v_jump)
+        rot_omega = config["ROT_OMEGA"]
 
-        inner_diff_sq = (e_i - sg(e_jump)) ** 2 + (sg(e_aux_i) - e_aux_jump) ** 2
+        inner_diff_sq = (e_i - sg(e_jump)) ** 2 + rot_omega * (sg(e_aux_i) - e_aux_jump) ** 2
         aux_loss = compute_aux_head_loss(v_aux_i, traj_batch.aux_targets, aux_coef=aux_coef)
     elif variant == "e_aux":
         v_i, e_phi_i = network.apply(full_params, traj_batch.obs, method=network.both)
@@ -845,10 +846,11 @@ def _one_step_e_critic_loss_fn(
     magnitude_loss = weight_mc * jnp.mean(e_i ** 2)
     branch_v_i = (e_i - sg(e_j)) ** 2
     branch_v_j = jnp.where(true_terminal, 0.0, backward_sq)
+    rot_omega = config["ROT_OMEGA"]
     diff_sq = jnp.where(
         true_terminal | is_timeout,
         e_i ** 2,
-        branch_v_i + branch_v_j,
+        branch_v_i + rot_omega * branch_v_j,
     )
     laplacian_loss = weight_dir * jnp.mean(diff_sq)
     start_anchor_loss = start_weight * jnp.mean(jnp.where(is_start, e_i ** 2, 0.0))

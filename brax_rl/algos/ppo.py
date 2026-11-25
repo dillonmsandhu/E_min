@@ -123,16 +123,25 @@ def make_train(config):
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = env.reset(reset_rng, env_params)
         last_true_terminal = jnp.zeros(config["NUM_ENVS"], dtype=bool)
+        rot_gate_enabled = bool(config["ROT_GATE_ENABLED"])
+        rot_gate_tau = float(config["ROT_GATE_TAU"])
+        rot_gate_ema = float(config["ROT_GATE_EMA"])
+        rot_probe_envs = int(config["ROT_PROBE_ENVS"])
+        if rot_gate_enabled and not (0.0 < rot_gate_tau <= 1.0):
+            raise ValueError(f"ROT_GATE_TAU must be in (0, 1], got {rot_gate_tau}")
+
         log_contraction_diag = bool(config["LOG_CONTRACTION_DIAGNOSTICS"])
-        diag_probe_envs = int(config["DIAG_PROBE_ENVS"])
-        diag_ema = float(config["DIAG_EMA"])
+        run_diag_probe = rot_gate_enabled or log_contraction_diag
+        diag_probe_envs = rot_probe_envs if rot_gate_enabled else int(config["DIAG_PROBE_ENVS"])
+        diag_ema = rot_gate_ema if rot_gate_enabled else float(config["DIAG_EMA"])
         diag_lambda = resolve_diagnostic_lambda(c_type, config)
         diag_alpha_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
         diag_beta2_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
+        rot_omega_init = jnp.asarray(0.0, dtype=jnp.float32)
 
         # TRAIN LOOP
         def _update_step(runner_state, unused):
-            train_state, env_state, last_obs, last_true_terminal, rng, idx, diag_alpha_ema, diag_beta2_ema = runner_state
+            train_state, env_state, last_obs, last_true_terminal, rng, idx, diag_alpha_ema, diag_beta2_ema, rot_omega = runner_state
 
             # 1. COLLECT TRAJECTORIES
             def _env_step(env_scan_state, unused):
@@ -261,8 +270,8 @@ def make_train(config):
                 rng=_rng,
             )
 
-            # 3b. ONLINE CONTRACTION & VARIANCE DIAGNOSTICS
-            if log_contraction_diag:
+            # 3b. ONLINE CONTRACTION DIAGNOSTICS & ROTATION-GATE MEASUREMENT
+            if run_diag_probe:
                 def _v_apply(c_params, x_flat):
                     full_p = {"params": {**train_state.actor.params, **c_params}}
                     return network.apply(full_p, x_flat, method=network.value)
@@ -288,6 +297,12 @@ def make_train(config):
                 diag_rho_c = diag_out["rho_c"]
                 diag_ret_var_ratio = diag_out["ret_var_ratio"]
                 diag_aux_unexp_var = diag_out["aux_unexp_var"]
+                if rot_gate_enabled:
+                    omega_target = jnp.maximum(0.0, (diag_r_rot_c - rot_gate_tau) / (diag_r_rot_c + rot_gate_tau))
+                    rot_omega = rot_gate_ema * rot_omega + (1.0 - rot_gate_ema) * omega_target
+                    critic_cfg = {**config, "ROT_OMEGA": rot_omega}
+                else:
+                    critic_cfg = config
             else:
                 diag_alpha_eff = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_beta_eff = jnp.asarray(0.0, dtype=jnp.float32)
@@ -295,6 +310,7 @@ def make_train(config):
                 diag_r_rot_c = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
+                critic_cfg = config
 
             # 4. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
             def _critic_epoch(critic_state, unused):
@@ -308,7 +324,7 @@ def make_train(config):
                             network,
                             traj_mb,
                             traj_mb.targets,
-                            config,
+                            critic_cfg,
                         )
 
                     (loss, aux), grads = jax.value_and_grad(_loss_fn, has_aux=True)(train_state.critic.params)
@@ -384,6 +400,12 @@ def make_train(config):
                 metric["diag_aux_unexp_var"] = diag_aux_unexp_var
                 metric["diag_alpha_eff"] = diag_alpha_eff
                 metric["diag_beta_eff"] = diag_beta_eff
+            if rot_gate_enabled:
+                metric["rot_omega"] = rot_omega
+                metric["rot_r_rot_ema"] = diag_r_rot_c
+                metric["rot_alpha_eff"] = diag_alpha_eff
+                metric["rot_beta_eff"] = diag_beta_eff
+                metric["rot_rho_c"] = diag_rho_c
 
             runner_state = (
                 train_state,
@@ -394,6 +416,7 @@ def make_train(config):
                 idx + 1,
                 diag_alpha_ema,
                 diag_beta2_ema,
+                rot_omega,
             )
             return runner_state, metric
 
@@ -407,6 +430,7 @@ def make_train(config):
             1,
             diag_alpha_ema_init,
             diag_beta2_ema_init,
+            rot_omega_init,
         )
         runner_state, metrics = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]

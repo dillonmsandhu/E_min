@@ -76,6 +76,9 @@ CRITIC_EPOCHS="${CRITIC_EPOCHS:-4 8}"
 LAMBDAS="${LAMBDAS:-0.4 0.8 0.95}"
 ACTOR_LR="${ACTOR_LR:-0.0003}"
 GAE_LAMBDA="${GAE_LAMBDA:-0.8}"
+ROT_GATE_TAU="${ROT_GATE_TAU:-0.25}"
+ROT_GATE_EMA="${ROT_GATE_EMA:-0.95}"
+ROT_PROBE_ENVS="${ROT_PROBE_ENVS:-16}"
 NUM_ENVS="${NUM_ENVS:-512}"
 NUM_STEPS="${NUM_STEPS:-128}"
 MINIBATCH_SIZE="${MINIBATCH_SIZE:-1024}"
@@ -92,6 +95,9 @@ $PYTHON -u scripts/brax/sweep_v_ppo/run_single_env.py \
     --lambdas $LAMBDAS \
     --actor_lr "$ACTOR_LR" \
     --gae_lambda "$GAE_LAMBDA" \
+    --rot_gate_tau "$ROT_GATE_TAU" \
+    --rot_gate_ema "$ROT_GATE_EMA" \
+    --rot_probe_envs "$ROT_PROBE_ENVS" \
     $TIMESTEP_FLAG \
     --num_envs "$NUM_ENVS" \
     --num_steps "$NUM_STEPS" \
