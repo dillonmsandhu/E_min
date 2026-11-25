@@ -165,10 +165,15 @@ ENV_TITLES: dict[str, str] = {
 DEFAULT_PAIRWISE_V_PPO = [
     ("bsmc_v_aux", "td_lambda"),
     ("e_lambda_v_aux", "td_lambda"),
+    ("e_lambda_rot_gated", "td_lambda"),
+    ("e_lambda_rot_gated", "e_lambda_v_aux"),
     ("e_lambda_v_aux", "bsmc_v_aux"),
     ("e_0_v_aux", "td_lambda"),
+    ("e_0_rot_gated", "td_lambda"),
+    ("e_0_rot_gated", "e_0_v_aux"),
     ("e_0_v_aux", "bsmc_v_aux"),
     ("e_0_v_aux", "e_lambda_v_aux"),
+    ("e_0_rot_gated", "e_lambda_rot_gated"),
 ]
 
 DEFAULT_PAIRWISE_Q_PPO = [
@@ -1490,7 +1495,7 @@ def _generate_per_lambda_head_to_head_suite(
     """Q4 & Q5: Head-to-head comparison of E(lambda) and BSMC vs TD/SARSA per lambda."""
     lam_methods = [
         m for m in [
-            "e_lambda_v_aux", "bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi",
+            "e_lambda_v_aux", "e_lambda_rot_gated", "bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi",
             "bsmc_dir_marg", "bsmc_dir_double", "bsmc_bilinear_v_aux",
         ]
         if m in method_keys
@@ -1606,10 +1611,14 @@ def _generate_per_lambda_head_to_head_suite(
     plt.savefig(os.path.join(plots_dir, "per_lambda_wtl_vs_baseline.pdf"), bbox_inches="tight")
     plt.close()
 
-    # 2. Per-env AUC vs lambda curves (Baseline + E(lambda) + BSMC, plus λ=0 when td_0 / e_0_v_aux are present)
-    has_zero_pt = ("td_0" in method_keys) or ("e_0_v_aux" in method_keys)
+    # 2. Per-env AUC vs lambda curves (Baseline + E(lambda) + Rot-Gated + BSMC, plus λ=0 when 1-step variants are present)
+    has_zero_pt = ("td_0" in method_keys) or ("e_0_v_aux" in method_keys) or ("e_0_rot_gated" in method_keys)
     curve_lambdas = ([0.0] + lambdas) if has_zero_pt else lambdas
-    zero_map = {"td_lambda": "td_0", "e_lambda_v_aux": "e_0_v_aux"}
+    zero_map = {
+        "td_lambda": "td_0",
+        "e_lambda_v_aux": "e_0_v_aux",
+        "e_lambda_rot_gated": "e_0_rot_gated",
+    }
 
     n_envs = len(envs)
     n_cols = min(3, n_envs)
