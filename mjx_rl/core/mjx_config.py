@@ -23,7 +23,7 @@ config = {
     "CLIP_EPS": 0.3,
     "VF_CLIP": None,
     "ENT_COEF": 0.01,
-    "VF_COEF": 0.5,
+    "VF_COEF": 1.0,
     "REWARD_SCALING": 10.0,
     "ACTION_REPEAT": 1,
     "EPISODE_LENGTH": 1000,

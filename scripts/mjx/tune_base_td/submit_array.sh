@@ -4,7 +4,7 @@ set -e
 [ -f "mjx_rl/core/mjx_config.py" ] || cd "$(dirname "$0")/../../.."
 REPO_ROOT="$(pwd)"
 DATE=${DATE:-$(date +%Y-%m-%d)}
-SWEEP_NAME="tune_base_td"
+SWEEP_NAME=${SWEEP_NAME:-"tune_base_td"}
 LOG_DIR="slurm/${DATE}/mjx_${SWEEP_NAME}"
 mkdir -p "$LOG_DIR"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"

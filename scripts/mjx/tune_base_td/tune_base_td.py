@@ -114,7 +114,13 @@ def build_base_td_candidates(mode: str = "oat") -> list[dict[str, Any]]:
     # 5. GAE / Value lambda variations (at NUM_STEPS=128)
     _add(
         "08_steps128_lam0.8",
-        {**base_128, "GAE_LAMBDA": 0.8, "ACTOR_GAE_LAMBDA": 0.8, "VALUE_LAMBDA": 0.8},
+        {
+            **base_128,
+            "GAE_LAMBDA": 0.8,
+            "ACTOR_GAE_LAMBDA": 0.8,
+            "VALUE_LAMBDA": 0.8,
+            "E_LAMBDA": 0.8,
+        },
     )
 
     # 6. More critic gradient updates (higher critic epochs / smaller critic minibatch)
