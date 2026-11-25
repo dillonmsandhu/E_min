@@ -23,6 +23,7 @@ DIAGNOSTIC_KEYS = (
     "diag_r_rot_c",
     "diag_ret_var_ratio",
     "diag_aux_unexp_var",
+    "diag_aux_vs_v",
     "diag_alpha_eff",
     "diag_beta_eff",
 )
@@ -233,14 +234,19 @@ def compute_contraction_diagnostics(
     # while preventing 0/0 blowups on constant-reward envs (e.g. CartPole) at initialization.
     ret_var_ratio = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.mean(delta_full ** 2), 1e-8)
 
-    # 7. Auxiliary value (or critic) unexplained variance 1 - R^2
+    # 7. Auxiliary value (or critic) unexplained variance 1 - R^2, plus v_aux_vs_v skill score
     if uses_aux:
         v_aux_full = traj_batch.v_aux.mean(-1) if traj_batch.v_aux.ndim > 2 else traj_batch.v_aux
         aux_tgt = traj_batch.aux_targets
-        aux_unexp_var = jnp.mean((v_aux_full - aux_tgt) ** 2) / jnp.maximum(jnp.var(aux_tgt), 1e-8)
+        mse_aux = jnp.mean((v_aux_full - aux_tgt) ** 2)
+        mse_v = jnp.mean((v_full - aux_tgt) ** 2)
+        aux_unexp_var = mse_aux / jnp.maximum(jnp.var(aux_tgt), 1e-8)
+        # Positive (> 0) iff ||v_aux - V^pi||^2 < ||v - V^pi||^2 (irreducible noise cancels in sign)
+        aux_vs_v = 1.0 - mse_aux / jnp.maximum(mse_v, 1e-8)
     else:
         mc_ret = v_full + mc_err
         aux_unexp_var = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.var(mc_ret), 1e-8)
+        aux_vs_v = jnp.asarray(0.0, dtype=jnp.float32)
 
     return {
         "alpha_eff": alpha_eff,
@@ -248,6 +254,7 @@ def compute_contraction_diagnostics(
         "rho_c": rho_c,
         "ret_var_ratio": ret_var_ratio,
         "aux_unexp_var": aux_unexp_var,
+        "aux_vs_v": aux_vs_v,
     }
 
 

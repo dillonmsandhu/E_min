@@ -294,6 +294,7 @@ def make_train(base_config):
                 rho_c = diag_out["rho_c"]
                 ret_var_ratio = diag_out["ret_var_ratio"]
                 aux_unexp_var = diag_out["aux_unexp_var"]
+                aux_vs_v = diag_out["aux_vs_v"]
                 rot_alpha_ema, rot_beta_ema, beta_eff, r_rot_ema = update_diagnostic_ema(
                     rot_alpha_ema, rot_beta_ema, alpha_eff, beta2_eff, idx, ema_decay=diag_ema
                 )
@@ -311,6 +312,7 @@ def make_train(base_config):
                 r_rot_ema = jnp.asarray(0.0, dtype=jnp.float32)
                 ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
                 aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
+                aux_vs_v = jnp.asarray(0.0, dtype=jnp.float32)
                 critic_cfg = config
 
             # 4. CRITIC UPDATE PHASE
@@ -396,6 +398,7 @@ def make_train(base_config):
                 metric["diag_r_rot_c"] = r_rot_ema
                 metric["diag_ret_var_ratio"] = ret_var_ratio
                 metric["diag_aux_unexp_var"] = aux_unexp_var
+                metric["diag_aux_vs_v"] = aux_vs_v
                 metric["diag_alpha_eff"] = alpha_eff
                 metric["diag_beta_eff"] = beta_eff
             if rot_gate_enabled:

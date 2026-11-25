@@ -190,6 +190,7 @@ def run_candidate(make_train_fn: Callable, cfg: dict[str, Any], seed_keys: jax.A
         "diag_r_rot_c",
         "diag_ret_var_ratio",
         "diag_aux_unexp_var",
+        "diag_aux_vs_v",
         "diag_alpha_eff",
         "diag_beta_eff",
     ):

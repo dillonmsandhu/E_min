@@ -297,6 +297,7 @@ def make_train(config):
                 diag_rho_c = diag_out["rho_c"]
                 diag_ret_var_ratio = diag_out["ret_var_ratio"]
                 diag_aux_unexp_var = diag_out["aux_unexp_var"]
+                diag_aux_vs_v = diag_out["aux_vs_v"]
                 if rot_gate_enabled:
                     omega_target = jnp.maximum(0.0, (diag_r_rot_c - rot_gate_tau) / (diag_r_rot_c + rot_gate_tau))
                     rot_omega = rot_gate_ema * rot_omega + (1.0 - rot_gate_ema) * omega_target
@@ -310,6 +311,7 @@ def make_train(config):
                 diag_r_rot_c = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_aux_vs_v = jnp.asarray(0.0, dtype=jnp.float32)
                 critic_cfg = config
 
             # 4. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
@@ -398,6 +400,7 @@ def make_train(config):
                 metric["diag_r_rot_c"] = diag_r_rot_c
                 metric["diag_ret_var_ratio"] = diag_ret_var_ratio
                 metric["diag_aux_unexp_var"] = diag_aux_unexp_var
+                metric["diag_aux_vs_v"] = diag_aux_vs_v
                 metric["diag_alpha_eff"] = diag_alpha_eff
                 metric["diag_beta_eff"] = diag_beta_eff
             if rot_gate_enabled:

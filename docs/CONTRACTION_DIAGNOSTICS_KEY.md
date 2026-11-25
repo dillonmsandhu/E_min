@@ -16,6 +16,7 @@ The four measures partition the empirical performance gap between **$E(\lambda)$
 | `diag_r_rot_c` | $r_{\text{rot},c}$ | **Centered Split-Half Rotation Ratio** — global non-normality ($\|K_{J_c} u_c\| / u_c^\top S_{J_c} u_c$) | **Positive ($+$)** |
 | `diag_ret_var_ratio` | $\mathrm{VR}_{\text{ret}}$ | **Return-to-TD Variance Ratio** — variance inflation of rollout MC returns over 1-step TD errors | **Negative ($-$)** |
 | `diag_aux_unexp_var` | $1 - R^2_{\text{aux}}$ | **Auxiliary / Critic Unexplained Variance** — residual error of $v_{\text{aux}}$ (or $v$) predicting returns | **Negative ($-$)** |
+| `diag_aux_vs_v` | $S_{\text{aux}}$ | **`v_aux` vs. `v` Skill** — $1 - \mathrm{MSE}(v_{\text{aux}}, G^{\text{aux}}) / \mathrm{MSE}(v, G^{\text{aux}})$ (**$> 0$: `v_aux` better than `v`**) | **Positive ($+$)** |
 
 ---
 
@@ -82,6 +83,17 @@ $$\mathrm{VR}_{\text{ret}} = \frac{\mathbb{E}\!\left[(e_t^{\text{MC}})^2\right]}
   - $0.25 \le 1 - R^2_{\text{aux}} < 0.60$: **Moderately noisy `v_aux`** ($R^2 \in (0.40, 0.75)$).
   - $1 - R^2_{\text{aux}} \ge 0.60$: **Poorly fit `v_aux`** ($R^2 \le 0.40$); auxiliary critic is lagging or overwhelmed by return variance, hurting $E$ relative to TD.
   - $1 - R^2_{\text{aux}} > 1.0$: Worse than predicting the batch mean (early training or critic divergence).
+
+---
+
+### 2.5 `v_aux` vs. `v` Skill (`diag_aux_vs_v`, $S_{\text{aux}}$)
+For **`v_aux` critics**:
+$$S_{\text{aux}} = 1 - \frac{\mathbb{E}\!\left[(v_{\text{aux}}(s_t) - G_t^{\text{aux}})^2\right]}{\max\!\left(\mathbb{E}\!\left[(v(s_t) - G_t^{\text{aux}})^2\right],\; 10^{-8}\right)}$$
+(logged as `0.0` for non-`v_aux` baselines).
+- **Why it is noise-cancelled:** Irreducible conditional return variance $\mathbb{E}[\mathrm{Var}(G_t^{\text{aux}} \mid s_t)]$ adds identically to numerator and denominator, so **$S_{\text{aux}} > 0 \iff \|v_{\text{aux}} - V^\pi\|_\mu^2 < \|v - V^\pi\|_\mu^2$**.
+- **Interpretation:**
+  - **$S_{\text{aux}} > 0$ (positive):** `v_aux` is closer to $V^\pi$ than $v$ is — the error estimate $\hat{e}_t = v_{\text{aux}}(s_t) - v(s_t)$ is genuinely helping $E$'s backward term.
+  - **$S_{\text{aux}} \le 0$ (zero or negative):** `v_aux` is no better than $v$ itself — the backward term is adding noise/bias rather than debiasing.
 
 ---
 

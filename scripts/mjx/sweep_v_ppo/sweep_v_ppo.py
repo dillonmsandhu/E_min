@@ -232,6 +232,7 @@ def run_sweep(args) -> dict:
                         "diag_r_rot_c",
                         "diag_ret_var_ratio",
                         "diag_aux_unexp_var",
+                        "diag_aux_vs_v",
                         "diag_alpha_eff",
                         "diag_beta_eff",
                     ):

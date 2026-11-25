@@ -70,6 +70,16 @@ DIAG_SPECS: list[dict[str, Any]] = [
         "scatter_source": "e_method",
         "expected_sign": "-",
     },
+    {
+        "key": "diag_aux_vs_v",
+        "title": "v_aux vs. v Skill (> 0: v_aux better than v)",
+        "short": "v_aux vs. v (>0: better)",
+        "ylabel": "1 − MSE(v_aux)/MSE(v)  [>0: v_aux better]",
+        "ref_line": 0.0,
+        "ref_label": "> 0: v_aux better than v",
+        "scatter_source": "e_method",
+        "expected_sign": "+",
+    },
 ]
 
 
@@ -106,14 +116,19 @@ def _pearson_corr(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.corrcoef(x, y)[0, 1])
 
 
-def _has_any_diagnostics(all_runs: dict, envs: list[str], method_keys: list[str]) -> bool:
-    diag_keys = {spec["key"] for spec in DIAG_SPECS}
+def _active_diag_specs(all_runs: dict, envs: list[str], method_keys: list[str]) -> list[dict[str, Any]]:
+    present = set()
     for env in envs:
         for m_key in method_keys:
             for res in all_runs.get(env, {}).get(m_key, {}).values():
-                if any(k in res for k in diag_keys):
-                    return True
-    return False
+                for spec in DIAG_SPECS:
+                    if spec["key"] in res:
+                        present.add(spec["key"])
+    return [spec for spec in DIAG_SPECS if spec["key"] in present]
+
+
+def _has_any_diagnostics(all_runs: dict, envs: list[str], method_keys: list[str]) -> bool:
+    return len(_active_diag_specs(all_runs, envs, method_keys)) > 0
 
 
 def _metric_auc_stats(res: dict[str, Any], key: str) -> tuple[float, float]:
@@ -210,12 +225,13 @@ def _plot_diagnostic_auc_per_env_and_benchmark(
     n_envs = len(envs)
     n_methods = len(method_keys)
     env_labels = [env_titles.get(e, e) for e in envs]
+    active_specs = _active_diag_specs(all_runs, envs, method_keys)
 
     # Collect per-env AUC means/stds: dict[key] -> (n_envs, n_methods)
     auc_means: dict[str, np.ndarray] = {}
     auc_stds: dict[str, np.ndarray] = {}
 
-    for spec in DIAG_SPECS:
+    for spec in active_specs:
         key = spec["key"]
         mat_m = np.full((n_envs, n_methods), np.nan, dtype=np.float64)
         mat_s = np.full((n_envs, n_methods), np.nan, dtype=np.float64)
@@ -258,13 +274,21 @@ def _plot_diagnostic_auc_per_env_and_benchmark(
             f.write(f"### {suite_title}: {spec['title']} (AUC)\n\n")
             f.write(df.to_markdown(index=False) + "\n")
 
-    # 1. Per-environment AUC grouped bar chart (2x2 grid)
-    fig, axes = plt.subplots(2, 2, figsize=(max(11.0, 1.3 * n_envs + 5.0), 8.2))
+    # 1. Per-environment AUC grouped bar chart (2x2 or 2x3 grid)
+    n_specs = len(active_specs)
+    n_cols_grid = 2 if n_specs <= 4 else 3
+    n_rows_grid = int(np.ceil(n_specs / n_cols_grid))
+    fig, axes = plt.subplots(
+        n_rows_grid,
+        n_cols_grid,
+        figsize=(max(5.5 * n_cols_grid, (0.7 * n_envs + 3.0) * n_cols_grid), 4.1 * n_rows_grid),
+        squeeze=False,
+    )
     x = np.arange(n_envs)
     width = 0.78 / max(n_methods, 1)
 
-    for idx, spec in enumerate(DIAG_SPECS):
-        ax = axes[idx // 2][idx % 2]
+    for idx, spec in enumerate(active_specs):
+        ax = axes[idx // n_cols_grid][idx % n_cols_grid]
         key = spec["key"]
         mat_m = auc_means[key]
         mat_s = auc_stds[key]
@@ -294,6 +318,8 @@ def _plot_diagnostic_auc_per_env_and_benchmark(
         ax.grid(True, axis="y", alpha=0.3)
         if idx == 0:
             ax.legend(loc="best", fontsize=7.5, ncol=2)
+    for idx in range(n_specs, n_rows_grid * n_cols_grid):
+        axes[idx // n_cols_grid][idx % n_cols_grid].axis("off")
 
     fig.suptitle(f"{suite_title}: Per-Environment Diagnostic AUCs", fontsize=13.0, fontweight="bold", y=1.01)
     plt.tight_layout()
@@ -302,15 +328,16 @@ def _plot_diagnostic_auc_per_env_and_benchmark(
     plt.savefig(base_env + ".pdf", bbox_inches="tight")
     plt.close(fig)
 
-    # 2. Benchmark-average AUC bar chart (1x4 grid)
-    fig, axes = plt.subplots(1, 4, figsize=(15.5, 3.9))
+    # 2. Benchmark-average AUC bar chart (1 x n_specs grid)
+    fig, axes = plt.subplots(1, n_specs, figsize=(3.9 * n_specs, 3.9), squeeze=False)
+    axes_flat = axes[0]
     xm = np.arange(n_methods)
     m_labels = [get_algo_meta(k)["label"] for k in method_keys]
     m_colors = [get_algo_meta(k)["color"] for k in method_keys]
 
     summary_rows = []
-    for idx, spec in enumerate(DIAG_SPECS):
-        ax = axes[idx]
+    for idx, spec in enumerate(active_specs):
+        ax = axes_flat[idx]
         key = spec["key"]
         mat_m = auc_means[key]
         means, ses = [], []
@@ -396,6 +423,10 @@ def _plot_2x2_scatter_for_pair(
     e_lbl = get_algo_meta(e_key)["label"]
     td_lbl = get_algo_meta(td_key)["label"]
 
+    active_specs = _active_diag_specs(all_runs, envs, [e_key, td_key])
+    if not active_specs:
+        return
+
     # Gather matched per-env data
     records = []
     for env in envs:
@@ -413,7 +444,7 @@ def _plot_2x2_scatter_for_pair(
             "label": env_titles.get(env, env),
             "rel_gain_pct": rel_gain_pct,
         }
-        for spec in DIAG_SPECS:
+        for spec in active_specs:
             key = spec["key"]
             if spec["scatter_source"] == "e_method":
                 val, _ = _metric_auc_stats(r_e, key)
@@ -429,11 +460,14 @@ def _plot_2x2_scatter_for_pair(
     if len(records) < 2:
         return
 
-    fig, axes = plt.subplots(2, 2, figsize=(11.6, 9.2))
+    n_specs = len(active_specs)
+    n_cols = 2 if n_specs <= 4 else 3
+    n_rows = int(np.ceil(n_specs / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.8 * n_cols, 4.6 * n_rows), squeeze=False)
     ys_all = np.array([r["rel_gain_pct"] for r in records], dtype=np.float64)
 
-    for idx, spec in enumerate(DIAG_SPECS):
-        ax = axes[idx // 2][idx % 2]
+    for idx, spec in enumerate(active_specs):
+        ax = axes[idx // n_cols][idx % n_cols]
         key = spec["key"]
         xs = np.array([r[key] for r in records], dtype=np.float64)
         valid = np.isfinite(xs) & np.isfinite(ys_all)
@@ -504,6 +538,9 @@ def _plot_2x2_scatter_for_pair(
         ax.set_ylabel(f"Relative Gain: ({e_lbl} − {td_lbl}) / |{td_lbl}| (%)", fontsize=8.8)
         ax.set_title(spec["title"], fontsize=10.5, fontweight="bold")
         ax.grid(True, alpha=0.3)
+
+    for idx in range(n_specs, n_rows * n_cols):
+        axes[idx // n_cols][idx % n_cols].axis("off")
 
     fig.suptitle(
         f"{suite_title}: Diagnostic AUCs vs. Relative Performance ({e_lbl} vs. {td_lbl}, {lam_label})",
