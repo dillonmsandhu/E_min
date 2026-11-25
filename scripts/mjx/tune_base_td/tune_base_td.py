@@ -45,6 +45,7 @@ sys.path = [_repo_root, _scripts_dir, _script_dir] + [
     )
 ]
 
+from core.contraction_diagnostics import DIAGNOSTIC_KEYS
 from mjx_rl.algos.ppo import (
     extract_hparams,
     make_train as make_ppo_train,
@@ -246,6 +247,67 @@ def plot_and_summarize(all_runs: dict[str, dict[str, Any]], timesteps: dict[str,
         with open(os.path.join(tables_dir, "best_per_env_configs.json"), "w") as f:
             json.dump(per_env_best, f, indent=2, default=str)
 
+    # Rotation & contraction diagnostics plots + summary table
+    diag_panels = [
+        ("diag_rho_c", "Centered Gradient Aliasing $\\rho_c$"),
+        ("diag_r_rot_c", "Centered Rotation Ratio $r_{rot,c}$"),
+        ("diag_ret_var_ratio", "Return-to-TD Variance Ratio"),
+        ("diag_aux_unexp_var", "Aux Unexplained Variance $1 - R^2_{aux}$"),
+    ]
+    diag_rows = []
+    for env in envs:
+        env_runs = all_runs[env]
+        has_diag = any("diagnostics" in r and r["diagnostics"] for r in env_runs.values())
+        if not has_diag:
+            continue
+        ts = timesteps.get(env, 60_000_000)
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8), squeeze=False)
+        for ax, (dk, dtitle) in zip(axes.ravel(), diag_panels):
+            for tag, res in env_runs.items():
+                d_arr = res.get("diagnostics", {}).get(dk)
+                if d_arr is None:
+                    continue
+                d_arr = np.asarray(d_arr)
+                if d_arr.ndim == 1:
+                    d_arr = d_arr[None, :]
+                n_seeds, n_updates = d_arr.shape
+                xs = np.linspace(0, ts / 1e6, n_updates)
+                mean = d_arr.mean(axis=0)
+                sem = d_arr.std(axis=0) / max(1.0, np.sqrt(n_seeds))
+                lw = 2.2 if "parity_default" in tag else 1.3
+                ax.plot(xs, mean, label=tag, linewidth=lw)
+                ax.fill_between(xs, mean - sem, mean + sem, alpha=0.12)
+            ax.set_title(dtitle, fontsize=10)
+            ax.set_xlabel("Env Steps (M)")
+            ax.grid(True, alpha=0.3)
+        axes[0, 0].legend(fontsize=7, loc="best")
+        fig.suptitle(f"{env} — Contraction & Rotation Diagnostics", fontsize=12)
+        fig.tight_layout()
+        fig.savefig(os.path.join(plots_dir, f"{env}_rotation_diagnostics.pdf"))
+        plt.close(fig)
+
+        for tag, res in env_runs.items():
+            diags = res.get("diagnostics", {})
+            if not diags:
+                continue
+            row = {"env": env, "tag": tag, "auc_mean": res["auc_mean"]}
+            for dk in DIAGNOSTIC_KEYS:
+                if dk in diags:
+                    arr = np.asarray(diags[dk])
+                    if arr.ndim == 1:
+                        arr = arr[None, :]
+                    row[f"{dk}_mean"] = float(arr.mean())
+                    row[f"{dk}_final"] = float(arr[:, -1].mean())
+            diag_rows.append(row)
+
+    if diag_rows:
+        ddf = pd.DataFrame(diag_rows)
+        ddf.to_csv(os.path.join(tables_dir, "rotation_diagnostics_summary.csv"), index=False)
+        with open(os.path.join(tables_dir, "rotation_diagnostics_summary.md"), "w") as f:
+            f.write("### Contraction & Rotation Diagnostics Summary\n\n")
+            f.write(ddf.to_markdown(index=False, floatfmt=".3f"))
+            f.write("\n")
+
 
 def consolidate_base_td(out_dir: str) -> None:
     pkls = sorted(glob.glob(os.path.join(out_dir, "*", "data", "base_td_metrics.pkl")))
@@ -355,8 +417,16 @@ def main():
                 returns = returns[None, :]
             seed_aucs = returns.mean(axis=-1)
             seed_finals = returns[:, -1]
+            diagnostics = {}
+            for dk in DIAGNOSTIC_KEYS:
+                if dk in out["metrics"]:
+                    d_arr = np.asarray(out["metrics"][dk])
+                    if d_arr.ndim == 1:
+                        d_arr = d_arr[None, :]
+                    diagnostics[dk] = d_arr
             res = {
                 "returned_episode_returns": returns,
+                "diagnostics": diagnostics,
                 "auc_mean": float(seed_aucs.mean()),
                 "auc_std": float(seed_aucs.std()),
                 "final_mean": float(seed_finals.mean()),
