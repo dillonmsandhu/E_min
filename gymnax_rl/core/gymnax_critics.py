@@ -1008,59 +1008,69 @@ def compute_lambda_trace_rotation_ratio(
     n_probe_envs: int = 16,
 ):
     """
-    Computes online Rayleigh-quotient rotation statistics (alpha_eff, beta_eff)
-    for TD(lambda) / E(lambda) along the unit TD(lambda) semi-gradient direction u
-    using 1 JVP + 1 VJP and exact forward/backward lambda-traces over the rollout.
+    Computes online centered Rayleigh-quotient rotation statistics:
+      - alpha_eff: unbiased u_c^T S_{J_c, lambda} u_c
+      - beta2_eff: unbiased split-half <K_{J_c, lambda}^{(1)} u_c, K_{J_c, lambda}^{(2)} u_c>
+                   (signed; EMA before taking sqrt(max(0, .)) to avoid noise-floor bias)
+      - rho_c:     centered next-step / lambda-trace gradient aliasing along u_c
 
-    For lambda = 0, this reduces identically to TD(0) / E(0).
-    For lambda = 1, j_fwd = j_bwd = 0 so beta_eff = 0 identically.
-    Zero v_aux dependency, zero double-sampling bias.
+    Uses 1 JVP + 2 half-batch VJPs (same total FLOPs as 1 full VJP) and disjoint
+    environments for u_c whenever B >= 2 * E_p. Zero v_aux dependency.
     """
     from jax.flatten_util import ravel_pytree
 
     T, B = traj_batch.reward.shape[:2]
     E_p = min(int(n_probe_envs), B)
+    # Ensure even split for split-half unbiased beta^2 (at least 1 env per half when B >= 2)
+    half = max(1, E_p // 2)
+    E_eval = min(2 * half, B)
+    half = E_eval // 2
 
-    obs_p = traj_batch.obs[:, :E_p]          # (T, E_p, *obs_shape)
-    next_obs_last = traj_batch.next_obs[-1, :E_p]  # (E_p, *obs_shape)
-    rew_p = traj_batch.reward[:, :E_p]       # (T, E_p)
-    done_p = traj_batch.done[:, :E_p]        # (T, E_p)
-    timeout_p = traj_batch.is_timeout[:, :E_p]
-    true_term_p = done_p & ~timeout_p
-    cont_p = (~done_p).astype(jnp.float32)   # resets trace at both true_terminal and timeout
+    obs_shape = traj_batch.obs.shape[2:]
 
-    obs_shape = obs_p.shape[2:]
-    obs_flat = obs_p.reshape((T * E_p,) + obs_shape)
-    next_obs_p = traj_batch.next_obs[:, :E_p]
-    next_obs_flat = next_obs_p.reshape((T * E_p,) + obs_shape)
+    # Use disjoint envs [E_eval : min(2*E_eval, B)] for u_c when available to eliminate correlation
+    if B >= E_eval + 2:
+        u_start, u_end = E_eval, min(2 * E_eval, B)
+    else:
+        u_start, u_end = 0, E_eval
+    E_u = u_end - u_start
+
+    obs_u = traj_batch.obs[:, u_start:u_end]
+    next_obs_u = traj_batch.next_obs[:, u_start:u_end]
+    next_obs_u_last = traj_batch.next_obs[-1, u_start:u_end]
+    rew_u = traj_batch.reward[:, u_start:u_end]
+    done_u = traj_batch.done[:, u_start:u_end]
+    timeout_u = traj_batch.is_timeout[:, u_start:u_end]
+    true_term_u = done_u & ~timeout_u
+    cont_u = (~done_u).astype(jnp.float32)
+    obs_u_flat = obs_u.reshape((T * E_u,) + obs_shape)
+    next_obs_u_flat = next_obs_u.reshape((T * E_u,) + obs_shape)
 
     def v_flat_fn(c_params, x_flat):
         full_p = {"params": {**actor_params, **c_params}}
         v = network.apply(full_p, x_flat, method=network.value)
         return v.mean(-1) if v.ndim > 1 else v
 
-    # 1. Unit TD(lambda) semi-gradient direction u w.r.t. critic_params
+    # 1. Centered unit TD(lambda) semi-gradient direction u_c w.r.t. critic_params
     def td_probe_loss(c_params):
-        v_s = v_flat_fn(c_params, obs_flat).reshape((T, E_p))
+        v_s = v_flat_fn(c_params, obs_u_flat).reshape((T, E_u))
         if lmbda <= 1e-8:
-            v_sp = v_flat_fn(c_params, next_obs_flat).reshape((T, E_p))
-            target = jax.lax.stop_gradient(rew_p + gamma * (~true_term_p).astype(jnp.float32) * v_sp)
+            v_sp = v_flat_fn(c_params, next_obs_u_flat).reshape((T, E_u))
+            target = jax.lax.stop_gradient(rew_u + gamma * (~true_term_u).astype(jnp.float32) * v_sp)
         else:
-            # Compute lambda-return targets directly from rollout rewards & current values
-            v_last = v_flat_fn(c_params, next_obs_last)
+            v_last = v_flat_fn(c_params, next_obs_u_last)
             v_next_reg = jnp.concatenate([v_s[1:], v_last[None]], axis=0)
-            v_next_to = v_flat_fn(c_params, next_obs_flat).reshape((T, E_p))
-            v_next = jnp.where(timeout_p, v_next_to, v_next_reg)
-            deltas = rew_p + gamma * (~true_term_p).astype(jnp.float32) * v_next - v_s
+            v_next_to = v_flat_fn(c_params, next_obs_u_flat).reshape((T, E_u))
+            v_next = jnp.where(timeout_u, v_next_to, v_next_reg)
+            deltas = rew_u + gamma * (~true_term_u).astype(jnp.float32) * v_next - v_s
 
             def _gae_scan(gae, step_in):
                 d_t, c_t = step_in
                 gae = d_t + gamma * lmbda * c_t * gae
                 return gae, gae
 
-            _, advs = jax.lax.scan(_gae_scan, jnp.zeros((E_p,), dtype=jnp.float32), (deltas, cont_p), reverse=True)
+            _, advs = jax.lax.scan(_gae_scan, jnp.zeros((E_u,), dtype=jnp.float32), (deltas, cont_u), reverse=True)
             target = jax.lax.stop_gradient(advs + v_s)
-        # Centered TD semi-gradient u_c = J_c^T (v - target) removes constant scalar bias mode
         err = jax.lax.stop_gradient(v_s - target)
         err_c = err - jnp.mean(err)
         return jnp.mean(err_c * v_s)
@@ -1069,17 +1079,20 @@ def compute_lambda_trace_rotation_ratio(
     g_flat, unravel = ravel_pytree(g_td)
     u_tree = unravel(g_flat / jnp.maximum(jnp.linalg.norm(g_flat), 1e-12))
 
-    # 2. Single JVP over rollout states + final next_obs, then center j_c = j - E[j]
+    # 2. Single JVP over evaluation envs [0 : E_eval] + final next_obs, then center j_c = j - E[j]
+    obs_p = traj_batch.obs[:, :E_eval]
+    next_obs_last = traj_batch.next_obs[-1, :E_eval]
+    cont_p = (~traj_batch.done[:, :E_eval]).astype(jnp.float32)
+    obs_flat = obs_p.reshape((T * E_eval,) + obs_shape)
+
     _, j_flat = jax.jvp(lambda cp: v_flat_fn(cp, obs_flat), (critic_params,), (u_tree,))
     _, j_last = jax.jvp(lambda cp: v_flat_fn(cp, next_obs_last), (critic_params,), (u_tree,))
-    j_raw = j_flat.reshape((T, E_p))
+    j_raw = j_flat.reshape((T, E_eval))
     j_mean = jnp.mean(j_raw)
     j = j_raw - j_mean
     j_last_c = j_last - j_mean
 
     # 3. Exact future (backward scan) and past (forward scan) lambda-traces on centered j_c
-    #    j_fwd[t] = cont[t] * (gamma * (1 - lmbda) * j[t+1] + gamma * lmbda * j_fwd[t+1])
-    #    j_bwd[t] = cont[t-1] * (gamma * (1 - lmbda) * j[t-1] + gamma * lmbda * j_bwd[t-1])
     j_next_arr = jnp.concatenate([j[1:], j_last_c[None]], axis=0)
 
     def _fwd_trace_step(trace_next, step_in):
@@ -1089,34 +1102,51 @@ def compute_lambda_trace_rotation_ratio(
 
     _, j_fwd = jax.lax.scan(
         _fwd_trace_step,
-        jnp.zeros((E_p,), dtype=jnp.float32),
+        jnp.zeros((E_eval,), dtype=jnp.float32),
         (j_next_arr, cont_p),
         reverse=True,
     )
 
     def _bwd_trace_step(trace_prev, step_in):
         j_t, c_t = step_in
-        # trace_prev is j_bwd[t]; compute j_bwd[t+1] for the next step
         trace_next = c_t * (gamma * (1.0 - lmbda) * j_t + gamma * lmbda * trace_prev)
         return trace_next, trace_prev
 
     _, j_bwd = jax.lax.scan(
         _bwd_trace_step,
-        jnp.zeros((E_p,), dtype=jnp.float32),
+        jnp.zeros((E_eval,), dtype=jnp.float32),
         (j, cont_p),
         reverse=False,
     )
 
-    # 4. alpha_eff = u_c^T S_{J_c,lambda} u_c; beta_eff = ||K_{J_c,lambda} u_c||_2 via 1 centered VJP
-    alpha_eff = jnp.mean(j * j - j * j_fwd)
+    # 4. Unbiased alpha_eff and centered aliasing rho_c over all E_eval envs
+    j_sq_mean = jnp.mean(j * j)
+    alpha_eff = j_sq_mean - jnp.mean(j * j_fwd)
+    gamma_eff = (gamma * (1.0 - lmbda)) / jnp.maximum(1.0 - gamma * lmbda, 1e-8)
+    rho_c = jnp.mean(j * j_fwd) / jnp.maximum(gamma_eff * j_sq_mean, 1e-12)
 
-    _, vjp_fn = jax.vjp(lambda cp: v_flat_fn(cp, obs_flat), critic_params)
-    w_raw = j_bwd - j_fwd
-    w_k = (0.5 / float(T * E_p)) * (w_raw - jnp.mean(w_raw)).reshape((T * E_p,))
-    ku_tree = vjp_fn(w_k)[0]
-    ku_flat, _ = ravel_pytree(ku_tree)
-    beta_eff = jnp.linalg.norm(ku_flat)
-    return alpha_eff, beta_eff
+    # 5. Unbiased split-half beta^2 = <K_{J_c}^{(1)} u_c, K_{J_c}^{(2)} u_c>
+    w_raw = j_bwd - j_fwd  # (T, E_eval)
+    if half >= 1 and E_eval >= 2:
+        obs_h1 = obs_p[:, :half].reshape((T * half,) + obs_shape)
+        obs_h2 = obs_p[:, half : 2 * half].reshape((T * half,) + obs_shape)
+        w1 = w_raw[:, :half]
+        w2 = w_raw[:, half : 2 * half]
+        w1_c = (0.5 / float(T * half)) * (w1 - jnp.mean(w1)).reshape((T * half,))
+        w2_c = (0.5 / float(T * half)) * (w2 - jnp.mean(w2)).reshape((T * half,))
+
+        _, vjp_1 = jax.vjp(lambda cp: v_flat_fn(cp, obs_h1), critic_params)
+        _, vjp_2 = jax.vjp(lambda cp: v_flat_fn(cp, obs_h2), critic_params)
+        v1_flat, _ = ravel_pytree(vjp_1(w1_c)[0])
+        v2_flat, _ = ravel_pytree(vjp_2(w2_c)[0])
+        beta2_eff = jnp.dot(v1_flat, v2_flat)
+    else:
+        _, vjp_fn = jax.vjp(lambda cp: v_flat_fn(cp, obs_flat), critic_params)
+        w_k = (0.5 / float(T * E_eval)) * (w_raw - jnp.mean(w_raw)).reshape((T * E_eval,))
+        ku_flat, _ = ravel_pytree(vjp_fn(w_k)[0])
+        beta2_eff = jnp.dot(ku_flat, ku_flat)
+
+    return alpha_eff, beta2_eff, rho_c
 
 
 SPLIT_CRITIC_LOSS_FNS = {

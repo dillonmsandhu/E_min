@@ -83,6 +83,11 @@ config = {
     "ROT_PROBE_ENVS": 16,
     "ROT_OMEGA": 1.0,
 
+    # Contraction & Variance Diagnostics
+    "LOG_CONTRACTION_DIAGNOSTICS": True,
+    "DIAG_PROBE_ENVS": 16,
+    "DIAG_EMA": 0.95,
+
     # Slurm & Metadata
     "SLURM_JOB_ID": None,
     "SLURM_ARRAY_JOB_ID": None,

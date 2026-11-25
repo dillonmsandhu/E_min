@@ -180,7 +180,19 @@ def run_candidate(make_train_fn: Callable, cfg: dict[str, Any], seed_keys: jax.A
         "final_std": float(seed_finals.std()),
         "elapsed_time": float(elapsed),
     }
-    for extra_key in ("rot_omega", "rot_r_rot_ema", "rot_alpha_eff", "rot_beta_eff"):
+    for extra_key in (
+        "rot_omega",
+        "rot_r_rot_ema",
+        "rot_alpha_eff",
+        "rot_beta_eff",
+        "rot_rho_c",
+        "diag_rho_c",
+        "diag_r_rot_c",
+        "diag_ret_var_ratio",
+        "diag_aux_unexp_var",
+        "diag_alpha_eff",
+        "diag_beta_eff",
+    ):
         if extra_key in metrics:
             arr = np.asarray(metrics[extra_key])
             if arr.ndim == 1:

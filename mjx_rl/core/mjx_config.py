@@ -63,6 +63,10 @@ config = {
         "NORMALIZE_REW": False,
         "LR_SCHEDULE": "constant",
     },
+    # Contraction & Variance Diagnostics
+    "LOG_CONTRACTION_DIAGNOSTICS": True,
+    "DIAG_PROBE_ENVS": 16,
+    "DIAG_EMA": 0.95,
     "DEBUG": True,
 }
 

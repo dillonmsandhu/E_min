@@ -28,7 +28,11 @@ from gymnax_rl.core.gymnax_critics import (
     get_critic_target_lambda,
     prepare_critic_transitions,
     ppo_actor_loss_fn,
-    compute_lambda_trace_rotation_ratio,
+)
+from core.contraction_diagnostics import (
+    compute_contraction_diagnostics,
+    resolve_diagnostic_lambda,
+    update_diagnostic_ema,
 )
 from gymnax_rl.core.runtime_metrics import compute_runtime_metrics
 
@@ -93,7 +97,7 @@ def make_train(base_config):
         )
         train_state = initialize_split_flax_train_state(config, network, network_params)
 
-        # Rotation-gating configuration (static Python dispatch for zero overhead when disabled)
+        # Rotation-gating & contraction-diagnostic configuration (static Python dispatch)
         rot_gate_enabled = bool(config["ROT_GATE_ENABLED"])
         rot_gate_tau = float(config["ROT_GATE_TAU"])
         rot_gate_ema = float(config["ROT_GATE_EMA"])
@@ -101,6 +105,12 @@ def make_train(base_config):
         rot_lambda = float(config["E_LAMBDA"]) if c_type in ("e_lambda", "elambda", "e_geometric") else 0.0
         if rot_gate_enabled and not (0.0 < rot_gate_tau <= 1.0):
             raise ValueError(f"ROT_GATE_TAU must be in (0, 1], got {rot_gate_tau}")
+
+        log_contraction_diag = bool(config["LOG_CONTRACTION_DIAGNOSTICS"])
+        run_diag_probe = rot_gate_enabled or log_contraction_diag
+        diag_probe_envs = rot_probe_envs if rot_gate_enabled else int(config["DIAG_PROBE_ENVS"])
+        diag_ema = rot_gate_ema if rot_gate_enabled else float(config["DIAG_EMA"])
+        diag_lambda = rot_lambda if rot_gate_enabled else resolve_diagnostic_lambda(c_type, config)
 
         # Initialize Environment
         rng, _rng = jax.random.split(rng)
@@ -264,32 +274,43 @@ def make_train(base_config):
                 steps_since_start=steps_since_start,
             )
 
-            # 3b. ONLINE ROTATION-GATE MEASUREMENT (1 JVP + 1 VJP via lambda-traces)
-            if rot_gate_enabled:
-                alpha_eff, beta_eff = compute_lambda_trace_rotation_ratio(
+            # 3b. ONLINE CONTRACTION DIAGNOSTICS & ROTATION-GATE MEASUREMENT
+            if run_diag_probe:
+                def _v_apply(c_params, x_flat):
+                    full_p = {"params": {**train_state.actor.params, **c_params}}
+                    return network.apply(full_p, x_flat, method=network.value)
+
+                diag_out = compute_contraction_diagnostics(
                     critic_params=train_state.critic.params,
-                    actor_params=train_state.actor.params,
-                    network=network,
+                    v_apply_fn=_v_apply,
                     traj_batch=traj_batch,
                     gamma=config["GAMMA"],
-                    lmbda=rot_lambda,
-                    n_probe_envs=rot_probe_envs,
+                    lmbda=diag_lambda,
+                    n_probe_envs=diag_probe_envs,
+                    uses_aux=uses_aux,
                 )
-                rot_alpha_ema = jnp.where(
-                    idx == 1, alpha_eff, rot_gate_ema * rot_alpha_ema + (1.0 - rot_gate_ema) * alpha_eff
+                alpha_eff = diag_out["alpha_eff"]
+                beta2_eff = diag_out["beta2_eff"]
+                rho_c = diag_out["rho_c"]
+                ret_var_ratio = diag_out["ret_var_ratio"]
+                aux_unexp_var = diag_out["aux_unexp_var"]
+                rot_alpha_ema, rot_beta_ema, beta_eff, r_rot_ema = update_diagnostic_ema(
+                    rot_alpha_ema, rot_beta_ema, alpha_eff, beta2_eff, idx, ema_decay=diag_ema
                 )
-                rot_beta_ema = jnp.where(
-                    idx == 1, beta_eff, rot_gate_ema * rot_beta_ema + (1.0 - rot_gate_ema) * beta_eff
-                )
-                r_rot_ema = rot_beta_ema / jnp.maximum(rot_alpha_ema, 1e-6)
-                omega_target = jnp.maximum(0.0, (r_rot_ema - rot_gate_tau) / (r_rot_ema + rot_gate_tau))
-                # Slow EMA on omega starting from 0.0 -> starts as forward-only while v_aux warms up
-                rot_omega = rot_gate_ema * rot_omega + (1.0 - rot_gate_ema) * omega_target
-                critic_cfg = {**config, "ROT_OMEGA": rot_omega}
+                if rot_gate_enabled:
+                    omega_target = jnp.maximum(0.0, (r_rot_ema - rot_gate_tau) / (r_rot_ema + rot_gate_tau))
+                    # Slow EMA on omega starting from 0.0 -> starts as forward-only while v_aux warms up
+                    rot_omega = rot_gate_ema * rot_omega + (1.0 - rot_gate_ema) * omega_target
+                    critic_cfg = {**config, "ROT_OMEGA": rot_omega}
+                else:
+                    critic_cfg = config
             else:
                 alpha_eff = jnp.asarray(0.0, dtype=jnp.float32)
                 beta_eff = jnp.asarray(0.0, dtype=jnp.float32)
+                rho_c = jnp.asarray(0.0, dtype=jnp.float32)
                 r_rot_ema = jnp.asarray(0.0, dtype=jnp.float32)
+                ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
+                aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
                 critic_cfg = config
 
             # 4. CRITIC UPDATE PHASE
@@ -370,11 +391,19 @@ def make_train(base_config):
             metric["pi_idx"] = idx
             metric["pi_num"] = idx
             metric["advantage"] = advantages.mean()
+            if log_contraction_diag:
+                metric["diag_rho_c"] = rho_c
+                metric["diag_r_rot_c"] = r_rot_ema
+                metric["diag_ret_var_ratio"] = ret_var_ratio
+                metric["diag_aux_unexp_var"] = aux_unexp_var
+                metric["diag_alpha_eff"] = alpha_eff
+                metric["diag_beta_eff"] = beta_eff
             if rot_gate_enabled:
                 metric["rot_omega"] = rot_omega
                 metric["rot_r_rot_ema"] = r_rot_ema
                 metric["rot_alpha_eff"] = alpha_eff
                 metric["rot_beta_eff"] = beta_eff
+                metric["rot_rho_c"] = rho_c
 
             runner_state = (
                 train_state,

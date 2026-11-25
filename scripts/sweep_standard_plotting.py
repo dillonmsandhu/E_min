@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from scripts.sweep_diagnostic_plotting import generate_contraction_diagnostics_suite
+
 matplotlib.rcParams["pdf.fonttype"] = 42
 matplotlib.rcParams["ps.fonttype"] = 42
 matplotlib.rcParams["font.family"] = "sans-serif"
@@ -966,6 +968,21 @@ def generate_standardized_suite(
             plots_dir=plots_dir,
             tables_dir=tables_dir,
         )
+
+    # Contraction-loss & return-variance diagnostics suite + 2x2 scatter vs E(lambda)/TD(lambda)
+    generate_contraction_diagnostics_suite(
+        all_runs=all_runs,
+        envs=envs,
+        method_keys=method_keys,
+        reference_method=reference_method,
+        per_env_best_tags=per_env_best_tags,
+        batch_sizes=batch_sizes,
+        suite_title=suite_title,
+        plots_dir=plots_dir,
+        tables_dir=tables_dir,
+        get_algo_meta=get_algo_meta,
+        env_titles=ENV_TITLES,
+    )
 
 
 def _save_pairwise_comparison_table(

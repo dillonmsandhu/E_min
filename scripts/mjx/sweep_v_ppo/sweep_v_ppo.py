@@ -227,6 +227,19 @@ def run_sweep(args) -> dict:
                         "params": cand["params"],
                         "config": cfg,
                     }
+                    for extra_key in (
+                        "diag_rho_c",
+                        "diag_r_rot_c",
+                        "diag_ret_var_ratio",
+                        "diag_aux_unexp_var",
+                        "diag_alpha_eff",
+                        "diag_beta_eff",
+                    ):
+                        if extra_key in out["metrics"]:
+                            arr = np.asarray(out["metrics"][extra_key])
+                            if arr.ndim == 1:
+                                arr = arr[None, :]
+                            res[extra_key] = arr
                     all_runs[env][m_key][tag] = res
                     print(
                         f"    {tag:28s} | AUC={res['auc_mean']:8.2f} ± {res['auc_std']:6.2f} "

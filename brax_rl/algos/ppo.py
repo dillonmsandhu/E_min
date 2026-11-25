@@ -36,6 +36,11 @@ from brax_rl.core.brax_critics import (
     prepare_critic_transitions,
     ppo_actor_loss_fn,
 )
+from core.contraction_diagnostics import (
+    compute_contraction_diagnostics,
+    resolve_diagnostic_lambda,
+    update_diagnostic_ema,
+)
 
 
 def make_train(config):
@@ -118,10 +123,16 @@ def make_train(config):
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = env.reset(reset_rng, env_params)
         last_true_terminal = jnp.zeros(config["NUM_ENVS"], dtype=bool)
+        log_contraction_diag = bool(config["LOG_CONTRACTION_DIAGNOSTICS"])
+        diag_probe_envs = int(config["DIAG_PROBE_ENVS"])
+        diag_ema = float(config["DIAG_EMA"])
+        diag_lambda = resolve_diagnostic_lambda(c_type, config)
+        diag_alpha_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
+        diag_beta2_ema_init = jnp.asarray(0.0, dtype=jnp.float32)
 
         # TRAIN LOOP
         def _update_step(runner_state, unused):
-            train_state, env_state, last_obs, last_true_terminal, rng, idx = runner_state
+            train_state, env_state, last_obs, last_true_terminal, rng, idx, diag_alpha_ema, diag_beta2_ema = runner_state
 
             # 1. COLLECT TRAJECTORIES
             def _env_step(env_scan_state, unused):
@@ -250,6 +261,41 @@ def make_train(config):
                 rng=_rng,
             )
 
+            # 3b. ONLINE CONTRACTION & VARIANCE DIAGNOSTICS
+            if log_contraction_diag:
+                def _v_apply(c_params, x_flat):
+                    full_p = {"params": {**train_state.actor.params, **c_params}}
+                    return network.apply(full_p, x_flat, method=network.value)
+
+                diag_out = compute_contraction_diagnostics(
+                    critic_params=train_state.critic.params,
+                    v_apply_fn=_v_apply,
+                    traj_batch=traj_batch,
+                    gamma=config["GAMMA"],
+                    lmbda=diag_lambda,
+                    n_probe_envs=diag_probe_envs,
+                    uses_aux=uses_aux,
+                )
+                diag_alpha_ema, diag_beta2_ema, diag_beta_eff, diag_r_rot_c = update_diagnostic_ema(
+                    diag_alpha_ema,
+                    diag_beta2_ema,
+                    diag_out["alpha_eff"],
+                    diag_out["beta2_eff"],
+                    idx,
+                    ema_decay=diag_ema,
+                )
+                diag_alpha_eff = diag_out["alpha_eff"]
+                diag_rho_c = diag_out["rho_c"]
+                diag_ret_var_ratio = diag_out["ret_var_ratio"]
+                diag_aux_unexp_var = diag_out["aux_unexp_var"]
+            else:
+                diag_alpha_eff = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_beta_eff = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_rho_c = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_r_rot_c = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
+
             # 4. CRITIC UPDATE PHASE (Separate epochs, minibatches, optimizer)
             def _critic_epoch(critic_state, unused):
                 def _critic_minibatch(train_state, mb):
@@ -331,12 +377,37 @@ def make_train(config):
                 if k not in ["real_next_obs", "obs_jump", "targets_jump", "valid_jump", "is_absorbing"]
                 and hasattr(v, "mean") and v.ndim <= 2
             })
+            if log_contraction_diag:
+                metric["diag_rho_c"] = diag_rho_c
+                metric["diag_r_rot_c"] = diag_r_rot_c
+                metric["diag_ret_var_ratio"] = diag_ret_var_ratio
+                metric["diag_aux_unexp_var"] = diag_aux_unexp_var
+                metric["diag_alpha_eff"] = diag_alpha_eff
+                metric["diag_beta_eff"] = diag_beta_eff
 
-            runner_state = (train_state, env_state, last_obs, last_true_terminal, rng, idx + 1)
+            runner_state = (
+                train_state,
+                env_state,
+                last_obs,
+                last_true_terminal,
+                rng,
+                idx + 1,
+                diag_alpha_ema,
+                diag_beta2_ema,
+            )
             return runner_state, metric
 
         rng, _rng = jax.random.split(rng)
-        runner_state = (train_state, env_state, obsv, last_true_terminal, _rng, 1)
+        runner_state = (
+            train_state,
+            env_state,
+            obsv,
+            last_true_terminal,
+            _rng,
+            1,
+            diag_alpha_ema_init,
+            diag_beta2_ema_init,
+        )
         runner_state, metrics = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )
