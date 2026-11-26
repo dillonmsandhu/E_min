@@ -139,6 +139,9 @@ def _active_diag_specs(all_runs: dict, envs: list[str], method_keys: list[str]) 
                 for spec in DIAG_SPECS:
                     if spec["key"] in res:
                         present.add(spec["key"])
+                if "diag_aux_unexp_var" in res:
+                    present.add("diag_v_r2")
+                    present.add("diag_aux_r2")
     return [spec for spec in DIAG_SPECS if spec["key"] in present]
 
 
@@ -146,10 +149,24 @@ def _has_any_diagnostics(all_runs: dict, envs: list[str], method_keys: list[str]
     return len(_active_diag_specs(all_runs, envs, method_keys)) > 0
 
 
-def _metric_auc_stats(res: dict[str, Any], key: str) -> tuple[float, float]:
-    if key not in res:
+def _metric_auc_stats(res: dict[str, Any], key: str, method_key: str | None = None) -> tuple[float, float]:
+    arr_raw = res.get(key)
+    # Backwards-compat for older pickles that logged overloaded `diag_aux_unexp_var`
+    if arr_raw is None and "diag_aux_unexp_var" in res and method_key is not None:
+        is_non_aux = method_key in ("td_lambda", "td_0", "sarsa_lambda", "msbe", "bsmc_fwd")
+        if key == "diag_v_r2" and is_non_aux:
+            arr_raw = 1.0 - np.asarray(res["diag_aux_unexp_var"], dtype=np.float64)
+        elif key == "diag_aux_r2" and not is_non_aux:
+            arr_raw = 1.0 - np.asarray(res["diag_aux_unexp_var"], dtype=np.float64)
+        elif key == "diag_v_r2" and not is_non_aux and "diag_aux_vs_v" in res:
+            # Recover 1 - R^2(v) = (1 - R^2(v_aux)) / (1 - aux_vs_v) -> R^2(v) = 1 - (1 - R^2(v_aux)) / (1 - aux_vs_v)
+            u_aux = np.asarray(res["diag_aux_unexp_var"], dtype=np.float64)
+            s_aux = np.asarray(res["diag_aux_vs_v"], dtype=np.float64)
+            denom = np.where(np.abs(1.0 - s_aux) > 1e-6, 1.0 - s_aux, np.nan)
+            arr_raw = 1.0 - (u_aux / denom)
+    if arr_raw is None:
         return float("nan"), float("nan")
-    arr = np.asarray(res[key], dtype=np.float64)
+    arr = np.asarray(arr_raw, dtype=np.float64)
     if arr.ndim == 1:
         arr = arr[None, :]
     if not np.any(np.isfinite(arr)):
@@ -265,7 +282,7 @@ def _plot_diagnostic_auc_per_env_and_benchmark(
                 tag = per_env_best_tags.get((env, m_key))
                 if not tag or tag not in all_runs.get(env, {}).get(m_key, {}):
                     continue
-                m_val, s_val = _metric_auc_stats(all_runs[env][m_key][tag], key)
+                m_val, s_val = _metric_auc_stats(all_runs[env][m_key][tag], key, method_key=m_key)
                 mat_m[i, j] = m_val
                 mat_s[i, j] = s_val
         auc_means[key] = mat_m
@@ -474,13 +491,13 @@ def _plot_2x2_scatter_for_pair(
         for spec in active_specs:
             key = spec["key"]
             if spec["scatter_source"] == "e_method":
-                val, _ = _metric_auc_stats(r_e, key)
+                val, _ = _metric_auc_stats(r_e, key, method_key=e_key)
                 if np.isnan(val):
-                    val, _ = _metric_auc_stats(r_td, key)
+                    val, _ = _metric_auc_stats(r_td, key, method_key=td_key)
             else:
-                val, _ = _metric_auc_stats(r_td, key)
+                val, _ = _metric_auc_stats(r_td, key, method_key=td_key)
                 if np.isnan(val):
-                    val, _ = _metric_auc_stats(r_e, key)
+                    val, _ = _metric_auc_stats(r_e, key, method_key=e_key)
             rec[key] = val
         records.append(rec)
 
