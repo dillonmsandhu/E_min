@@ -2,11 +2,11 @@
 #SBATCH --job-name=octax_td_diag
 #SBATCH --output=slurm/%j_octax_td_diag.out
 #SBATCH --error=slurm/%j_octax_td_diag.err
-#SBATCH --time=02:00:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=compsci-gpu
 #SBATCH --gres=gpu:a5000:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=16G
 
 set -e
 
@@ -39,4 +39,5 @@ $PYTHON -u scripts/octax/run_td_contraction_single_env.py \
     --lambdas 0.0 0.5 0.8 0.95 \
     --include_e_lambda 0.8 \
     --total_timesteps "$TOTAL_TIMESTEPS" \
-    --n_seeds "$N_SEEDS"
+    --n_seeds "$N_SEEDS" \
+    --sticky_action_prob 0.25
