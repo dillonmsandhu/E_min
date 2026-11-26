@@ -523,9 +523,20 @@ def _plot_2x2_scatter_for_pair(
             ax.axvline(spec["ref_line"], color="#94a3b8", ls=":", lw=1.0, alpha=0.8)
 
         if xv.size > 0:
-            use_symlog = bool(np.max(np.abs(yv)) > 80.0)
+            use_symlog = bool(np.max(np.abs(yv)) > 350.0)
             if use_symlog:
                 ax.set_yscale("symlog", linthresh=25.0, linscale=1.2)
+
+            # Set natural x-axis bounds for bounded metrics without clipping any data point
+            xmin_d, xmax_d = float(np.min(xv)), float(np.max(xv))
+            if key == "diag_rho_c":
+                ax.set_xlim(min(0.0, xmin_d - 0.05), max(1.02, xmax_d + 0.03))
+            elif key == "diag_r_rot_c":
+                ax.set_xlim(0.0, max(1.0, xmax_d * 1.10))
+            elif key == "diag_ret_var_ratio":
+                ax.set_xlim(0.0, max(1.0, xmax_d * 1.08))
+            elif key in ("diag_v_r2", "diag_aux_r2", "diag_aux_vs_v"):
+                ax.set_xlim(min(-1.0, xmin_d - 0.15), 1.05)
 
             colors = [
                 "#16a34a" if y > 1.0 else ("#dc2626" if y < -1.0 else "#64748b")
@@ -578,8 +589,8 @@ def _plot_2x2_scatter_for_pair(
             )
 
         src_note = f"measured on {e_lbl}" if spec["scatter_source"] == "e_method" else f"measured on {td_lbl}"
-        ax.set_xlabel(f"AUC of {spec['short']} ({src_note})", fontsize=9.2)
-        ax.set_ylabel(f"Relative Gain: ({e_lbl} − {td_lbl}) / |{td_lbl}| (%)", fontsize=8.8)
+        ax.set_xlabel(f"{spec['short']} ({src_note})", fontsize=9.5)
+        ax.set_ylabel("E / TD Performance Gain (%)", fontsize=9.5)
         ax.set_title(spec["title"], fontsize=10.5, fontweight="bold")
         ax.grid(True, alpha=0.3)
 
@@ -591,6 +602,15 @@ def _plot_2x2_scatter_for_pair(
         fontsize=12.5,
         fontweight="bold",
         y=1.01,
+    )
+    fig.text(
+        0.5,
+        -0.015,
+        f"Y-axis: relative AUC gain ({e_lbl} − {td_lbl}) / |{td_lbl}| × 100%  (> 0%: {e_lbl} wins; < 0%: {td_lbl} wins).",
+        ha="center",
+        fontsize=8.5,
+        color="#475569",
+        style="italic",
     )
     plt.tight_layout()
     fname = f"scatter_2x2_vs_rel_perf_{lam_label.replace('=', '').replace('.', 'p').replace(' ', '_')}"
