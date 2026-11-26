@@ -32,9 +32,9 @@ matplotlib.rcParams["axes.linewidth"] = 0.8
 PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
     {
         "key": "diag_rho_c",
-        "title": "1. Aliasing — Centered Gradient Aliasing (ρ_c of v)",
-        "short": "Aliasing ρ_c (v)",
-        "ylabel": "Centered Aliasing ρ_c (main critic v)",
+        "title": "Aliasing (ρ)",
+        "short": "Aliasing (ρ)",
+        "ylabel": "Aliasing (ρ)",
         "ref_line": 0.85,
         "ref_label": "High aliasing (0.85)",
         "scatter_source": "baseline",
@@ -42,9 +42,9 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_r_rot_c",
-        "title": "2. Rotation — Centered Split-Half Ratio (r_rot,c of v)",
-        "short": "Rotation r_rot,c (v)",
-        "ylabel": "Rotation Ratio r_rot,c (main critic v)",
+        "title": "Rotation (r_rot)",
+        "short": "Rotation (r_rot)",
+        "ylabel": "Rotation (r_rot)",
         "ref_line": 0.25,
         "ref_label": "Gate threshold τ=0.25",
         "scatter_source": "baseline",
@@ -52,9 +52,9 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_ret_var_ratio",
-        "title": "3. Variance — Return-to-TD Ratio (VR_ret of v)",
-        "short": "Return Variance VR_ret (v)",
-        "ylabel": "E[(G−v)²] / E[δ²] (main critic v)",
+        "title": "Return-to-TD Variance (VR)",
+        "short": "Return-to-TD Variance (VR)",
+        "ylabel": "E[(G−v)²] / E[δ²]",
         "ref_line": 1.0,
         "ref_label": "1-step parity (1.0)",
         "scatter_source": "baseline",
@@ -62,9 +62,9 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_v_r2",
-        "title": "4. Main Critic Accuracy — R²(v) (Higher is Better)",
-        "short": "Main Critic R²(v)",
-        "ylabel": "R²(v) vs. Rollout Return (1.0 = perfect)",
+        "title": "Critic Accuracy (R²)",
+        "short": "Critic Accuracy (R²)",
+        "ylabel": "Critic R² (1.0 = perfect)",
         "ref_line": 0.0,
         "ref_label": "Mean baseline (0.0)",
         "scatter_source": "baseline",
@@ -75,9 +75,9 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
 AUX_DIAG_SPECS: list[dict[str, Any]] = [
     {
         "key": "diag_aux_r2",
-        "title": "v_aux Accuracy — R²(v_aux) (Higher is Better)",
+        "title": "v_aux Accuracy (R²)",
         "short": "v_aux R²",
-        "ylabel": "R²(v_aux) vs. G^aux (1.0 = perfect)",
+        "ylabel": "v_aux R² (1.0 = perfect)",
         "ref_line": 0.0,
         "ref_label": "Mean baseline (0.0)",
         "scatter_source": "e_method",
@@ -85,7 +85,7 @@ AUX_DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_aux_vs_v",
-        "title": "v_aux vs. v Skill (> 0: v_aux better than v)",
+        "title": "v_aux vs. v Skill (> 0: v_aux better)",
         "short": "v_aux vs. v (>0: better)",
         "ylabel": "1 − MSE(v_aux)/MSE(v)  [>0: v_aux better]",
         "ref_line": 0.0,
