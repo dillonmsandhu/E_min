@@ -29,12 +29,12 @@ matplotlib.rcParams["axes.edgecolor"] = "#333333"
 matplotlib.rcParams["axes.linewidth"] = 0.8
 
 
-DIAG_SPECS: list[dict[str, Any]] = [
+PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
     {
         "key": "diag_rho_c",
-        "title": "Centered Gradient Aliasing (ρ_c)",
-        "short": "ρ_c",
-        "ylabel": "Centered Aliasing ρ_c",
+        "title": "1. Aliasing — Centered Gradient Aliasing (ρ_c of v)",
+        "short": "Aliasing ρ_c (v)",
+        "ylabel": "Centered Aliasing ρ_c (main critic v)",
         "ref_line": 0.85,
         "ref_label": "High aliasing (0.85)",
         "scatter_source": "baseline",
@@ -42,9 +42,9 @@ DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_r_rot_c",
-        "title": "Centered Split-Half Rotation Ratio (r_rot,c)",
-        "short": "r_rot,c",
-        "ylabel": "Rotation Ratio r_rot,c",
+        "title": "2. Rotation — Centered Split-Half Ratio (r_rot,c of v)",
+        "short": "Rotation r_rot,c (v)",
+        "ylabel": "Rotation Ratio r_rot,c (main critic v)",
         "ref_line": 0.25,
         "ref_label": "Gate threshold τ=0.25",
         "scatter_source": "baseline",
@@ -52,23 +52,36 @@ DIAG_SPECS: list[dict[str, Any]] = [
     },
     {
         "key": "diag_ret_var_ratio",
-        "title": "Return-to-TD Variance Ratio (VR_ret)",
-        "short": "VR_ret",
-        "ylabel": "Var(G - V) / Var(δ)",
+        "title": "3. Variance — Return-to-TD Ratio (VR_ret of v)",
+        "short": "Return Variance VR_ret (v)",
+        "ylabel": "E[(G−v)²] / E[δ²] (main critic v)",
         "ref_line": 1.0,
         "ref_label": "1-step parity (1.0)",
         "scatter_source": "baseline",
         "expected_sign": "-",
     },
     {
-        "key": "diag_aux_unexp_var",
-        "title": "Aux / Critic Unexplained Variance (1 - R²)",
-        "short": "1 - R²_aux",
-        "ylabel": "Unexplained Variance (1 - R²)",
-        "ref_line": 1.0,
-        "ref_label": "No explained var (1.0)",
-        "scatter_source": "e_method",
+        "key": "diag_v_r2",
+        "title": "4. Main Critic Accuracy — R²(v) (Higher is Better)",
+        "short": "Main Critic R²(v)",
+        "ylabel": "R²(v) vs. Rollout Return (1.0 = perfect)",
+        "ref_line": 0.0,
+        "ref_label": "Mean baseline (0.0)",
+        "scatter_source": "baseline",
         "expected_sign": "-",
+    },
+]
+
+AUX_DIAG_SPECS: list[dict[str, Any]] = [
+    {
+        "key": "diag_aux_r2",
+        "title": "v_aux Accuracy — R²(v_aux) (Higher is Better)",
+        "short": "v_aux R²",
+        "ylabel": "R²(v_aux) vs. G^aux (1.0 = perfect)",
+        "ref_line": 0.0,
+        "ref_label": "Mean baseline (0.0)",
+        "scatter_source": "e_method",
+        "expected_sign": "+",
     },
     {
         "key": "diag_aux_vs_v",
@@ -81,6 +94,8 @@ DIAG_SPECS: list[dict[str, Any]] = [
         "expected_sign": "+",
     },
 ]
+
+DIAG_SPECS: list[dict[str, Any]] = PRIMARY_DIAG_SPECS + AUX_DIAG_SPECS
 
 
 def _smooth_1d(y: np.ndarray, window: int) -> np.ndarray:
@@ -137,9 +152,17 @@ def _metric_auc_stats(res: dict[str, Any], key: str) -> tuple[float, float]:
     arr = np.asarray(res[key], dtype=np.float64)
     if arr.ndim == 1:
         arr = arr[None, :]
+    if not np.any(np.isfinite(arr)):
+        return float("nan"), float("nan")
     # Mean over updates per seed (ignoring non-finite entries if any)
-    seed_aucs = np.nanmean(arr, axis=-1)
-    return float(np.nanmean(seed_aucs)), float(np.nanstd(seed_aucs))
+    seed_aucs = np.array([
+        float(np.nanmean(row)) if np.any(np.isfinite(row)) else float("nan")
+        for row in arr
+    ], dtype=np.float64)
+    valid = seed_aucs[np.isfinite(seed_aucs)]
+    if valid.size == 0:
+        return float("nan"), float("nan")
+    return float(np.mean(valid)), float(np.std(valid))
 
 
 def _plot_diagnostic_learning_curves(
@@ -175,6 +198,8 @@ def _plot_diagnostic_learning_curves(
             arr = np.asarray(res[key], dtype=np.float64)
             if arr.ndim == 1:
                 arr = arr[None, :]
+            if not np.any(np.isfinite(arr)):
+                continue
             n_upd = arr.shape[-1]
             xs = (np.arange(1, n_upd + 1) * bs) / 1e6
             win = max(1, n_upd // 40)
@@ -423,7 +448,9 @@ def _plot_2x2_scatter_for_pair(
     e_lbl = get_algo_meta(e_key)["label"]
     td_lbl = get_algo_meta(td_key)["label"]
 
-    active_specs = _active_diag_specs(all_runs, envs, [e_key, td_key])
+    # Primary 2x2 scatter grid uses ONLY main-critic PRIMARY_DIAG_SPECS (all measured on td_key's main critic v)
+    present_keys = {s["key"] for s in _active_diag_specs(all_runs, envs, [e_key, td_key])}
+    active_specs = [s for s in PRIMARY_DIAG_SPECS if s["key"] in present_keys]
     if not active_specs:
         return
 

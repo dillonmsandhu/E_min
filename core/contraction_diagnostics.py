@@ -19,11 +19,15 @@ from jax.flatten_util import ravel_pytree
 
 
 DIAGNOSTIC_KEYS = (
+    # Primary 4 (always about the MAIN critic v — apples-to-apples across TD, MC, E)
     "diag_rho_c",
     "diag_r_rot_c",
     "diag_ret_var_ratio",
-    "diag_aux_unexp_var",
+    "diag_v_r2",
+    # v_aux-only diagnostics (NaN on non-v_aux critics so TD never gets a fake bar)
+    "diag_aux_r2",
     "diag_aux_vs_v",
+    # Raw rotation components
     "diag_alpha_eff",
     "diag_beta_eff",
 )
@@ -234,26 +238,30 @@ def compute_contraction_diagnostics(
     # while preventing 0/0 blowups on constant-reward envs (e.g. CartPole) at initialization.
     ret_var_ratio = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.mean(delta_full ** 2), 1e-8)
 
-    # 7. Auxiliary value (or critic) unexplained variance 1 - R^2, plus v_aux_vs_v skill score
+    # 7. Main critic accuracy R^2(v) — ALWAYS about the main critic v (higher is better, 1.0 = perfect)
+    mc_ret = v_full + mc_err
+    v_r2 = 1.0 - jnp.mean(mc_err ** 2) / jnp.maximum(jnp.var(mc_ret), 1e-8)
+
+    # 8. v_aux-only diagnostics (NaN on non-v_aux critics so TD never gets a fake value)
     if uses_aux:
         v_aux_full = traj_batch.v_aux.mean(-1) if traj_batch.v_aux.ndim > 2 else traj_batch.v_aux
         aux_tgt = traj_batch.aux_targets
         mse_aux = jnp.mean((v_aux_full - aux_tgt) ** 2)
-        mse_v = jnp.mean((v_full - aux_tgt) ** 2)
-        aux_unexp_var = mse_aux / jnp.maximum(jnp.var(aux_tgt), 1e-8)
-        # Positive (> 0) iff ||v_aux - V^pi||^2 < ||v - V^pi||^2 (irreducible noise cancels in sign)
-        aux_vs_v = 1.0 - mse_aux / jnp.maximum(mse_v, 1e-8)
+        mse_v_on_aux = jnp.mean((v_full - aux_tgt) ** 2)
+        aux_r2 = 1.0 - mse_aux / jnp.maximum(jnp.var(aux_tgt), 1e-8)
+        # Positive (> 0) iff ||v_aux - V^pi||^2 < ||v - V^pi||^2
+        aux_vs_v = 1.0 - mse_aux / jnp.maximum(mse_v_on_aux, 1e-8)
     else:
-        mc_ret = v_full + mc_err
-        aux_unexp_var = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.var(mc_ret), 1e-8)
-        aux_vs_v = jnp.asarray(0.0, dtype=jnp.float32)
+        aux_r2 = jnp.asarray(jnp.nan, dtype=jnp.float32)
+        aux_vs_v = jnp.asarray(jnp.nan, dtype=jnp.float32)
 
     return {
         "alpha_eff": alpha_eff,
         "beta2_eff": beta2_eff,
         "rho_c": rho_c,
         "ret_var_ratio": ret_var_ratio,
-        "aux_unexp_var": aux_unexp_var,
+        "v_r2": v_r2,
+        "aux_r2": aux_r2,
         "aux_vs_v": aux_vs_v,
     }
 

@@ -4,19 +4,23 @@ This document is the interpretation guide for the four online diagnostic metrics
 
 ---
 
-## 1. The Four Measures at a Glance
+## 1. The Four Primary Measures (Always About the Main Critic $v$)
 
-The four measures partition the empirical performance gap between **$E(\lambda)$** and **$\mathrm{TD}(\lambda)$** into two opposing forces:
-- **Why $\mathrm{TD}(\lambda)$ loses** (loss of contraction / non-normal rotation): $\rho_c$ and $r_{\text{rot},c}$.
-- **Why $E(\lambda)$ pays a cost** (multi-step return noise & auxiliary critic error): $\mathrm{VR}_{\text{ret}}$ and $1 - R^2_{\text{aux}}$.
+All four primary metrics are defined **identically for every algorithm** (`TD`, `MC`, `E`, `BSMC`, `Rot-Gated`) on the **main critic $v$** — never overloaded with `v_aux`.
 
-| Metric Key | Symbol | Measures | Expected Correlation with $E / \mathrm{TD}$ Gain |
+| Metric Key | Symbol | Measures (on main critic $v$) | Expected Correlation with $E / \mathrm{TD}$ Gain |
 | :--- | :---: | :--- | :---: |
-| `diag_rho_c` | $\rho_c$ | **Centered Gradient Aliasing** — local alignment between $\nabla v(s_t)$ and its $\lambda$-trace successor gradient | **Positive ($+$)** |
-| `diag_r_rot_c` | $r_{\text{rot},c}$ | **Centered Split-Half Rotation Ratio** — global non-normality ($\|K_{J_c} u_c\| / u_c^\top S_{J_c} u_c$) | **Positive ($+$)** |
-| `diag_ret_var_ratio` | $\mathrm{VR}_{\text{ret}}$ | **Return-to-TD Variance Ratio** — variance inflation of rollout MC returns over 1-step TD errors | **Negative ($-$)** |
-| `diag_aux_unexp_var` | $1 - R^2_{\text{aux}}$ | **Auxiliary / Critic Unexplained Variance** — residual error of $v_{\text{aux}}$ (or $v$) predicting returns | **Negative ($-$)** |
-| `diag_aux_vs_v` | $S_{\text{aux}}$ | **`v_aux` vs. `v` Skill** — $1 - \mathrm{MSE}(v_{\text{aux}}, G^{\text{aux}}) / \mathrm{MSE}(v, G^{\text{aux}})$ (**$> 0$: `v_aux` better than `v`**) | **Positive ($+$)** |
+| `diag_rho_c` | $\rho_c(v)$ | **1. Aliasing** — centered alignment between $\nabla v(s_t)$ and its $\lambda$-trace successor gradient | **Positive ($+$)** |
+| `diag_r_rot_c` | $r_{\text{rot},c}(v)$ | **2. Rotation** — centered split-half non-normality ($\|K_{J_c} u_c\| / u_c^\top S_{J_c} u_c$) | **Positive ($+$)** |
+| `diag_ret_var_ratio` | $\mathrm{VR}_{\text{ret}}(v)$ | **3. Variance** — return-to-TD error ratio $\mathbb{E}[(G_t^{(1)} - v(s_t))^2] / \mathbb{E}[\delta_t^2]$ | Context-dependent |
+| `diag_v_r2` | $R^2(v)$ | **4. Main Critic Accuracy** — $1 - \mathrm{MSE}(v, G_t^{(1)}) / \mathrm{Var}(G_t^{(1)})$ (**higher is better**, `1.0` = perfect) | **Negative ($-$)** (when TD's $v$ is inaccurate, $E$ has room to win) |
+
+### Separate `v_aux`-Only Diagnostics (Logged as `NaN` on non-`v_aux` Baselines)
+
+| Metric Key | Symbol | Measures (strictly on `v_aux`) |
+| :--- | :---: | :--- |
+| `diag_aux_r2` | $R^2(v_{\text{aux}})$ | **`v_aux` Accuracy** — $1 - \mathrm{MSE}(v_{\text{aux}}, G^{\text{aux}}) / \mathrm{Var}(G^{\text{aux}})$ (**higher is better**) |
+| `diag_aux_vs_v` | $S_{\text{aux}}$ | **`v_aux` vs. $v$ Skill** — $1 - \mathrm{MSE}(v_{\text{aux}}, G^{\text{aux}}) / \mathrm{MSE}(v, G^{\text{aux}})$ (**$> 0$: `v_aux` better than $v$**) |
 
 ---
 

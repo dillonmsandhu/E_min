@@ -271,7 +271,8 @@ def make_train(base_config):
                 diag_alpha_eff = diag_out["alpha_eff"]
                 diag_rho_c = diag_out["rho_c"]
                 diag_ret_var_ratio = diag_out["ret_var_ratio"]
-                diag_aux_unexp_var = diag_out["aux_unexp_var"]
+                diag_v_r2 = diag_out["v_r2"]
+                diag_aux_r2 = diag_out["aux_r2"]
                 diag_aux_vs_v = diag_out["aux_vs_v"]
             else:
                 diag_alpha_eff = jnp.asarray(0.0, dtype=jnp.float32)
@@ -279,8 +280,9 @@ def make_train(base_config):
                 diag_rho_c = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_r_rot_c = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
-                diag_aux_unexp_var = jnp.asarray(0.0, dtype=jnp.float32)
-                diag_aux_vs_v = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_v_r2 = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_aux_r2 = jnp.asarray(jnp.nan, dtype=jnp.float32)
+                diag_aux_vs_v = jnp.asarray(jnp.nan, dtype=jnp.float32)
 
             def _critic_epoch(critic_state, unused):
                 def _critic_minibatch(train_state, mb):
@@ -360,7 +362,8 @@ def make_train(base_config):
                 metric["diag_rho_c"] = diag_rho_c
                 metric["diag_r_rot_c"] = diag_r_rot_c
                 metric["diag_ret_var_ratio"] = diag_ret_var_ratio
-                metric["diag_aux_unexp_var"] = diag_aux_unexp_var
+                metric["diag_v_r2"] = diag_v_r2
+                metric["diag_aux_r2"] = diag_aux_r2
                 metric["diag_aux_vs_v"] = diag_aux_vs_v
                 metric["diag_alpha_eff"] = diag_alpha_eff
                 metric["diag_beta_eff"] = diag_beta_eff
