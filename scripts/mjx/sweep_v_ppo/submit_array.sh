@@ -92,6 +92,6 @@ POST_JOB_ID=$(sbatch --parsable \
     --mem=16G \
     --dependency=afterany:${DEP_STR} \
     --chdir="$REPO_ROOT" \
-    --wrap="$PYTHON scripts/mjx/sweep_v_ppo/plot_consolidated_results.py --out_dir '$OUT_DIR'")
+    --wrap="JAX_PLATFORMS=cpu $PYTHON scripts/mjx/sweep_v_ppo/plot_consolidated_results.py --out_dir '$OUT_DIR'")
 
 echo "Submitted MJX V-PPO Jobs (${DEP_STR}) and Post Job $POST_JOB_ID -> $OUT_DIR"
