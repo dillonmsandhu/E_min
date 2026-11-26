@@ -51,6 +51,16 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
         "expected_sign": "+",
     },
     {
+        "key": "diag_env_ret_var",
+        "title": "Return Variance (Env)",
+        "short": "Return Variance (Env)",
+        "ylabel": "Var(G_raw) / E[r²] (critic-free)",
+        "ref_line": 1.0,
+        "ref_label": "1-step parity (1.0)",
+        "scatter_source": "baseline",
+        "expected_sign": "-",
+    },
+    {
         "key": "diag_ret_var_ratio",
         "title": "Return-to-TD Variance (VR)",
         "short": "Return-to-TD Variance (VR)",
@@ -69,6 +79,16 @@ PRIMARY_DIAG_SPECS: list[dict[str, Any]] = [
         "ref_label": "Mean baseline (0.0)",
         "scatter_source": "baseline",
         "expected_sign": "-",
+    },
+    {
+        "key": "diag_v_rel_mse",
+        "title": "Critic Relative MSE (Lower is Better)",
+        "short": "Critic RelMSE",
+        "ylabel": "E[(G−v)²] / E[G²]",
+        "ref_line": 0.0,
+        "ref_label": "Perfect (0.0)",
+        "scatter_source": "baseline",
+        "expected_sign": "+",
     },
 ]
 
@@ -149,9 +169,8 @@ def _has_any_diagnostics(all_runs: dict, envs: list[str], method_keys: list[str]
     return len(_active_diag_specs(all_runs, envs, method_keys)) > 0
 
 
-def _metric_auc_stats(res: dict[str, Any], key: str, method_key: str | None = None) -> tuple[float, float]:
+def _extract_metric_array(res: dict[str, Any], key: str, method_key: str | None = None) -> np.ndarray | None:
     arr_raw = res.get(key)
-    # Backwards-compat for older pickles that logged overloaded `diag_aux_unexp_var`
     if arr_raw is None and "diag_aux_unexp_var" in res and method_key is not None:
         is_non_aux = method_key in ("td_lambda", "td_0", "sarsa_lambda", "msbe", "bsmc_fwd")
         if key == "diag_v_r2" and is_non_aux:
@@ -159,19 +178,22 @@ def _metric_auc_stats(res: dict[str, Any], key: str, method_key: str | None = No
         elif key == "diag_aux_r2" and not is_non_aux:
             arr_raw = 1.0 - np.asarray(res["diag_aux_unexp_var"], dtype=np.float64)
         elif key == "diag_v_r2" and not is_non_aux and "diag_aux_vs_v" in res:
-            # Recover 1 - R^2(v) = (1 - R^2(v_aux)) / (1 - aux_vs_v) -> R^2(v) = 1 - (1 - R^2(v_aux)) / (1 - aux_vs_v)
             u_aux = np.asarray(res["diag_aux_unexp_var"], dtype=np.float64)
             s_aux = np.asarray(res["diag_aux_vs_v"], dtype=np.float64)
             denom = np.where(np.abs(1.0 - s_aux) > 1e-6, 1.0 - s_aux, np.nan)
             arr_raw = 1.0 - (u_aux / denom)
     if arr_raw is None:
-        return float("nan"), float("nan")
+        return None
     arr = np.asarray(arr_raw, dtype=np.float64)
-    if arr.ndim == 1:
-        arr = arr[None, :]
+    return arr[None, :] if arr.ndim == 1 else arr
+
+
+def _metric_auc_stats(res: dict[str, Any], key: str, method_key: str | None = None) -> tuple[float, float]:
+    arr = _extract_metric_array(res, key, method_key=method_key)
+    if arr is None:
+        return float("nan"), float("nan")
     if not np.any(np.isfinite(arr)):
         return float("nan"), float("nan")
-    # Mean over updates per seed (ignoring non-finite entries if any)
     seed_aucs = np.array([
         float(np.nanmean(row)) if np.any(np.isfinite(row)) else float("nan")
         for row in arr
@@ -210,12 +232,8 @@ def _plot_diagnostic_learning_curves(
             if not tag or tag not in all_runs.get(env, {}).get(m_key, {}):
                 continue
             res = all_runs[env][m_key][tag]
-            if key not in res:
-                continue
-            arr = np.asarray(res[key], dtype=np.float64)
-            if arr.ndim == 1:
-                arr = arr[None, :]
-            if not np.any(np.isfinite(arr)):
+            arr = _extract_metric_array(res, key, method_key=m_key)
+            if arr is None or not np.any(np.isfinite(arr)):
                 continue
             n_upd = arr.shape[-1]
             xs = (np.arange(1, n_upd + 1) * bs) / 1e6
@@ -465,9 +483,32 @@ def _plot_2x2_scatter_for_pair(
     e_lbl = get_algo_meta(e_key)["label"]
     td_lbl = get_algo_meta(td_key)["label"]
 
-    # Primary 2x2 scatter grid uses ONLY main-critic PRIMARY_DIAG_SPECS (all measured on td_key's main critic v)
+    # Primary 2x2 scatter grid:
+    #   1. Aliasing (rho) — on TD(lambda) main critic
+    #   2. Rotation (r_rot) — on TD(lambda) main critic
+    #   3. Return Variance — critic-free diag_env_ret_var if present, else diag_ret_var_ratio
+    #   4. Critic Accuracy Ratio (TD / E Error, > 1: E critic better)
     present_keys = {s["key"] for s in _active_diag_specs(all_runs, envs, [e_key, td_key])}
-    active_specs = [s for s in PRIMARY_DIAG_SPECS if s["key"] in present_keys]
+    var_key = "diag_env_ret_var" if "diag_env_ret_var" in present_keys else "diag_ret_var_ratio"
+    use_rel_mse_ratio = "diag_v_rel_mse" in present_keys
+    scatter_specs: list[dict[str, Any]] = []
+    for k in ("diag_rho_c", "diag_r_rot_c", var_key):
+        for s in PRIMARY_DIAG_SPECS:
+            if s["key"] == k and k in present_keys:
+                scatter_specs.append(s)
+                break
+    if use_rel_mse_ratio or "diag_v_r2" in present_keys:
+        scatter_specs.append({
+            "key": "__critic_acc_ratio__",
+            "title": "Critic Accuracy Ratio (> 1: E critic better)",
+            "short": "TD / E Critic Error (> 1: E better)",
+            "ylabel": "",
+            "ref_line": 1.0,
+            "ref_label": "Equal critic error (1.0)",
+            "scatter_source": "ratio",
+            "expected_sign": "+",
+        })
+    active_specs = scatter_specs
     if not active_specs:
         return
 
@@ -490,15 +531,29 @@ def _plot_2x2_scatter_for_pair(
         }
         for spec in active_specs:
             key = spec["key"]
-            if spec["scatter_source"] == "e_method":
+            if key == "__critic_acc_ratio__":
+                if use_rel_mse_ratio:
+                    err_td, _ = _metric_auc_stats(r_td, "diag_v_rel_mse", method_key=td_key)
+                    err_e, _ = _metric_auc_stats(r_e, "diag_v_rel_mse", method_key=e_key)
+                else:
+                    r2_td, _ = _metric_auc_stats(r_td, "diag_v_r2", method_key=td_key)
+                    r2_e, _ = _metric_auc_stats(r_e, "diag_v_r2", method_key=e_key)
+                    err_td = (1.0 - r2_td) if np.isfinite(r2_td) else float("nan")
+                    err_e = (1.0 - r2_e) if np.isfinite(r2_e) else float("nan")
+                if np.isfinite(err_td) and np.isfinite(err_e) and err_e > 1e-8 and err_td >= 0.0:
+                    rec[key] = float(err_td / err_e)
+                else:
+                    rec[key] = float("nan")
+            elif spec["scatter_source"] == "e_method":
                 val, _ = _metric_auc_stats(r_e, key, method_key=e_key)
                 if np.isnan(val):
                     val, _ = _metric_auc_stats(r_td, key, method_key=td_key)
+                rec[key] = val
             else:
                 val, _ = _metric_auc_stats(r_td, key, method_key=td_key)
                 if np.isnan(val):
                     val, _ = _metric_auc_stats(r_e, key, method_key=e_key)
-            rec[key] = val
+                rec[key] = val
         records.append(rec)
 
     if len(records) < 2:
@@ -533,8 +588,10 @@ def _plot_2x2_scatter_for_pair(
                 ax.set_xlim(min(0.0, xmin_d - 0.05), max(1.02, xmax_d + 0.03))
             elif key == "diag_r_rot_c":
                 ax.set_xlim(0.0, max(1.0, xmax_d * 1.10))
-            elif key == "diag_ret_var_ratio":
+            elif key in ("diag_env_ret_var", "diag_ret_var_ratio"):
                 ax.set_xlim(0.0, max(1.0, xmax_d * 1.08))
+            elif key == "__critic_acc_ratio__":
+                ax.set_xlim(0.0, max(2.0, xmax_d * 1.10))
             elif key in ("diag_v_r2", "diag_aux_r2", "diag_aux_vs_v"):
                 ax.set_xlim(min(-1.0, xmin_d - 0.15), 1.05)
 
@@ -588,8 +645,11 @@ def _plot_2x2_scatter_for_pair(
                 bbox=dict(boxstyle="round,pad=0.35", facecolor="#f8fafc", edgecolor="#cbd5e1", alpha=0.92),
             )
 
-        src_note = f"measured on {e_lbl}" if spec["scatter_source"] == "e_method" else f"measured on {td_lbl}"
-        ax.set_xlabel(f"{spec['short']} ({src_note})", fontsize=9.5)
+        if spec["scatter_source"] == "ratio":
+            ax.set_xlabel(spec["short"], fontsize=9.5)
+        else:
+            src_note = f"measured on {e_lbl}" if spec["scatter_source"] == "e_method" else f"measured on {td_lbl}"
+            ax.set_xlabel(f"{spec['short']} ({src_note})", fontsize=9.5)
         ax.set_ylabel("E / TD Performance Gain (%)", fontsize=9.5)
         ax.set_title(spec["title"], fontsize=10.5, fontweight="bold")
         ax.grid(True, alpha=0.3)

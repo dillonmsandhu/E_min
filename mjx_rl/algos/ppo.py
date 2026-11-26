@@ -101,6 +101,7 @@ def static_compile_signature(config: dict) -> tuple:
         net_cfg.get("LR_SCHEDULE", "constant").lower(),
         bool(net_cfg.get("NORMALIZE_ENV", True)),
         bool(net_cfg.get("NORMALIZE_REW", False)),
+        float(net_cfg.get("MAX_GRAD_NORM", 1.0)),
     )
 
 
@@ -403,8 +404,10 @@ def make_train(config, dynamic_hparams: bool = False):
                 )
                 diag_alpha_eff = diag_out["alpha_eff"]
                 diag_rho_c = diag_out["rho_c"]
+                diag_env_ret_var = diag_out["env_ret_var"]
                 diag_ret_var_ratio = diag_out["ret_var_ratio"]
                 diag_v_r2 = diag_out["v_r2"]
+                diag_v_rel_mse = diag_out["v_rel_mse"]
                 diag_aux_r2 = diag_out["aux_r2"]
                 diag_aux_vs_v = diag_out["aux_vs_v"]
             else:
@@ -412,8 +415,10 @@ def make_train(config, dynamic_hparams: bool = False):
                 diag_beta_eff = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_rho_c = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_r_rot_c = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_env_ret_var = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_ret_var_ratio = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_v_r2 = jnp.asarray(0.0, dtype=jnp.float32)
+                diag_v_rel_mse = jnp.asarray(0.0, dtype=jnp.float32)
                 diag_aux_r2 = jnp.asarray(jnp.nan, dtype=jnp.float32)
                 diag_aux_vs_v = jnp.asarray(jnp.nan, dtype=jnp.float32)
 
@@ -524,8 +529,10 @@ def make_train(config, dynamic_hparams: bool = False):
             if log_contraction_diag:
                 metric["diag_rho_c"] = diag_rho_c
                 metric["diag_r_rot_c"] = diag_r_rot_c
+                metric["diag_env_ret_var"] = diag_env_ret_var
                 metric["diag_ret_var_ratio"] = diag_ret_var_ratio
                 metric["diag_v_r2"] = diag_v_r2
+                metric["diag_v_rel_mse"] = diag_v_rel_mse
                 metric["diag_aux_r2"] = diag_aux_r2
                 metric["diag_aux_vs_v"] = diag_aux_vs_v
                 metric["diag_alpha_eff"] = diag_alpha_eff

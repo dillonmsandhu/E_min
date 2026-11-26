@@ -220,8 +220,10 @@ def run_sweep(args) -> dict:
                     for extra_key in (
                         "diag_rho_c",
                         "diag_r_rot_c",
+                        "diag_env_ret_var",
                         "diag_ret_var_ratio",
                         "diag_v_r2",
+                        "diag_v_rel_mse",
                         "diag_aux_r2",
                         "diag_aux_vs_v",
                         "diag_alpha_eff",

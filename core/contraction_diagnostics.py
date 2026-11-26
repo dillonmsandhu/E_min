@@ -19,12 +19,14 @@ from jax.flatten_util import ravel_pytree
 
 
 DIAGNOSTIC_KEYS = (
-    # Primary 4 (always about the MAIN critic v — apples-to-apples across TD, MC, E)
+    # Primary 4 (always apples-to-apples across TD, MC, E)
     "diag_rho_c",
     "diag_r_rot_c",
+    "diag_env_ret_var",   # Critic-free return variance: Var(G_raw) / E[r^2]
+    "diag_v_r2",          # Main critic R^2(v)
+    "diag_v_rel_mse",     # Main critic relative MSE: E[(G - v)^2] / E[G^2] (safe when Var(G)->0)
+    # Legacy critic-dependent VR + v_aux-only diagnostics (NaN on non-v_aux critics)
     "diag_ret_var_ratio",
-    "diag_v_r2",
-    # v_aux-only diagnostics (NaN on non-v_aux critics so TD never gets a fake bar)
     "diag_aux_r2",
     "diag_aux_vs_v",
     # Raw rotation components
@@ -238,9 +240,25 @@ def compute_contraction_diagnostics(
     # while preventing 0/0 blowups on constant-reward envs (e.g. CartPole) at initialization.
     ret_var_ratio = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.mean(delta_full ** 2), 1e-8)
 
-    # 7. Main critic accuracy R^2(v) — ALWAYS about the main critic v (higher is better, 1.0 = perfect)
+    # 6b. Critic-free environment return variance: Var(G_raw) / max(E[r^2], 1e-8)
+    # Zero dependency on the critic v; scale-invariant and safe on constant-reward envs.
+    def _raw_ret_scan(g_next, step_in):
+        r_t, c_t = step_in
+        g_t = r_t + gamma_f * c_t * g_next
+        return g_t, g_t
+
+    _, g_raw = jax.lax.scan(
+        _raw_ret_scan,
+        jnp.zeros((B,), dtype=jnp.float32),
+        (traj_batch.reward, cont_full),
+        reverse=True,
+    )
+    env_ret_var = jnp.var(g_raw) / jnp.maximum(jnp.mean(traj_batch.reward ** 2), 1e-8)
+
+    # 7. Main critic accuracy — ALWAYS about the main critic v
     mc_ret = v_full + mc_err
     v_r2 = 1.0 - jnp.mean(mc_err ** 2) / jnp.maximum(jnp.var(mc_ret), 1e-8)
+    v_rel_mse = jnp.mean(mc_err ** 2) / jnp.maximum(jnp.mean(mc_ret ** 2), 1e-8)
 
     # 8. v_aux-only diagnostics (NaN on non-v_aux critics so TD never gets a fake value)
     if uses_aux:
@@ -259,8 +277,10 @@ def compute_contraction_diagnostics(
         "alpha_eff": alpha_eff,
         "beta2_eff": beta2_eff,
         "rho_c": rho_c,
+        "env_ret_var": env_ret_var,
         "ret_var_ratio": ret_var_ratio,
         "v_r2": v_r2,
+        "v_rel_mse": v_rel_mse,
         "aux_r2": aux_r2,
         "aux_vs_v": aux_vs_v,
     }

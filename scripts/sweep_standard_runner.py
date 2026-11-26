@@ -146,14 +146,19 @@ def _apply_params(
     for k, v in params.items():
         cfg[k] = v
 
-    if is_brax:
+    if "NETWORK_CONFIG" in cfg and isinstance(cfg["NETWORK_CONFIG"], dict):
         net_cfg = copy.deepcopy(cfg["NETWORK_CONFIG"])
-        ratio = float(net_cfg["LR_END"]) / max(float(net_cfg["LR"]), 1e-12)
-        net_cfg["LR"] = float(cfg["ACTOR_LR"])
-        net_cfg["LR_END"] = ratio * float(cfg["ACTOR_LR"])
+        if "MAX_GRAD_NORM" in params:
+            net_cfg["MAX_GRAD_NORM"] = float(params["MAX_GRAD_NORM"])
+        if "VF_COEF" in params:
+            net_cfg["VF_COEF"] = float(params["VF_COEF"])
+        if is_brax:
+            ratio = float(net_cfg["LR_END"]) / max(float(net_cfg["LR"]), 1e-12)
+            net_cfg["LR"] = float(cfg["ACTOR_LR"])
+            net_cfg["LR_END"] = ratio * float(cfg["ACTOR_LR"])
+            cfg["ACTOR_LR_END"] = ratio * float(cfg["ACTOR_LR"])
+            cfg["CRITIC_LR_END"] = ratio * float(cfg["CRITIC_LR"])
         cfg["NETWORK_CONFIG"] = net_cfg
-        cfg["ACTOR_LR_END"] = ratio * float(cfg["ACTOR_LR"])
-        cfg["CRITIC_LR_END"] = ratio * float(cfg["CRITIC_LR"])
     return cfg
 
 
@@ -188,8 +193,10 @@ def run_candidate(make_train_fn: Callable, cfg: dict[str, Any], seed_keys: jax.A
         "rot_rho_c",
         "diag_rho_c",
         "diag_r_rot_c",
+        "diag_env_ret_var",
         "diag_ret_var_ratio",
         "diag_v_r2",
+        "diag_v_rel_mse",
         "diag_aux_r2",
         "diag_aux_vs_v",
         "diag_alpha_eff",
