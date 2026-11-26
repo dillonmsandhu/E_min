@@ -17,7 +17,7 @@ config = {
     "GAE_CONTINUOUS_MODE": "loo",
     "CLIP_EPS": 0.2,
     "ENT_COEF": 0.001,
-    "VF_COEF": 0.5,
+    "VF_COEF": 1.0,
     "ENV_NAME": "hopper",
     "NETWORK_CONFIG": {
         "LR": 3e-4,
