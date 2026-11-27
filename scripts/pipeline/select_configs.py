@@ -111,13 +111,13 @@ def compute_env_scales(
     return scales
 
 
-def select_best_tag(
+def rank_all_tags(
     merged_runs: dict[str, dict[str, dict[str, Any]]],
     envs: list[str],
     algo: str,
     scales: dict[str, tuple[float, float]],
     filter_lambda: float | None = None,
-) -> dict[str, Any] | None:
+) -> list[dict[str, Any]]:
     lkey = _method_lambda_key(algo)
     # Find tags present across ALL tuning envs
     tag_sets = []
@@ -135,12 +135,12 @@ def select_best_tag(
         tag_sets.append(valid_tags)
 
     if not tag_sets:
-        return None
+        return []
     common_tags = sorted(set.intersection(*tag_sets))
     if not common_tags:
-        return None
+        return []
 
-    best_entry: dict[str, Any] | None = None
+    ranked: list[dict[str, Any]] = []
     for tag in common_tags:
         norm_scores = []
         per_env_auc = {}
@@ -153,22 +153,30 @@ def select_best_tag(
 
         iqm = compute_iqm(norm_scores)
         mean_norm = float(np.mean(norm_scores))
-        # Tie-break IQM by mean_norm
-        key_score = (iqm, mean_norm)
-        if best_entry is None or key_score > best_entry["_sort_key"]:
-            sample_res = merged_runs[envs[0]][algo][tag]
-            best_entry = {
-                "_sort_key": key_score,
+        sample_res = merged_runs[envs[0]][algo][tag]
+        ranked.append(
+            {
                 "tag": tag,
                 "params": dict(sample_res["params"]),
                 "iqm_norm_auc": float(iqm),
                 "mean_norm_auc": float(mean_norm),
                 "per_env_auc": per_env_auc,
             }
+        )
 
-    if best_entry is not None:
-        best_entry.pop("_sort_key", None)
-    return best_entry
+    ranked.sort(key=lambda e: (e["iqm_norm_auc"], e["mean_norm_auc"]), reverse=True)
+    return ranked
+
+
+def select_best_tag(
+    merged_runs: dict[str, dict[str, dict[str, Any]]],
+    envs: list[str],
+    algo: str,
+    scales: dict[str, tuple[float, float]],
+    filter_lambda: float | None = None,
+) -> dict[str, Any] | None:
+    ranked = rank_all_tags(merged_runs, envs, algo, scales, filter_lambda=filter_lambda)
+    return ranked[0] if ranked else None
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -203,6 +211,8 @@ def main() -> None:
 
     suite_cfg_dir = os.path.join(args.configs_dir, args.suite)
     os.makedirs(suite_cfg_dir, exist_ok=True)
+    mirror_cfg_dir = os.path.join(args.out_root, args.suite, "selected_configs")
+    os.makedirs(mirror_cfg_dir, exist_ok=True)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     summary_lines = [
@@ -219,12 +229,14 @@ def main() -> None:
     ]
 
     per_lambda_rows: list[str] = []
+    full_leaderboard_sections: list[str] = []
 
     for algo in algos:
-        winner = select_best_tag(merged_runs, present_envs, algo, scales, filter_lambda=None)
-        if winner is None:
+        ranked_all = rank_all_tags(merged_runs, present_envs, algo, scales, filter_lambda=None)
+        if not ranked_all:
             print(f"[Warning] No complete Stage 1 grid found for algo='{algo}' across {present_envs}; skipping.")
             continue
+        winner = ranked_all[0]
 
         payload = {
             "suite": args.suite,
@@ -241,8 +253,9 @@ def main() -> None:
             },
         }
         out_path = tuned_config_path(args.configs_dir, args.suite, algo, lambda_val=None)
-        with open(out_path, "w") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
+        for target_path in (out_path, os.path.join(mirror_cfg_dir, os.path.basename(out_path))):
+            with open(target_path, "w") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
         print(f"[Selected] {out_path} -> {winner['tag']} (IQM={winner['iqm_norm_auc']:.4f})")
         summary_lines.append(
             f"| `{algo}` | `{winner['tag']}` | `{winner['params']}` | "
@@ -250,11 +263,13 @@ def main() -> None:
         )
 
         # Also export per-lambda global winners for lambda-parameterized algorithms
+        lam_winner_tags: dict[str, float] = {}
         if _method_lambda_key(algo) is not None:
             for lmb in lambdas:
                 lw = select_best_tag(merged_runs, present_envs, algo, scales, filter_lambda=lmb)
                 if lw is None:
                     continue
+                lam_winner_tags[lw["tag"]] = float(lmb)
                 l_payload = {
                     "suite": args.suite,
                     "algo": algo,
@@ -270,13 +285,34 @@ def main() -> None:
                     },
                 }
                 l_path = tuned_config_path(args.configs_dir, args.suite, algo, lambda_val=lmb)
-                with open(l_path, "w") as f:
-                    json.dump(l_payload, f, indent=2, sort_keys=True)
+                for target_path in (l_path, os.path.join(mirror_cfg_dir, os.path.basename(l_path))):
+                    with open(target_path, "w") as f:
+                        json.dump(l_payload, f, indent=2, sort_keys=True)
                 print(f"[Selected] {l_path} -> {lw['tag']} (IQM={lw['iqm_norm_auc']:.4f})")
                 per_lambda_rows.append(
                     f"| `{algo}` | `{lmb:g}` | `{lw['tag']}` | `{lw['params']}` | "
                     f"{lw['iqm_norm_auc']:.4f} | {lw['mean_norm_auc']:.4f} |"
                 )
+
+        # Build full ranked leaderboard of ALL options tuned for this algo
+        sec_lines = [
+            f"### `{algo}` — All Tuned Options ({len(ranked_all)} configs, ranked by Suite IQM)",
+            "",
+            "| Rank | Status | Tag | Params | Suite IQM (Norm) | Suite Mean (Norm) |",
+            "|:---:|:---|:---|:---|:---:|:---:|",
+        ]
+        for idx, entry in enumerate(ranked_all, start=1):
+            badges = []
+            if entry["tag"] == winner["tag"]:
+                badges.append("**★ GLOBAL**")
+            if entry["tag"] in lam_winner_tags:
+                badges.append(f"◆ λ={lam_winner_tags[entry['tag']]:g} best")
+            status_str = " / ".join(badges) if badges else ""
+            sec_lines.append(
+                f"| {idx} | {status_str} | `{entry['tag']}` | `{entry['params']}` | "
+                f"{entry['iqm_norm_auc']:.4f} | {entry['mean_norm_auc']:.4f} |"
+            )
+        full_leaderboard_sections.append("\n".join(sec_lines))
 
     if per_lambda_rows:
         summary_lines.extend(
@@ -290,10 +326,28 @@ def main() -> None:
             ]
         )
 
+    summary_text = "\n".join(summary_lines) + "\n"
     summary_path = os.path.join(suite_cfg_dir, "selection_summary.md")
     with open(summary_path, "w") as f:
-        f.write("\n".join(summary_lines) + "\n")
+        f.write(summary_text)
     print(f"[Summary] Wrote {summary_path}")
+
+    # Write full tuning report (winners + ALL tuned options ranked) inside results/pipeline/<suite>/
+    report_lines = [
+        summary_text.rstrip(),
+        "",
+        "---",
+        "",
+        "## Full Stage 1 Tuning Grid Results (All Options Evaluated)",
+        "",
+        "\n\n".join(full_leaderboard_sections),
+        "",
+    ]
+    report_path = os.path.join(args.out_root, args.suite, "tuning_report.md")
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    with open(report_path, "w") as f:
+        f.write("\n".join(report_lines))
+    print(f"[Tuning Report] Wrote {report_path}")
 
 
 if __name__ == "__main__":
