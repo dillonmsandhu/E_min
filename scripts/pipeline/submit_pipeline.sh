@@ -111,6 +111,10 @@ get_env_gres() {
             *Humanoid*|G1*|T1*|H1*|Apollo*) echo "gpu:a6000:1"; return ;;
         esac
     fi
+    if [ "$SUITE" = "brax" ] && [ "$env" = "humanoid" ]; then
+        echo "gpu:a6000:1"
+        return
+    fi
     echo "gpu:a5000:1"
 }
 
@@ -154,6 +158,7 @@ if [ "$STAGE2_ONLY" = "0" ]; then
 
     S1_DEP=$(IFS=:; echo "${S1_JIDS[*]}")
 
+    SELECT_ALGOS=${SELECT_ALGOS:-"td_0 e_0_v_aux td_lambda e_lambda_v_aux"}
     echo "=== Submitting Config Selection (afterok:${S1_DEP}) ==="
     SELECT_JID=$(run_sbatch \
         --job-name="sel_${SUITE}" \
@@ -165,7 +170,7 @@ if [ "$STAGE2_ONLY" = "0" ]; then
         --chdir="$REPO_ROOT" \
         --output="${LOG_DIR}/%j_select_configs.out" \
         --error="${LOG_DIR}/%j_select_configs.err" \
-        --wrap="JAX_PLATFORMS=cpu $PYTHON scripts/pipeline/select_configs.py --suite '$SUITE' --algos $STAGE1_ALGOS --out_root '$OUT_ROOT' --configs_dir '$CONFIGS_DIR'")
+        --wrap="JAX_PLATFORMS=cpu $PYTHON scripts/pipeline/select_configs.py --suite '$SUITE' --algos $SELECT_ALGOS --out_root '$OUT_ROOT' --configs_dir '$CONFIGS_DIR'")
     echo "  [Select] Job $SELECT_JID -> ${CONFIGS_DIR}/${SUITE}/"
     SELECT_DEP_ARGS=(--dependency="afterok:${SELECT_JID}")
 else
