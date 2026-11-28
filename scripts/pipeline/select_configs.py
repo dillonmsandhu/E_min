@@ -118,6 +118,7 @@ def rank_all_tags(
     scales: dict[str, tuple[float, float]],
     filter_lambda: float | None = None,
     exclude_mc_lambda: bool = False,
+    filter_max_grad_norm: float | None = None,
 ) -> list[dict[str, Any]]:
     lkey = _method_lambda_key(algo)
     # Find tags present across ALL tuning envs
@@ -126,6 +127,10 @@ def rank_all_tags(
         env_tags = merged_runs.get(env, {}).get(algo, {})
         valid_tags = set()
         for tag, res in env_tags.items():
+            if filter_max_grad_norm is not None:
+                gn = res.get("params", {}).get("MAX_GRAD_NORM")
+                if gn is not None and abs(float(gn) - float(filter_max_grad_norm)) > 1e-6:
+                    continue
             if filter_lambda is not None:
                 if lkey is None:
                     continue
@@ -179,8 +184,16 @@ def select_best_tag(
     algo: str,
     scales: dict[str, tuple[float, float]],
     filter_lambda: float | None = None,
+    filter_max_grad_norm: float | None = None,
 ) -> dict[str, Any] | None:
-    ranked = rank_all_tags(merged_runs, envs, algo, scales, filter_lambda=filter_lambda)
+    ranked = rank_all_tags(
+        merged_runs,
+        envs,
+        algo,
+        scales,
+        filter_lambda=filter_lambda,
+        filter_max_grad_norm=filter_max_grad_norm,
+    )
     return ranked[0] if ranked else None
 
 
@@ -190,6 +203,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--algos", nargs="+", default=None)
     p.add_argument("--envs", nargs="+", default=None, help="Override tuning envs (defaults to spec.tune_envs)")
     p.add_argument("--lambdas", nargs="+", type=float, default=None)
+    p.add_argument(
+        "--max_grad_norm",
+        type=float,
+        default=1.0,
+        help="Restrict selection to this MAX_GRAD_NORM (default: 1.0; pass <=0 to allow all)",
+    )
     p.add_argument("--out_root", type=str, default="results/pipeline")
     p.add_argument("--configs_dir", type=str, default="configs/tuned")
     p.add_argument("--env_scales_file", type=str, default=None)
@@ -236,12 +255,20 @@ def main() -> None:
     per_lambda_rows: list[str] = []
     full_leaderboard_sections: list[str] = []
 
+    filter_gn = float(args.max_grad_norm) if args.max_grad_norm is not None and args.max_grad_norm > 0 else None
+
     for algo in algos:
         # Global winners for TD(λ) and E(λ) restrict strictly to bootstrapped λ < 1.0;
         # λ = 1.0 is exported separately as the dedicated `mc` baseline below.
         exclude_mc = _method_lambda_key(algo) is not None
         ranked_all = rank_all_tags(
-            merged_runs, present_envs, algo, scales, filter_lambda=None, exclude_mc_lambda=exclude_mc
+            merged_runs,
+            present_envs,
+            algo,
+            scales,
+            filter_lambda=None,
+            exclude_mc_lambda=exclude_mc,
+            filter_max_grad_norm=filter_gn,
         )
         if not ranked_all:
             print(f"[Warning] No complete Stage 1 grid found for algo='{algo}' across {present_envs}; skipping.")
@@ -278,7 +305,9 @@ def main() -> None:
             for lmb in lambdas:
                 if float(lmb) >= 1.0 - 1e-6:
                     continue
-                lw = select_best_tag(merged_runs, present_envs, algo, scales, filter_lambda=lmb)
+                lw = select_best_tag(
+                    merged_runs, present_envs, algo, scales, filter_lambda=lmb, filter_max_grad_norm=filter_gn
+                )
                 if lw is None:
                     continue
                 lam_winner_tags[lw["tag"]] = float(lmb)
@@ -328,7 +357,9 @@ def main() -> None:
 
     # Export dedicated `mc` (λ=1.0) baseline extracted from `td_lambda` Stage 1 runs (zero extra GPU work)
     if "td_lambda" in algos:
-        mc_ranked = rank_all_tags(merged_runs, present_envs, "td_lambda", scales, filter_lambda=1.0)
+        mc_ranked = rank_all_tags(
+            merged_runs, present_envs, "td_lambda", scales, filter_lambda=1.0, filter_max_grad_norm=filter_gn
+        )
         if mc_ranked:
             mc_winner = mc_ranked[0]
             mc_params = dict(mc_winner["params"])
