@@ -183,30 +183,32 @@ def main() -> None:
         writer.writerows(rows)
     print(f"[Master CSV] Wrote {len(rows)} rows -> {master_csv}")
 
-    # 1. Global E(λ) vs TD(λ): r_rot,c and ρ_c scatters
+    # 1. Primary Diagnostic Scatters at Intermediate λ = 0.8 (r_rot,c and ρ_c)
     _plot_diagnostic_scatter(
         rows=rows,
         x_col="diag_r_rot_c_mean",
-        x_label="TD(λ) Centered Split-Half Rotation Ratio ($r_{\\mathrm{rot},c}$)",
-        y_col="rel_auc_vs_td_lambda",
-        y_label="Relative Performance: $E(\\lambda)$ vs. $\\mathrm{TD}(\\lambda)$ (1.0 = Parity)",
+        x_label="TD(0.8) Centered Split-Half Rotation Ratio ($r_{\\mathrm{rot},c}$)",
+        y_col="rel_auc_vs_matched_td",
+        y_label="Relative Performance: $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ (1.0 = Parity)",
         e_method="e_lambda_v_aux",
         td_method="td_lambda",
-        eval_mode="global",
-        title="All-Suite Cross-Benchmark: $E(\\lambda)$ vs. $\\mathrm{TD}(\\lambda)$ by Rotation Ratio",
-        out_pdf=os.path.join(save_dir, "scatter_r_rot_vs_e_lambda_over_td_lambda.pdf"),
+        eval_mode="per_lambda",
+        filter_tag="lam=0.8",
+        title="All-Suite Intermediate-$\\lambda$ ($\\lambda=0.8$): $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ by Rotation Ratio",
+        out_pdf=os.path.join(save_dir, "scatter_r_rot_vs_e08_over_td08.pdf"),
     )
     _plot_diagnostic_scatter(
         rows=rows,
         x_col="diag_rho_c_mean",
-        x_label="TD(λ) Centered Gradient Aliasing ($\\rho_c$)",
-        y_col="rel_auc_vs_td_lambda",
-        y_label="Relative Performance: $E(\\lambda)$ vs. $\\mathrm{TD}(\\lambda)$ (1.0 = Parity)",
+        x_label="TD(0.8) Centered Gradient Aliasing ($\\rho_c$)",
+        y_col="rel_auc_vs_matched_td",
+        y_label="Relative Performance: $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ (1.0 = Parity)",
         e_method="e_lambda_v_aux",
         td_method="td_lambda",
-        eval_mode="global",
-        title="All-Suite Cross-Benchmark: $E(\\lambda)$ vs. $\\mathrm{TD}(\\lambda)$ by Gradient Aliasing",
-        out_pdf=os.path.join(save_dir, "scatter_rho_c_vs_e_lambda_over_td_lambda.pdf"),
+        eval_mode="per_lambda",
+        filter_tag="lam=0.8",
+        title="All-Suite Intermediate-$\\lambda$ ($\\lambda=0.8$): $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ by Gradient Aliasing",
+        out_pdf=os.path.join(save_dir, "scatter_rho_c_vs_e08_over_td08.pdf"),
     )
 
     # 2. 1-Step E(0) vs TD(0): r_rot,c and ρ_c scatters
@@ -222,20 +224,17 @@ def main() -> None:
         title="All-Suite Cross-Benchmark: 1-Step $E(0)$ vs. $\\mathrm{TD}(0)$ by Rotation Ratio",
         out_pdf=os.path.join(save_dir, "scatter_r_rot_vs_e0_over_td0.pdf"),
     )
-
-    # 3. Matched-λ (λ = 0.8) scatter across all suites
     _plot_diagnostic_scatter(
         rows=rows,
-        x_col="diag_r_rot_c_mean",
-        x_label="TD(0.8) Centered Split-Half Rotation Ratio ($r_{\\mathrm{rot},c}$)",
-        y_col="rel_auc_vs_matched_td",
-        y_label="Relative Performance: $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ (1.0 = Parity)",
-        e_method="e_lambda_v_aux",
-        td_method="td_lambda",
-        eval_mode="per_lambda",
-        filter_tag="lam=0.8",
-        title="All-Suite Matched-$\\lambda$ ($\\lambda=0.8$): $E(0.8)$ vs. $\\mathrm{TD}(0.8)$ by Rotation Ratio",
-        out_pdf=os.path.join(save_dir, "scatter_r_rot_vs_e08_over_td08.pdf"),
+        x_col="diag_rho_c_mean",
+        x_label="TD(0) Centered Gradient Aliasing ($\\rho_c$)",
+        y_col="rel_auc_vs_td0",
+        y_label="Relative Performance: $E(0)$ vs. $\\mathrm{TD}(0)$ (1.0 = Parity)",
+        e_method="e_0_v_aux",
+        td_method="td_0",
+        eval_mode="global",
+        title="All-Suite Cross-Benchmark: 1-Step $E(0)$ vs. $\\mathrm{TD}(0)$ by Gradient Aliasing",
+        out_pdf=os.path.join(save_dir, "scatter_rho_c_vs_e0_over_td0.pdf"),
     )
 
 

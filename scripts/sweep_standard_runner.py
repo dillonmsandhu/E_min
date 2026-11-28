@@ -33,6 +33,7 @@ def _method_critic_type(method_key: str) -> str:
     mapping = {
         "td_lambda": "fitted",
         "td_0": "td_0",
+        "mc": "fitted",
         "msbe": "msbe",
         "sarsa_lambda": "sarsa_lambda",
         "e_0_v_aux": "e_0_v_aux",
@@ -61,7 +62,7 @@ def _method_lambda_key(method_key: str) -> str | None:
         return "E_LAMBDA"
     if method_key in ("bsmc_v_aux", "bsmc_fwd", "bsmc_double_pi", "bsmc_bilinear_v_aux", "bsmc_dir_marg", "bsmc_dir_double"):
         return "BSMC_LAMBDA"
-    if method_key in ("e_0_v_aux", "e_0_rot_gated", "e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe"):
+    if method_key in ("e_0_v_aux", "e_0_rot_gated", "e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "mc", "msbe"):
         return None
     raise ValueError(f"Unknown canonical method_key '{method_key}'.")
 
@@ -136,12 +137,15 @@ def _apply_params(
     else:
         cfg["ROT_GATE_ENABLED"] = False
 
-    if method_key in ("e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "msbe", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_dir_double"):
+    if method_key in ("e_0_bilinear", "e_0_dir_marg", "e_0_dir_double", "td_0", "mc", "msbe", "bsmc_double_pi", "bsmc_dir_marg", "bsmc_dir_double"):
         cfg["E_VARIANT"] = "naive"
     elif method_key == "bsmc_fwd":
         cfg["E_VARIANT"] = "fwd"
     else:
         cfg["E_VARIANT"] = "aux"
+
+    if method_key == "mc":
+        cfg["VALUE_LAMBDA"] = 1.0
 
     for k, v in params.items():
         cfg[k] = v

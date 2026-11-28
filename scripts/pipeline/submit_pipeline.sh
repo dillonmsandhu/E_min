@@ -65,7 +65,7 @@ fi
 TUNE_ENVS=${TUNE_ENVS:-$("$PYTHON" -c "from scripts.pipeline.suite_registry import get_suite_spec; print(' '.join(get_suite_spec('$SUITE').tune_envs))")}
 EVAL_ENVS=${EVAL_ENVS:-$("$PYTHON" -c "from scripts.pipeline.suite_registry import get_suite_spec; print(' '.join(get_suite_spec('$SUITE').eval_envs))")}
 STAGE1_ALGOS=${STAGE1_ALGOS:-"td_0 e_0_v_aux td_lambda e_lambda_v_aux"}
-STAGE2_ALGOS=${STAGE2_ALGOS:-"td_0 e_0_v_aux td_lambda e_lambda_v_aux bsmc_v_aux e_0_rot_gated e_lambda_rot_gated"}
+STAGE2_ALGOS=${STAGE2_ALGOS:-"td_0 e_0_v_aux td_lambda e_lambda_v_aux mc bsmc_v_aux e_0_rot_gated e_lambda_rot_gated"}
 GPU_GRES=${GPU_GRES:-auto}
 CPUS_GPU=${CPUS_GPU:-2}
 

@@ -42,6 +42,11 @@ ALGO_REGISTRY: dict[str, dict[str, str]] = {
         "color": "#0891b2",
         "ls": "--",
     },
+    "mc": {
+        "label": "MC (λ=1)",
+        "color": "#475569",
+        "ls": ":",
+    },
     "msbe": {
         "label": "MSBE (2s)",
         "color": "#64748b",
@@ -1395,28 +1400,35 @@ def _generate_head_to_head_vs_baseline_suite(
 
     for j, m_key in enumerate(cand_keys):
         lbl = get_algo_meta(m_key)["label"]
-        c_auc = np.array([all_runs[e][m_key][per_env_best_tags[(e, m_key)]]["auc_mean"] for e in envs], dtype=float)
-        c_fin = np.array([all_runs[e][m_key][per_env_best_tags[(e, m_key)]]["final_mean"] for e in envs], dtype=float)
+        valid_idx = [i for i, e in enumerate(envs) if m_key in all_runs[e] and (e, m_key) in per_env_best_tags]
+        if not valid_idx:
+            pct_diff_mat[:, j] = np.nan
+            continue
+        c_auc_v = np.array([all_runs[envs[i]][m_key][per_env_best_tags[(envs[i], m_key)]]["auc_mean"] for i in valid_idx], dtype=float)
+        c_fin_v = np.array([all_runs[envs[i]][m_key][per_env_best_tags[(envs[i], m_key)]]["final_mean"] for i in valid_idx], dtype=float)
+        r_auc_v = ref_auc[valid_idx]
+        r_fin_v = ref_fin[valid_idx]
 
-        wtl_auc = _compute_wtl_stats(np.column_stack([c_auc, ref_auc]), higher_is_better=True)
-        wtl_fin = _compute_wtl_stats(np.column_stack([c_fin, ref_fin]), higher_is_better=True)
-        strict_w = int(np.sum(c_auc > ref_auc + 1e-9))
-        strict_l = int(np.sum(ref_auc > c_auc + 1e-9))
-        strict_t = n_envs - strict_w - strict_l
+        wtl_auc = _compute_wtl_stats(np.column_stack([c_auc_v, r_auc_v]), higher_is_better=True)
+        wtl_fin = _compute_wtl_stats(np.column_stack([c_fin_v, r_fin_v]), higher_is_better=True)
+        strict_w = int(np.sum(c_auc_v > r_auc_v + 1e-9))
+        strict_l = int(np.sum(r_auc_v > c_auc_v + 1e-9))
+        strict_t = len(valid_idx) - strict_w - strict_l
 
-        for i in range(n_envs):
-            tol = _row_real_win_tol(np.array([c_auc[i], ref_auc[i]]))
-            diff = c_auc[i] - ref_auc[i]
+        pct_diff_mat[:, j] = np.nan
+        for k_pos, i in enumerate(valid_idx):
+            tol = _row_real_win_tol(np.array([c_auc_v[k_pos], r_auc_v[k_pos]]))
+            diff = c_auc_v[k_pos] - r_auc_v[k_pos]
             if abs(diff) <= tol:
                 status_mat[i, j] = 0
             elif diff > tol:
                 status_mat[i, j] = 1
             else:
                 status_mat[i, j] = -1
-            denom = max(abs(ref_auc[i]), 1e-4)
+            denom = max(abs(r_auc_v[k_pos]), 1e-4)
             pct_diff_mat[i, j] = (diff / denom) * 100.0
 
-        mean_pct, iqm_pct, med_pct = _normalized_pct_scores(c_auc, ref_auc)
+        mean_pct, iqm_pct, med_pct = _normalized_pct_scores(c_auc_v, r_auc_v)
         summary_rows.append({
             "Algorithm": lbl,
             f"AUC W/T/L vs {ref_lbl}": f"{int(wtl_auc['pw_w'][0])}W / {int(wtl_auc['pw_t'][0])}T / {int(wtl_auc['pw_l'][0])}L",

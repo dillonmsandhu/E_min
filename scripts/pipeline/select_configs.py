@@ -117,6 +117,7 @@ def rank_all_tags(
     algo: str,
     scales: dict[str, tuple[float, float]],
     filter_lambda: float | None = None,
+    exclude_mc_lambda: bool = False,
 ) -> list[dict[str, Any]]:
     lkey = _method_lambda_key(algo)
     # Find tags present across ALL tuning envs
@@ -130,6 +131,10 @@ def rank_all_tags(
                     continue
                 lval = res.get("params", {}).get(lkey)
                 if lval is None or abs(float(lval) - float(filter_lambda)) > 1e-6:
+                    continue
+            elif exclude_mc_lambda and lkey is not None:
+                lval = res.get("params", {}).get(lkey)
+                if lval is not None and float(lval) >= 1.0 - 1e-6:
                     continue
             valid_tags.add(tag)
         tag_sets.append(valid_tags)
@@ -232,7 +237,12 @@ def main() -> None:
     full_leaderboard_sections: list[str] = []
 
     for algo in algos:
-        ranked_all = rank_all_tags(merged_runs, present_envs, algo, scales, filter_lambda=None)
+        # Global winners for TD(λ) and E(λ) restrict strictly to bootstrapped λ < 1.0;
+        # λ = 1.0 is exported separately as the dedicated `mc` baseline below.
+        exclude_mc = _method_lambda_key(algo) is not None
+        ranked_all = rank_all_tags(
+            merged_runs, present_envs, algo, scales, filter_lambda=None, exclude_mc_lambda=exclude_mc
+        )
         if not ranked_all:
             print(f"[Warning] No complete Stage 1 grid found for algo='{algo}' across {present_envs}; skipping.")
             continue
@@ -262,10 +272,12 @@ def main() -> None:
             f"{winner['iqm_norm_auc']:.4f} | {winner['mean_norm_auc']:.4f} |"
         )
 
-        # Also export per-lambda global winners for lambda-parameterized algorithms
+        # Also export per-lambda global winners for lambda-parameterized algorithms (bootstrapped λ < 1.0)
         lam_winner_tags: dict[str, float] = {}
         if _method_lambda_key(algo) is not None:
             for lmb in lambdas:
+                if float(lmb) >= 1.0 - 1e-6:
+                    continue
                 lw = select_best_tag(merged_runs, present_envs, algo, scales, filter_lambda=lmb)
                 if lw is None:
                     continue
@@ -313,6 +325,51 @@ def main() -> None:
                 f"{entry['iqm_norm_auc']:.4f} | {entry['mean_norm_auc']:.4f} |"
             )
         full_leaderboard_sections.append("\n".join(sec_lines))
+
+    # Export dedicated `mc` (λ=1.0) baseline extracted from `td_lambda` Stage 1 runs (zero extra GPU work)
+    if "td_lambda" in algos:
+        mc_ranked = rank_all_tags(merged_runs, present_envs, "td_lambda", scales, filter_lambda=1.0)
+        if mc_ranked:
+            mc_winner = mc_ranked[0]
+            mc_params = dict(mc_winner["params"])
+            mc_params["VALUE_LAMBDA"] = 1.0
+            mc_payload = {
+                "suite": args.suite,
+                "algo": "mc",
+                "lambda_filter": 1.0,
+                "tag": mc_winner["tag"],
+                "params": mc_params,
+                "metadata": {
+                    "generated_utc": now_iso,
+                    "tuning_envs": present_envs,
+                    "iqm_norm_auc": mc_winner["iqm_norm_auc"],
+                    "mean_norm_auc": mc_winner["mean_norm_auc"],
+                    "per_env_auc": mc_winner["per_env_auc"],
+                    "extracted_from": "td_lambda (λ=1.0)",
+                },
+            }
+            mc_path = tuned_config_path(args.configs_dir, args.suite, "mc", lambda_val=None)
+            for target_path in (mc_path, os.path.join(mirror_cfg_dir, os.path.basename(mc_path))):
+                with open(target_path, "w") as f:
+                    json.dump(mc_payload, f, indent=2, sort_keys=True)
+            print(f"[Selected] {mc_path} -> {mc_winner['tag']} (IQM={mc_winner['iqm_norm_auc']:.4f})")
+            summary_lines.append(
+                f"| `mc` | `{mc_winner['tag']}` | `{mc_params}` | "
+                f"{mc_winner['iqm_norm_auc']:.4f} | {mc_winner['mean_norm_auc']:.4f} |"
+            )
+            mc_sec = [
+                f"### `mc` (λ=1.0, extracted from `td_lambda`) — All Tuned Options ({len(mc_ranked)} configs)",
+                "",
+                "| Rank | Status | Tag | Params | Suite IQM (Norm) | Suite Mean (Norm) |",
+                "|:---:|:---|:---|:---|:---:|:---:|",
+            ]
+            for idx, entry in enumerate(mc_ranked, start=1):
+                badge = "**★ GLOBAL**" if idx == 1 else ""
+                mc_sec.append(
+                    f"| {idx} | {badge} | `{entry['tag']}` | `{entry['params']}` | "
+                    f"{entry['iqm_norm_auc']:.4f} | {entry['mean_norm_auc']:.4f} |"
+                )
+            full_leaderboard_sections.append("\n".join(mc_sec))
 
     if per_lambda_rows:
         summary_lines.extend(

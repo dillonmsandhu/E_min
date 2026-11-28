@@ -99,6 +99,8 @@ def main() -> None:
         if (not args.no_per_lambda) and _method_lambda_key(algo) is not None:
             per_lambda_cfgs[algo] = {}
             for lmb in lambdas:
+                if float(lmb) >= 1.0 - 1e-6:
+                    continue
                 per_lambda_cfgs[algo][float(lmb)] = load_tuned_config(
                     args.configs_dir, args.suite, algo, lambda_val=lmb
                 )

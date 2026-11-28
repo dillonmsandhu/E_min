@@ -399,7 +399,14 @@ def build_stage1_candidates(
     Every tuned algorithm gets the exact same grid on its applicable axes.
     """
     lambda_key = _method_lambda_key(method_key)
-    lambda_vals = [float(x) for x in lambdas] if lambda_key is not None else [None]
+    if lambda_key is not None:
+        # At λ=1.0, E(1.0) == TD(1.0) == MC; only sweep λ=1.0 inside td_lambda (exported as `mc`)
+        if method_key == "e_lambda_v_aux":
+            lambda_vals = [float(x) for x in lambdas if float(x) < 1.0 - 1e-6]
+        else:
+            lambda_vals = [float(x) for x in lambdas]
+    else:
+        lambda_vals = [None]
 
     candidates: list[dict[str, Any]] = []
     seen = set()
