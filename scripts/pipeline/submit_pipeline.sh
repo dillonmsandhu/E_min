@@ -76,10 +76,15 @@ case "$SUITE" in
         TIME_S2=${TIME_S2:-"01:00:00"}
         MEM_GPU=${MEM_GPU:-"16G"}
         ;;
-    minatar|octax)
+    minatar)
         TIME_S1=${TIME_S1:-"06:00:00"}
         TIME_S2=${TIME_S2:-"03:00:00"}
         MEM_GPU=${MEM_GPU:-"20G"}
+        ;;
+    octax)
+        TIME_S1=${TIME_S1:-"24:00:00"}
+        TIME_S2=${TIME_S2:-"12:00:00"}
+        MEM_GPU=${MEM_GPU:-"24G"}
         ;;
     brax)
         TIME_S1=${TIME_S1:-"10:00:00"}

@@ -17,6 +17,7 @@ fi
 REPO_ROOT="$(pwd)"
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH}"
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export PYTHONUNBUFFERED=1
 
 SUITE=${SUITE:?Must set SUITE (brax|mjx_locomotion|octax|minatar|gymnax)}
 ENV_NAME=${1:?Must pass ENV_NAME as $1}
@@ -60,7 +61,7 @@ EXTRA_ARGS=()
 [ -n "${LAMBDAS:-}" ] && EXTRA_ARGS+=(--lambdas $LAMBDAS)
 
 echo "[Stage 1 Worker] suite=$SUITE env=$ENV_NAME algo=$ALGO python=$PYTHON"
-"$PYTHON" scripts/pipeline/stage1_tune.py \
+"$PYTHON" -u scripts/pipeline/stage1_tune.py \
     --suite "$SUITE" \
     --envs "$ENV_NAME" \
     --algos "$ALGO" \
